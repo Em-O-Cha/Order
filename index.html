@@ -33,6 +33,11 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
   color:var(--gd);font-size:16px;font-weight:700;cursor:pointer;}
 .qty-val{width:24px;text-align:center;font-weight:600;}
 
+.cat-card{border:1.5px solid #eee;border-radius:14px;overflow:hidden;margin-bottom:16px;}
+.cat-img{width:100%;height:150px;object-fit:cover;display:block;background:var(--gp);}
+.cat-name{font-size:15px;font-weight:600;padding:12px 14px 4px;}
+.cat-card .prod-item{padding:10px 14px;}
+
 .cart-bar{position:sticky;bottom:0;background:#fff;border-top:1.5px solid #eee;padding:14px 20px;
   display:flex;justify-content:space-between;align-items:center;}
 .cart-total{font-size:13px;color:var(--g6);}
@@ -43,7 +48,8 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 .btn-block{width:100%;height:48px;}
 .btn-outline{background:#fff;color:var(--gm);border:1.5px solid var(--gm);}
 
-.pay-opt{border:1.5px solid #eee;border-radius:12px;padding:14px;margin-bottom:10px;cursor:pointer;}
+.pay-opt{border:1.5px solid #eee;border-radius:12px;padding:14px;margin-bottom:10px;cursor:pointer;
+  display:flex;align-items:center;width:100%;box-sizing:border-box;}
 .pay-opt.active{border-color:var(--gm);background:var(--gp);}
 .pay-opt input{margin-right:8px;}
 
@@ -123,8 +129,9 @@ var LIFF_ID = '2010892131-3XYQXNzq';
 var API_URL = 'https://script.google.com/macros/s/AKfycbw0P4L2ztNKcb7Gj_ehituROwU11UsB-mdHNlPkqmbG_1UB_UYqtFkvVV-kgCBL5juSUg/exec';
 
 var currentIdToken = null;
-var products = [];
-var cart = {}; // { productName: qty }
+var categories = [];
+var variantList = []; // flat list ของทุกขนาดบรรจุจากทุกหมวดหมู่ รวมกันไว้ใช้อ้างอิงด้วย index (สร้างใหม่ทุกครั้งที่ renderCatalog)
+var cart = {}; // { skuName: qty } — skuName คือชื่อสินค้าเต็มจากคอลัมน์ B (ตรงกับที่ระบบ Revenue ใช้)
 var paymentInfo = null;
 var selectedPayment = 'promptpay';
 var appliedCouponCode = '';
@@ -173,45 +180,63 @@ function loadProducts(){
   callApi('getShopProducts')
     .then(function(r){
       if (!r || !r.success) { showErrorState('โหลดสินค้าไม่สำเร็จ: ' + (r ? r.error : '')); return; }
-      products = r.products || [];
+      categories = r.categories || [];
       renderCatalog();
       showState('catalogState');
     })
     .catch(function(e){ showErrorState('เรียก API ไม่สำเร็จ: ' + e.message); });
 }
 
+// แสดงสินค้าเป็นการ์ดตามหมวดหมู่ (รูป + ชื่อหมวดหมู่) แล้วแสดงรายการขนาดบรรจุ (variant) ให้เลือกจำนวน
+// ทีละอันภายใต้การ์ดนั้น — สร้าง variantList แบบ flat ใหม่ทุกครั้งที่ render เพื่อใช้ index อ้างอิงง่ายๆ
+// เหมือนเดิม (แทนที่จะอ้างอิงชื่อสินค้าตรงๆ ซึ่งอาจมีอักขระพิเศษที่ใส่ใน onclick ยาก)
 function renderCatalog(){
+  variantList = [];
   var h = '';
-  products.forEach(function(p, idx){
-    h += '<div class="prod-item">'
-      + '<div style="flex:1"><div class="prod-name">' + escHtml(p.name) + '</div><div class="prod-price">฿' + p.price.toLocaleString('th-TH') + '</div></div>'
-      + '<div class="qty-ctl">'
-      + '<button class="qty-btn" onclick="changeQty(' + idx + ',-1)">−</button>'
-      + '<span class="qty-val" id="qty_' + idx + '">0</span>'
-      + '<button class="qty-btn" onclick="changeQty(' + idx + ',1)">+</button>'
-      + '</div></div>';
+  categories.forEach(function(cat){
+    h += '<div class="cat-card">';
+    if (cat.image) {
+      h += '<img class="cat-img" src="' + escHtml(cat.image) + '" alt="' + escHtml(cat.name) + '" onerror="this.style.display=\'none\'">';
+    }
+    h += '<div class="cat-name">' + escHtml(cat.name) + '</div>';
+    cat.variants.forEach(function(v){
+      var idx = variantList.length;
+      variantList.push(v);
+      h += '<div class="prod-item">'
+        + '<div style="flex:1"><div class="prod-name">' + escHtml(v.label) + '</div><div class="prod-price">฿' + v.price.toLocaleString('th-TH') + '</div></div>'
+        + '<div class="qty-ctl">'
+        + '<button class="qty-btn" onclick="changeQty(' + idx + ',-1)">−</button>'
+        + '<span class="qty-val" id="qty_' + idx + '">0</span>'
+        + '<button class="qty-btn" onclick="changeQty(' + idx + ',1)">+</button>'
+        + '</div></div>';
+    });
+    h += '</div>';
   });
   document.getElementById('prodList').innerHTML = h || '<p style="color:var(--g6);text-align:center">ยังไม่มีสินค้า</p>';
 }
 
 function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+function findVariant(skuName){
+  return variantList.find(function(v){ return v.skuName === skuName; });
+}
+
 function changeQty(idx, delta){
-  var name = products[idx].name;
-  var cur = cart[name] || 0;
+  var skuName = variantList[idx].skuName;
+  var cur = cart[skuName] || 0;
   cur = Math.max(0, cur + delta);
-  if (cur === 0) delete cart[name]; else cart[name] = cur;
+  if (cur === 0) delete cart[skuName]; else cart[skuName] = cur;
   document.getElementById('qty_' + idx).textContent = cur;
   updateCartBar();
 }
 
 function updateCartBar(){
   var count = 0, total = 0;
-  Object.keys(cart).forEach(function(name){
-    var p = products.find(function(x){ return x.name === name; });
-    if (!p) return;
-    count += cart[name];
-    total += cart[name] * p.price;
+  Object.keys(cart).forEach(function(skuName){
+    var v = findVariant(skuName);
+    if (!v) return;
+    count += cart[skuName];
+    total += cart[skuName] * v.price;
   });
   document.getElementById('cartCount').textContent = count;
   document.getElementById('cartTotal').textContent = '฿' + total.toLocaleString('th-TH');
@@ -288,8 +313,8 @@ function selectPayment(method){
 function getCartTotal(){
   var total = 0;
   Object.keys(cart).forEach(function(name){
-    var p = products.find(function(x){ return x.name === name; });
-    if (p) total += cart[name] * p.price;
+    var v = findVariant(name);
+    if (v) total += cart[name] * v.price;
   });
   return total;
 }
