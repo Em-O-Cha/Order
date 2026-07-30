@@ -159,15 +159,19 @@ function callApi(action, payload){
   return fetch(API_URL + '?' + qs, { method: 'GET' }).then(function(res){ return res.json(); });
 }
 
-// ดึง idToken สดใหม่ทุกครั้งก่อนเรียก API ที่ต้องยืนยันตัวตน (แทนการใช้ค่าที่เก็บไว้ตอนเปิดหน้าครั้งแรก)
-// เพราะถ้าลูกค้าเลือกสินค้า/เข้าเช็คเอาท์นานพอสมควร token เดิมอาจหมดอายุพอดีตอนกดยืนยันสั่งซื้อ
-// liff.getIDToken() เรียกซ้ำได้ตลอดขณะที่ liff.isLoggedIn() ยังเป็นจริง จะได้ token ที่ยังไม่หมดอายุเสมอ
+// ดึง idToken สดใหม่จริงๆ ก่อนเรียก API ที่ต้องยืนยันตัวตน — สำคัญ: liff.getIDToken() เฉยๆ "ไม่ได้"
+// ไปขอ token ใหม่จาก LINE เลย แค่คืนค่า token เดิมที่แคชไว้ตอนเปิดหน้าครั้งแรก (ตามเอกสารทางการของ
+// LINE: ID token อายุ 1 ชั่วโมง และ SDK จะไปดึงตอนเรียก liff.init() เท่านั้น) ต้องเรียก liff.init()
+// ซ้ำอีกครั้งถึงจะบังคับให้ไปขอ token ใหม่จริงๆ (ไม่เสียสถานะหน้าเว็บ/ตะกร้าสินค้า เพราะไม่ได้รีโหลดหน้า)
+// คืนค่าเป็น Promise เสมอ เพื่อรอให้ init เสร็จก่อนเอา token ไปใช้งานต่อ
 function getFreshIdToken(){
-  try {
+  return liff.init({ liffId: LIFF_ID }).then(function(){
     var fresh = liff.getIDToken();
-    if (fresh) { currentIdToken = fresh; return fresh; }
-  } catch (e) {}
-  return currentIdToken;
+    if (fresh) currentIdToken = fresh;
+    return currentIdToken;
+  }).catch(function(){
+    return currentIdToken; // ถ้า re-init ไม่สำเร็จ ใช้ตัวเดิมที่มีอยู่ไปก่อน (ดีกว่าไม่มีเลย)
+  });
 }
 
 function initLiff(){
@@ -273,12 +277,13 @@ function goToCheckout(){
 // ใหม่อีกครั้งฝั่งเซิร์ฟเวอร์ตอนกดยืนยันสั่งซื้อเสมอ
 function refreshDiscounts(){
   var subtotal = getCartTotal();
-  return callApi('checkShopDiscounts', { idToken: getFreshIdToken(), couponCode: appliedCouponCode, subtotal: subtotal })
-    .then(function(r){
-      if (r && r.success) lastDiscountInfo = r;
-      renderDiscountSummary();
-      renderPaymentDetail();
-    });
+  return getFreshIdToken().then(function(idToken){
+    return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal });
+  }).then(function(r){
+    if (r && r.success) lastDiscountInfo = r;
+    renderDiscountSummary();
+    renderPaymentDetail();
+  });
 }
 
 function applyCoupon(){
@@ -406,7 +411,9 @@ function submitOrder(){
   var itemsJsonRaw = JSON.stringify(items);
   var itemsB64 = btoa(unescape(encodeURIComponent(itemsJsonRaw))); // UTF-8 safe base64 encode
 
-  callApi('createShopOrder', { idToken: getFreshIdToken(), itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode })
+  getFreshIdToken().then(function(idToken){
+    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode });
+  })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
       if (!r || !r.success) {
