@@ -116,7 +116,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
   </div>
   <div class="cart-bar sh" id="cartBar">
     <div class="cart-total">รวม <span id="cartCount">0</span> ชิ้น<b id="cartTotal">฿0</b></div>
-    <button class="btn" onclick="goToCheckout()" id="checkoutBtn" disabled>ไปหน้าชำระเงิน</button>
+    <button class="btn btn-outline" onclick="goToCheckout()" id="checkoutBtn" disabled>ไปหน้าชำระเงิน</button>
   </div>
 </div>
 
@@ -157,6 +157,17 @@ function callApi(action, payload){
     return encodeURIComponent(k) + '=' + encodeURIComponent(payload[k]);
   }).join('&');
   return fetch(API_URL + '?' + qs, { method: 'GET' }).then(function(res){ return res.json(); });
+}
+
+// ดึง idToken สดใหม่ทุกครั้งก่อนเรียก API ที่ต้องยืนยันตัวตน (แทนการใช้ค่าที่เก็บไว้ตอนเปิดหน้าครั้งแรก)
+// เพราะถ้าลูกค้าเลือกสินค้า/เข้าเช็คเอาท์นานพอสมควร token เดิมอาจหมดอายุพอดีตอนกดยืนยันสั่งซื้อ
+// liff.getIDToken() เรียกซ้ำได้ตลอดขณะที่ liff.isLoggedIn() ยังเป็นจริง จะได้ token ที่ยังไม่หมดอายุเสมอ
+function getFreshIdToken(){
+  try {
+    var fresh = liff.getIDToken();
+    if (fresh) { currentIdToken = fresh; return fresh; }
+  } catch (e) {}
+  return currentIdToken;
 }
 
 function initLiff(){
@@ -262,7 +273,7 @@ function goToCheckout(){
 // ใหม่อีกครั้งฝั่งเซิร์ฟเวอร์ตอนกดยืนยันสั่งซื้อเสมอ
 function refreshDiscounts(){
   var subtotal = getCartTotal();
-  return callApi('checkShopDiscounts', { idToken: currentIdToken, couponCode: appliedCouponCode, subtotal: subtotal })
+  return callApi('checkShopDiscounts', { idToken: getFreshIdToken(), couponCode: appliedCouponCode, subtotal: subtotal })
     .then(function(r){
       if (r && r.success) lastDiscountInfo = r;
       renderDiscountSummary();
@@ -395,7 +406,7 @@ function submitOrder(){
   var itemsJsonRaw = JSON.stringify(items);
   var itemsB64 = btoa(unescape(encodeURIComponent(itemsJsonRaw))); // UTF-8 safe base64 encode
 
-  callApi('createShopOrder', { idToken: currentIdToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode })
+  callApi('createShopOrder', { idToken: getFreshIdToken(), itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
       if (!r || !r.success) {
