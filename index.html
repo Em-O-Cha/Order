@@ -398,7 +398,14 @@ function submitOrder(){
   callApi('createShopOrder', { idToken: currentIdToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
-      if (!r || !r.success) { showErrorState('สั่งซื้อไม่สำเร็จ: ' + (r ? r.error : '')); return; }
+      if (!r || !r.success) {
+        // แนบข้อมูลวินิจฉัย idToken ไปกับ error เสมอ (ความยาว + จำนวนจุดคั่น — JWT ที่ถูกต้องต้องมี
+        // 3 ส่วนคั่นด้วยจุด 2 จุดพอดี ถ้าจำนวนจุดไม่ใช่ 2 แปลว่า token เพี้ยน/ถูกตัดขาดระหว่างทางแน่นอน)
+        var dotCount = currentIdToken ? (currentIdToken.match(/\./g) || []).length : 0;
+        var tokenInfo = 'idToken ยาว ' + (currentIdToken ? currentIdToken.length : 0) + ' ตัวอักษร, มี ' + dotCount + ' จุด (ต้องมี 2 จุดพอดีถึงจะถูกต้อง)';
+        showErrorState('สั่งซื้อไม่สำเร็จ: ' + (r ? r.error : '') + '\n\n' + tokenInfo);
+        return;
+      }
 
       var summaryHtml =
         '<div class="row"><span>เลขที่ออเดอร์</span><span><b>' + escHtml(r.orderId) + '</b></span></div>'
