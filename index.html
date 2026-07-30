@@ -390,7 +390,12 @@ function submitOrder(){
   var btn = document.getElementById('confirmOrderBtn');
   btn.disabled = true; btn.textContent = '⏳ กำลังบันทึกคำสั่งซื้อ...';
 
-  callApi('createShopOrder', { idToken: currentIdToken, itemsJson: JSON.stringify(items), paymentMethod: selectedPayment, couponCode: appliedCouponCode })
+  // เข้ารหัสรายการสินค้าเป็น Base64 ก่อนส่ง (แทนการส่งข้อความไทยตรงๆ ผ่าน URL) เพราะภาษาไทยกิน URL
+  // เยอะมากตอนเข้ารหัส (%XX%XX%XX ต่อ 1 ตัวอักษร) ทำให้ URL รวมยาวเกินไปจน idToken เสี่ยงเพี้ยน/ถูกตัดกลางทาง
+  var itemsJsonRaw = JSON.stringify(items);
+  var itemsB64 = btoa(unescape(encodeURIComponent(itemsJsonRaw))); // UTF-8 safe base64 encode
+
+  callApi('createShopOrder', { idToken: currentIdToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
       if (!r || !r.success) { showErrorState('สั่งซื้อไม่สำเร็จ: ' + (r ? r.error : '')); return; }
