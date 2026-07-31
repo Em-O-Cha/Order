@@ -508,24 +508,36 @@ function startLineLogin(){
   return true; // กำลังจะ redirect ออกจากหน้านี้ ยังไม่ได้แสดง error อะไร
 }
 
-// ดึง idToken สำหรับใช้เรียก API ที่ต้องยืนยันตัวตน — เรียก liff.init() ซ้ำก่อนเสมอ (ปลอดภัย SDK
-// ออกแบบมาให้เรียกซ้ำได้เรื่อยๆ โดยไม่ทำอะไรถ้า login อยู่แล้ว ไม่ได้ไปขอ token ใหม่จาก LINE แต่ช่วย
-// ให้ liff.getIDToken() คืนค่าได้เสถียรกว่าเรียกตรงๆ แบบไม่ init ซ้ำ) แล้วเช็ค exp เองก่อนทุกครั้ง
-// ถ้าหมดอายุหรือใกล้หมด (ภายใน 30 วินาที) หรือดึง token ไม่ได้เลย จะสั่ง login ใหม่ทันทีผ่าน
-// startLineLogin() ที่กันวนซ้ำไว้แล้ว (ไม่มีทางวนไม่หยุดอีกต่อไป)
+// ดึง idToken สำหรับใช้เรียก API ที่ต้องยืนยันตัวตน
+// สำคัญมาก (ต้นตอของอาการ "มือถือใช้ได้ แต่คอมใช้ไม่ได้"): ห้ามเรียก liff.init() ซ้ำตรงนี้เด็ดขาด
+// เพราะบนเบราว์เซอร์คอมพิวเตอร์ (external browser) LIFF เก็บ token ไว้จากขั้นตอน OAuth redirect ตอนเปิด
+// หน้าครั้งแรก การ init ซ้ำจะรีเซ็ตสถานะภายในแล้วทำให้ getIDToken() คืนค่าว่าง ทั้งที่เมื่อกี้ยังมีอยู่ดีๆ
+// (บนแอป LINE มือถือ token มาจาก context ของแอปโดยตรง เลยไม่หาย → จึงเจอปัญหาเฉพาะบนคอม)
+// วิธีที่ถูกต้อง: ใช้ค่า currentIdToken ที่เก็บไว้ตั้งแต่ initLiff() สำเร็จ (idToken อายุ 1 ชม. นานพอสำหรับ
+// การสั่งซื้อ 1 รอบอยู่แล้ว) แล้วเช็ควันหมดอายุจากตัว token นั้นตรงๆ ไม่ต้องไปขอใหม่
 function getFreshIdToken(){
-  return liff.init({ liffId: LIFF_ID }).then(function(){
-    var token = liff.getIDToken();
-    var expiryMs = token ? getIdTokenExpiryMs_(token) : 0;
-    if (token && expiryMs && Date.now() < expiryMs - 30000) {
-      currentIdToken = token;
-      return token;
-    }
+  var token = currentIdToken || liff.getIDToken();
+
+  if (!token) {
     var redirecting = startLineLogin();
-    var err = new Error('LINE session หมดอายุหรือไม่พบ ID token');
-    err.alreadyShown = !redirecting; // ถ้า guard บล็อกไว้ (ไม่ redirect) แปลว่า error ที่มีประโยชน์แสดงให้เห็นไปแล้ว
-    return Promise.reject(err);
-  });
+    var errNoToken = new Error('ไม่พบ ID token กรุณาเข้าสู่ระบบ LINE ใหม่');
+    errNoToken.alreadyShown = !redirecting;
+    return Promise.reject(errNoToken);
+  }
+
+  // เช็ควันหมดอายุแบบ "ปลอดภัยไว้ก่อน": ถ้าถอด exp ไม่ได้ (expiryMs = 0) ให้เชื่อ token ไว้ก่อนแล้วส่งไป
+  // ให้เซิร์ฟเวอร์ตรวจสอบเอง ดีกว่าเดาเองว่าหมดอายุแล้วเด้งไป login ทิ้งตะกร้าสินค้าโดยไม่จำเป็น
+  // (เซิร์ฟเวอร์มีระบบวินิจฉัยละเอียดอยู่แล้ว ถ้า token เสียจริงจะได้ข้อความบอกสาเหตุตรงๆ กลับมา)
+  var expiryMs = getIdTokenExpiryMs_(token);
+  if (expiryMs && Date.now() >= expiryMs - 30000) {
+    var redirectingExpired = startLineLogin();
+    var errExpired = new Error('LINE session หมดอายุ (โทเคนมีอายุ 1 ชั่วโมง)');
+    errExpired.alreadyShown = !redirectingExpired;
+    return Promise.reject(errExpired);
+  }
+
+  currentIdToken = token;
+  return Promise.resolve(token);
 }
 
 function initLiff(){
