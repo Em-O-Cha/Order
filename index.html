@@ -289,6 +289,7 @@ function goToCheckout(){
       showState('checkoutState');
     })
     .catch(function(e){
+      if (e && e.alreadyShown) return; // ข้อความที่มีประโยชน์กว่า (เช่น เรื่อง third-party cookies) แสดงไปแล้ว ไม่ต้องทับ
       // แสดงสาเหตุจริงแทนข้อความกว้างๆ ที่ไม่บอกอะไรเลย — ช่วยวินิจฉัยได้ตรงจุดขึ้นมาก
       var reason = (e && e.message) ? e.message : 'ไม่ทราบสาเหตุ';
       showErrorState('โหลดข้อมูลการชำระเงินไม่สำเร็จ: ' + reason);
@@ -476,6 +477,7 @@ function submitOrder(){
     })
     .catch(function(e){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
+      if (e && e.alreadyShown) return; // ข้อความที่มีประโยชน์กว่าแสดงไปแล้ว ไม่ต้องทับ
       showErrorState('เรียก API ไม่สำเร็จ: ' + e.message);
     });
 }
@@ -495,14 +497,15 @@ function cleanLiffRedirectUri(){
 // สั่งให้ LINE ล็อกอินใหม่ (วิธีเดียวที่ได้ idToken ใหม่จริงๆ — liff.init() ซ้ำไม่ได้ไปขอ token ใหม่
 // จาก LINE เลย แค่คืนค่าเดิมที่แคชไว้) ป้องกันการวนซ้ำไม่รู้จบด้วย sessionStorage: ลอง login ใหม่
 // ได้แค่ 1 ครั้งต่อรอบ ถ้ายังไม่สำเร็จอีก (พบบ่อยบนคอมพิวเตอร์ที่บล็อก third-party cookies) จะหยุด
-// วนแล้วบอกสาเหตุตรงๆ แทน
+// วนแล้วบอกสาเหตุตรงๆ แทน — คืนค่า false ถ้าแสดงข้อความ error ไปแล้ว (กันไม่ให้ที่อื่นมาทับข้อความนี้)
 function startLineLogin(){
   if (sessionStorage.getItem(LIFF_LOGIN_GUARD)) {
-    showErrorState('เข้าสู่ระบบ LINE ไม่สำเร็จซ้ำ\n\nสาเหตุที่พบบ่อยที่สุด: เบราว์เซอร์บนคอมพิวเตอร์บล็อกคุกกี้บุคคลที่สาม (third-party cookies) ทำให้ LINE จำสถานะล็อกอินไม่ได้\n\nกรุณาเปิดลิงก์นี้ผ่านแอป LINE บนมือถือโดยตรงแทนครับ');
-    return;
+    showErrorState('เข้าสู่ระบบ LINE ไม่สำเร็จซ้ำ\n\nสาเหตุที่พบบ่อยที่สุด: เบราว์เซอร์บนคอมพิวเตอร์บล็อกคุกกี้บุคคลที่สาม (third-party cookies) ทำให้ LINE จำสถานะล็อกอินไม่ได้\n\nวิธีแก้ชั่วคราว: อนุญาต third-party cookies สำหรับ line.me ในตั้งค่าเบราว์เซอร์ หรือแนะนำให้สั่งซื้อผ่านแอป LINE บนมือถือแทนครับ (เสถียรกว่ามาก)');
+    return false;
   }
   sessionStorage.setItem(LIFF_LOGIN_GUARD, '1');
   liff.login({ redirectUri: cleanLiffRedirectUri() });
+  return true; // กำลังจะ redirect ออกจากหน้านี้ ยังไม่ได้แสดง error อะไร
 }
 
 // ดึง idToken สำหรับใช้เรียก API ที่ต้องยืนยันตัวตน — เรียก liff.init() ซ้ำก่อนเสมอ (ปลอดภัย SDK
@@ -518,8 +521,10 @@ function getFreshIdToken(){
       currentIdToken = token;
       return token;
     }
-    startLineLogin();
-    return Promise.reject(new Error('LINE session หมดอายุหรือไม่พบ ID token'));
+    var redirecting = startLineLogin();
+    var err = new Error('LINE session หมดอายุหรือไม่พบ ID token');
+    err.alreadyShown = !redirecting; // ถ้า guard บล็อกไว้ (ไม่ redirect) แปลว่า error ที่มีประโยชน์แสดงให้เห็นไปแล้ว
+    return Promise.reject(err);
   });
 }
 
