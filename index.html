@@ -290,9 +290,8 @@ function goToCheckout(){
     })
     .catch(function(e){
       if (e && e.alreadyShown) return; // ข้อความที่มีประโยชน์กว่า (เช่น เรื่อง third-party cookies) แสดงไปแล้ว ไม่ต้องทับ
-      // แสดงสาเหตุจริงแทนข้อความกว้างๆ ที่ไม่บอกอะไรเลย — ช่วยวินิจฉัยได้ตรงจุดขึ้นมาก
       var reason = (e && e.message) ? e.message : 'ไม่ทราบสาเหตุ';
-      showErrorState('โหลดข้อมูลการชำระเงินไม่สำเร็จ: ' + reason);
+      showErrorWithDiagnostics_('โหลดข้อมูลการชำระเงินไม่สำเร็จ: ' + reason);
     });
 }
 
@@ -508,6 +507,44 @@ function startLineLogin(){
   return true; // กำลังจะ redirect ออกจากหน้านี้ ยังไม่ได้แสดง error อะไร
 }
 
+// รวบรวมสถานะทั้งหมดที่เกี่ยวข้องกับ LIFF/token ณ ขณะนั้น มาแสดงบนหน้าจอตรงๆ เวลาเกิดปัญหา
+// เพื่อให้วินิจฉัยได้จากการแคปหน้าจอ ไม่ต้องเปิด DevTools ให้ยุ่งยาก
+function buildDiagnostics_(){
+  var lines = [];
+  try {
+    lines.push('LIFF version: ' + (typeof liff !== 'undefined' && liff.getVersion ? liff.getVersion() : 'ไม่ทราบ'));
+    lines.push('เปิดในแอป LINE: ' + (typeof liff !== 'undefined' && liff.isInClient ? (liff.isInClient() ? 'ใช่' : 'ไม่ใช่ (เบราว์เซอร์ภายนอก)') : 'ไม่ทราบ'));
+    lines.push('สถานะ login: ' + (typeof liff !== 'undefined' && liff.isLoggedIn ? (liff.isLoggedIn() ? 'เข้าสู่ระบบแล้ว' : 'ยังไม่เข้าสู่ระบบ') : 'ไม่ทราบ'));
+  } catch (e) {
+    lines.push('อ่านสถานะ LIFF ไม่ได้: ' + e.message);
+  }
+
+  var cached = currentIdToken;
+  var live = '';
+  try { live = (typeof liff !== 'undefined' && liff.getIDToken) ? (liff.getIDToken() || '') : ''; } catch (e) { live = ''; }
+
+  lines.push('token ที่เก็บไว้ตอนเปิดหน้า: ' + (cached ? ('มี (' + cached.length + ' ตัวอักษร, ' + ((cached.match(/\./g) || []).length) + ' จุด)') : 'ไม่มี'));
+  lines.push('token ที่ดึงสดตอนนี้: ' + (live ? ('มี (' + live.length + ' ตัวอักษร)') : 'ไม่มี'));
+
+  var t = cached || live;
+  if (t) {
+    var exp = getIdTokenExpiryMs_(t);
+    if (!exp) {
+      lines.push('วันหมดอายุ: ถอดไม่ได้ (จะส่งให้เซิร์ฟเวอร์ตรวจแทน)');
+    } else {
+      var mins = Math.round((exp - Date.now()) / 60000);
+      lines.push('วันหมดอายุ: ' + new Date(exp).toLocaleString('th-TH') + ' (' + (mins >= 0 ? 'เหลืออีก ' + mins + ' นาที' : 'หมดไปแล้ว ' + Math.abs(mins) + ' นาที') + ')');
+    }
+  }
+  lines.push('เวลาเครื่องนี้: ' + new Date().toLocaleString('th-TH'));
+  lines.push('ตัวกันวน login: ' + (sessionStorage.getItem(LIFF_LOGIN_GUARD) ? 'ทำงานอยู่ (เคยลอง login ไปแล้ว 1 รอบ)' : 'ยังไม่ทำงาน'));
+  return lines.join('\n');
+}
+
+function showErrorWithDiagnostics_(msg){
+  showErrorState(msg + '\n\n──────────\nข้อมูลวินิจฉัย (แคปหน้าจอนี้ส่งให้ผู้ดูแลระบบได้)\n' + buildDiagnostics_());
+}
+
 // ดึง idToken สำหรับใช้เรียก API ที่ต้องยืนยันตัวตน
 // สำคัญมาก (ต้นตอของอาการ "มือถือใช้ได้ แต่คอมใช้ไม่ได้"): ห้ามเรียก liff.init() ซ้ำตรงนี้เด็ดขาด
 // เพราะบนเบราว์เซอร์คอมพิวเตอร์ (external browser) LIFF เก็บ token ไว้จากขั้นตอน OAuth redirect ตอนเปิด
@@ -521,7 +558,8 @@ function getFreshIdToken(){
   if (!token) {
     var redirecting = startLineLogin();
     var errNoToken = new Error('ไม่พบ ID token กรุณาเข้าสู่ระบบ LINE ใหม่');
-    errNoToken.alreadyShown = !redirecting;
+    if (!redirecting) { showErrorWithDiagnostics_('ไม่พบ ID token และเข้าสู่ระบบใหม่แล้วยังไม่สำเร็จ'); }
+    errNoToken.alreadyShown = true;
     return Promise.reject(errNoToken);
   }
 
@@ -532,7 +570,8 @@ function getFreshIdToken(){
   if (expiryMs && Date.now() >= expiryMs - 30000) {
     var redirectingExpired = startLineLogin();
     var errExpired = new Error('LINE session หมดอายุ (โทเคนมีอายุ 1 ชั่วโมง)');
-    errExpired.alreadyShown = !redirectingExpired;
+    if (!redirectingExpired) { showErrorWithDiagnostics_('LINE session หมดอายุ และเข้าสู่ระบบใหม่แล้วยังไม่สำเร็จ'); }
+    errExpired.alreadyShown = true;
     return Promise.reject(errExpired);
   }
 
