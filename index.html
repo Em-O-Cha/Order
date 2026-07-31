@@ -85,6 +85,11 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
     </div>
 
     <div id="checkoutState" class="sh">
+      <div id="discountSummary" style="margin-bottom:16px"></div>
+      <div class="fg-coupon" style="display:flex;gap:8px;margin-bottom:16px">
+        <input type="text" id="couponInput" placeholder="มีโค้ดพิเศษอื่น? กรอกตรงนี้" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif">
+        <button class="btn" onclick="applyCoupon()" style="white-space:nowrap">ใช้โค้ด</button>
+      </div>
       <div style="margin-bottom:16px">
         <p style="font-weight:600;margin-bottom:8px">📍 ที่อยู่จัดส่ง</p>
         <div id="savedAddressBox" class="sh" style="margin-bottom:8px">
@@ -93,12 +98,11 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
             <span>ใช้ที่อยู่เดิม<br><span id="savedAddressText" style="color:var(--g6);font-size:12px;white-space:pre-line"></span></span>
           </label>
         </div>
-        <textarea id="addressInput" placeholder="กรอกที่อยู่จัดส่ง (บ้านเลขที่ ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด รหัสไปรษณีย์)" rows="3" style="width:100%;padding:10px 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;resize:vertical"></textarea>
+        <textarea id="addressInput" placeholder="กรอกที่อยู่จัดส่ง (บ้านเลขที่ ถนน ตำบล/แขวง อำเภอ/เขต รหัสไปรษณีย์)" rows="3" style="width:100%;padding:10px 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;resize:vertical;margin-bottom:8px"></textarea>
+        <select id="provinceSelect" style="width:100%;height:44px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;background:#fff">
+          <option value="">— เลือกจังหวัด —</option>
+        </select>
       </div>
-      <div id="discountSummary" style="margin-bottom:16px"></div>
-      <div class="fg-coupon" style="display:flex;gap:8px;margin-bottom:16px">
-        <input type="text" id="couponInput" placeholder="มีโค้ดพิเศษอื่น? กรอกตรงนี้" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif">
-        <button class="btn" onclick="applyCoupon()" style="white-space:nowrap">ใช้โค้ด</button>
       </div>
       <p style="font-weight:600;margin-bottom:12px">เลือกวิธีชำระเงิน</p>
       <label class="pay-opt active" id="optPromptpay">
@@ -334,16 +338,35 @@ function applyCoupon(){
 
 // ==================== ที่อยู่จัดส่ง ====================
 var savedAddress = ''; // ที่อยู่ล่าสุดที่เคยบันทึกไว้ (ถ้ามี) ดึงมาจากชีต Members ผ่าน getMyShippingAddress
+var savedProvince = ''; // จังหวัดล่าสุดที่เคยบันทึกไว้ (ถ้ามี)
 var savedAddressLoaded = false; // กันโหลดซ้ำทุกครั้งที่กดเข้าหน้าชำระเงิน โหลดครั้งแรกพอ
+
+// รายชื่อ 77 จังหวัดของไทย — ให้ลูกค้าเลือกจาก dropdown ตรงๆ แทนการพิมพ์เอง กันสะกดผิด/ตัดคำเดายาก
+var THAI_PROVINCES = ['กรุงเทพมหานคร','กระบี่','กาญจนบุรี','กาฬสินธุ์','กำแพงเพชร','ขอนแก่น','จันทบุรี','ฉะเชิงเทรา','ชลบุรี','ชัยนาท','ชัยภูมิ','ชุมพร','เชียงราย','เชียงใหม่','ตรัง','ตราด','ตาก','นครนายก','นครปฐม','นครพนม','นครราชสีมา','นครศรีธรรมราช','นครสวรรค์','นนทบุรี','นราธิวาส','น่าน','บึงกาฬ','บุรีรัมย์','ปทุมธานี','ประจวบคีรีขันธ์','ปราจีนบุรี','ปัตตานี','พระนครศรีอยุธยา','พะเยา','พังงา','พัทลุง','พิจิตร','พิษณุโลก','เพชรบุรี','เพชรบูรณ์','แพร่','ภูเก็ต','มหาสารคาม','มุกดาหาร','แม่ฮ่องสอน','ยโสธร','ยะลา','ร้อยเอ็ด','ระนอง','ระยอง','ราชบุรี','ลพบุรี','ลำปาง','ลำพูน','เลย','ศรีสะเกษ','สกลนคร','สงขลา','สตูล','สมุทรปราการ','สมุทรสงคราม','สมุทรสาคร','สระแก้ว','สระบุรี','สิงห์บุรี','สุโขทัย','สุพรรณบุรี','สุราษฎร์ธานี','สุรินทร์','หนองคาย','หนองบัวลำภู','อ่างทอง','อำนาจเจริญ','อุดรธานี','อุตรดิตถ์','อุทัยธานี','อุบลราชธานี'];
+
+function populateProvinceDropdown(){
+  var sel = document.getElementById('provinceSelect');
+  THAI_PROVINCES.forEach(function(p){
+    var opt = document.createElement('option');
+    opt.value = p; opt.textContent = p;
+    sel.appendChild(opt);
+  });
+}
+populateProvinceDropdown();
 
 // ดึงที่อยู่จัดส่งล่าสุดของสมาชิกคนนี้ (ถ้าเคยสั่งซื้อมาก่อน) มาเสนอให้ติ๊กเลือก "ใช้ที่อยู่เดิม"
 // แทนต้องพิมพ์ใหม่ทุกครั้ง — ถ้าไม่เคยมีที่อยู่บันทึกไว้เลย จะซ่อนกล่องติ๊กเลือกไปเลย เหลือแค่ช่องกรอกใหม่
+// จังหวัดจะถูกเลือกไว้ล่วงหน้าให้ด้วยถ้าเคยมีบันทึกไว้ (แต่ยังแก้ไขได้เสมอ ไม่ได้ล็อกตาม checkbox ที่อยู่)
 function loadSavedAddress(){
   if (savedAddressLoaded) return Promise.resolve();
   return getFreshIdToken().then(function(idToken){
     return callApi('getMyShippingAddress', { idToken: idToken });
   }).then(function(r){
     savedAddressLoaded = true;
+    if (r && r.success && r.province) {
+      savedProvince = r.province;
+      document.getElementById('provinceSelect').value = savedProvince;
+    }
     if (r && r.success && r.address) {
       savedAddress = r.address;
       document.getElementById('savedAddressText').textContent = savedAddress;
@@ -371,6 +394,11 @@ function toggleSavedAddress(){
     input.style.display = '';
     input.focus();
   }
+}
+
+// ค่าจังหวัดที่เลือกไว้ตอนนี้
+function getProvinceValue(){
+  return document.getElementById('provinceSelect').value;
 }
 
 // ค่าที่อยู่จัดส่งจริงที่จะส่งไปกับออเดอร์ — จากที่อยู่เดิม (ถ้าติ๊กเลือกไว้) หรือจากช่องกรอกใหม่
@@ -497,6 +525,8 @@ function submitOrder(){
 
   var shippingAddress = getShippingAddressValue();
   if (!shippingAddress) { showErrorState('กรุณากรอกที่อยู่จัดส่ง'); return; }
+  var province = getProvinceValue();
+  if (!province) { showErrorState('กรุณาเลือกจังหวัด'); return; }
 
   var btn = document.getElementById('confirmOrderBtn');
   btn.disabled = true; btn.textContent = '⏳ กำลังบันทึกคำสั่งซื้อ...';
@@ -507,7 +537,7 @@ function submitOrder(){
   var itemsB64 = btoa(unescape(encodeURIComponent(itemsJsonRaw))); // UTF-8 safe base64 encode
 
   getFreshIdToken().then(function(idToken){
-    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress });
+    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province });
   })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
