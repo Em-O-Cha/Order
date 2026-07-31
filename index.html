@@ -164,12 +164,19 @@ function callApi(action, payload){
 
 // ถอด exp (เวลาหมดอายุ) ออกจาก idToken โดยไม่ต้องยิง API — เพื่อเช็คฝั่ง client ก่อนส่งไปให้เซิร์ฟเวอร์
 // idToken เป็น JWT 3 ส่วนคั่นด้วยจุด ส่วนกลาง (payload) เป็น Base64URL ของ JSON ที่มีฟิลด์ exp (unix seconds)
+// สำคัญ: ใช้ atob() เฉยๆ ถอดไม่ได้ เพราะ atob() คืนค่าเป็น Latin1 byte string ไม่ใช่ UTF-8 — ถ้า payload
+// มีอักขระไทย (เช่น "name" ที่เป็นชื่อ LINE ของผู้ใช้ ซึ่งคนไทยส่วนใหญ่ตั้งเป็นภาษาไทย) จะถอดออกมาเพี้ยน
+// จน JSON.parse() error แล้วถูกจับใน catch คืนค่า 0 กลับไป ทำให้ระบบเข้าใจผิดว่า token หมดอายุเสมอ
+// (แม้จะเพิ่ง login ใหม่สดๆ ก็ตาม) จึงต้องแปลงเป็น UTF-8 อย่างถูกต้องด้วย TextDecoder ก่อน
 function getIdTokenExpiryMs_(token){
   try {
     var payload = String(token).split('.')[1];
     var b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
     while (b64.length % 4) b64 += '=';
-    var json = JSON.parse(atob(b64));
+    var binary = atob(b64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    var json = JSON.parse(new TextDecoder('utf-8').decode(bytes));
     return json.exp ? json.exp * 1000 : 0;
   } catch (e) {
     return 0;
@@ -274,7 +281,11 @@ function goToCheckout(){
     .then(function(){
       showState('checkoutState');
     })
-    .catch(function(){ showErrorState('โหลดข้อมูลการชำระเงินไม่สำเร็จ'); });
+    .catch(function(e){
+      // แสดงสาเหตุจริงแทนข้อความกว้างๆ ที่ไม่บอกอะไรเลย — ช่วยวินิจฉัยได้ตรงจุดขึ้นมาก
+      var reason = (e && e.message) ? e.message : 'ไม่ทราบสาเหตุ';
+      showErrorState('โหลดข้อมูลการชำระเงินไม่สำเร็จ: ' + reason);
+    });
 }
 
 // เช็คส่วนลด (สิทธิ์ส่วนบุคคล + คูปองที่พิมพ์เอง หรือโปรโมชั่นอัตโนมัติถ้าไม่ได้พิมพ์อะไร) — เรียกตอน
