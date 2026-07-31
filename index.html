@@ -106,9 +106,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
       <div class="ico">🎉</div>
       <p style="font-weight:600">สั่งซื้อสำเร็จ!</p>
       <div class="order-box" id="orderSummary"></div>
-      <a id="uploadSlipLink" href="#" target="_blank" style="display:block;margin-top:16px">
-        <button class="btn btn-block">📎 แนบสลิปการโอนเงิน</button>
-      </a>
+      <button class="btn btn-block" style="margin-top:16px" onclick="openSlipUploadPage()">📎 แนบสลิปการโอนเงิน</button>
       <p style="font-size:12px;color:var(--g6);margin-top:10px">กดปุ่มด้านบนเพื่อแนบสลิป — ทีมงานจะตรวจสอบและจัดส่งให้เร็วที่สุด</p>
     </div>
 
@@ -139,6 +137,15 @@ var appliedCouponCode = '';
 var lastDiscountInfo = null; // { privilege, coupon, autoCoupon, couponError } จาก checkShopDiscounts ล่าสุด
 // ใช้กันไม่ให้ liff.login() ถูกเรียกซ้ำไม่รู้จบบนคอมพิวเตอร์ (ดูรายละเอียดที่ startLineLogin() ด้านล่าง)
 var LIFF_LOGIN_GUARD = 'emocha.shop.login-attempted';
+var pendingSlipUploadUrl = ''; // URL หน้าแนบสลิปที่รอเปิดผ่าน window.open() (เซ็ตค่าไว้ตอน submitOrder สำเร็จ)
+
+// เปิดหน้าแนบสลิปด้วย window.open() แทนการคลิกลิงก์ <a target="_blank"> ธรรมดา — สำคัญ: ต้อง window.open()
+// เท่านั้นถึงจะทำให้หน้าใหม่ "รู้ว่าตัวเองถูกเปิดโดยสคริปต์" และสั่ง window.close() ปิดตัวเองได้จริงตอนแนบ
+// สลิปเสร็จ ถ้าเปิดผ่านคลิกลิงก์ปกติ เบราว์เซอร์ส่วนใหญ่จะบล็อกไม่ให้สคริปต์สั่งปิดแท็บนั้น (ค้างปิดไม่ได้)
+function openSlipUploadPage(){
+  if (!pendingSlipUploadUrl) return;
+  window.open(pendingSlipUploadUrl, '_blank');
+}
 
 function showState(id){
   ['loadingState','catalogState','checkoutState','orderDoneState','errorState'].forEach(function(s){
@@ -457,9 +464,10 @@ function submitOrder(){
         + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : 'โอนธนาคาร') + '</span></div>';
       document.getElementById('orderSummary').innerHTML = summaryHtml;
 
-      // เปิดหน้าแนบสลิป (เสิร์ฟโดย Apps Script โดยตรง ไม่ใช่หน้า LIFF) พร้อมเลขที่ออเดอร์
-      var uploadUrl = API_URL + '?page=uploadSlip&orderId=' + encodeURIComponent(r.orderId);
-      document.getElementById('uploadSlipLink').href = uploadUrl;
+      // เก็บ URL หน้าแนบสลิปไว้เรียกผ่าน window.open() ตอนกดปุ่ม (แทนการตั้ง href ของ <a> ตรงๆ)
+      // เพราะเปิดผ่าน window.open() แล้วหน้าใหม่จะปิดตัวเองด้วย window.close() ได้จริง ต่างจากเปิดผ่าน
+      // การคลิกลิงก์ธรรมดาที่เบราว์เซอร์ส่วนใหญ่จะไม่ยอมให้สคริปต์สั่งปิดแท็บที่ตัวเองไม่ได้เปิดเอง
+      pendingSlipUploadUrl = API_URL + '?page=uploadSlip&orderId=' + encodeURIComponent(r.orderId);
 
       cart = {};
       appliedCouponCode = '';
