@@ -15,7 +15,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 .card{background:#fff;border-radius:20px;box-shadow:0 4px 20px rgba(0,0,0,.08);max-width:420px;width:100%;
   margin:0 auto;overflow:hidden;}
 .hd{background:linear-gradient(135deg,var(--gd),#66bb6a);padding:24px;text-align:center;color:#fff;}
-.brand-logo{width:56px;height:70px;object-fit:contain;margin:0 auto 8px;display:block;}
+.brand-logo{width:76px;height:80px;object-fit:contain;margin:0 auto 8px;display:block;background:#fff;border-radius:10px;padding:3px;}
 .hd h1{font-size:19px;font-weight:600;}
 .hd p{font-size:13px;opacity:.9;margin-top:4px;}
 .bd{padding:20px;}
@@ -106,7 +106,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
       <div class="ico">🎉</div>
       <p style="font-weight:600">สั่งซื้อสำเร็จ!</p>
       <div class="order-box" id="orderSummary"></div>
-      <a id="uploadSlipLink" href="#" target="_blank" style="display:block;margin-top:16px">
+      <a id="uploadSlipLink" href="#" style="display:block;margin-top:16px">
         <button class="btn btn-block">📎 แนบสลิปการโอนเงิน</button>
       </a>
       <p style="font-size:12px;color:var(--g6);margin-top:10px">กดปุ่มด้านบนเพื่อแนบสลิป — ทีมงานจะตรวจสอบและจัดส่งให้เร็วที่สุด</p>
@@ -136,6 +136,11 @@ var cart = {}; // { skuName: qty } — skuName คือชื่อสินค
 var paymentInfo = null;
 var selectedPayment = 'promptpay';
 var appliedCouponCode = '';
+var LIFF_LOGIN_GUARD = 'emocha.shop.login-attempted';
+
+// ใช้โลโก้เป็นไฟล์จริงใน GitHub Pages แทน data URL ขนาดใหญ่ใน HTML
+var brandLogo = document.querySelector('.brand-logo');
+if (brandLogo) brandLogo.src = './assets/LOGO-Em-O-Cha.png';
 var lastDiscountInfo = null; // { privilege, coupon, autoCoupon, couponError } จาก checkShopDiscounts ล่าสุด
 
 function showState(id){
@@ -495,7 +500,8 @@ function submitOrder(){
       document.getElementById('orderSummary').innerHTML = summaryHtml;
 
       // เปิดหน้าแนบสลิป (เสิร์ฟโดย Apps Script โดยตรง ไม่ใช่หน้า LIFF) พร้อมเลขที่ออเดอร์
-      var uploadUrl = API_URL + '?page=uploadSlip&orderId=' + encodeURIComponent(r.orderId);
+      var uploadUrl = API_URL + '?page=uploadSlip&orderId=' + encodeURIComponent(r.orderId)
+        + '&returnUrl=' + encodeURIComponent(location.href.split('?')[0]);
       document.getElementById('uploadSlipLink').href = uploadUrl;
 
       cart = {};
@@ -507,6 +513,62 @@ function submitOrder(){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
       showErrorState('เรียก API ไม่สำเร็จ: ' + e.message);
     });
+}
+
+// ==================== LIFF session (desktop/mobile) ====================
+// ฟังก์ชันสองตัวนี้วางท้าย script เพื่อแทนเวอร์ชันเก่าด้านบนทั้งหมด
+// ห้ามเรียก liff.init() ซ้ำระหว่าง checkout เพราะเป็นต้นเหตุของ login loop บน desktop
+function cleanLiffRedirectUri(){
+  var url = new URL(location.href);
+  ['code', 'state', 'liff.state', 'friendship_status_changed'].forEach(function(key){
+    url.searchParams.delete(key);
+  });
+  url.hash = '';
+  return url.toString();
+}
+
+function startLineLogin(){
+  if (sessionStorage.getItem(LIFF_LOGIN_GUARD)) {
+    showErrorState('เข้าสู่ระบบ LINE ไม่สำเร็จ กรุณาตรวจ Endpoint URL ของ LIFF และ Callback URL ใน LINE Developers แล้วเปิดหน้านี้ใหม่');
+    return;
+  }
+  sessionStorage.setItem(LIFF_LOGIN_GUARD, '1');
+  liff.login({ redirectUri: cleanLiffRedirectUri() });
+}
+
+function getFreshIdToken(){
+  var token = liff.getIDToken();
+  var expiryMs = token ? getIdTokenExpiryMs_(token) : 0;
+  if (token && expiryMs && Date.now() < expiryMs - 30000) {
+    currentIdToken = token;
+    return Promise.resolve(token);
+  }
+  startLineLogin();
+  return Promise.reject(new Error('LINE session หมดอายุหรือไม่พบ ID token'));
+}
+
+function initLiff(){
+  var initTimeout = setTimeout(function(){
+    showErrorState('liff.init() ใช้เวลานานเกิน 10 วินาที — กรุณาตรวจ LIFF ID และ Endpoint URL');
+  }, 10000);
+
+  liff.init({ liffId: LIFF_ID }).then(function(){
+    clearTimeout(initTimeout);
+    if (!liff.isLoggedIn()) {
+      startLineLogin();
+      return;
+    }
+    sessionStorage.removeItem(LIFF_LOGIN_GUARD);
+    currentIdToken = liff.getIDToken();
+    if (!currentIdToken) {
+      showErrorState('LINE Login สำเร็จ แต่ LIFF ไม่ส่ง ID token กลับมา');
+      return;
+    }
+    loadProducts();
+  }).catch(function(e){
+    clearTimeout(initTimeout);
+    showErrorState('liff.init() ล้มเหลว: ' + (e && e.message ? e.message : String(e)));
+  });
 }
 
 initLiff();
