@@ -85,6 +85,16 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
     </div>
 
     <div id="checkoutState" class="sh">
+      <div style="margin-bottom:16px">
+        <p style="font-weight:600;margin-bottom:8px">📍 ที่อยู่จัดส่ง</p>
+        <div id="savedAddressBox" class="sh" style="margin-bottom:8px">
+          <label class="pay-opt active" id="optUseSavedAddress" style="align-items:flex-start">
+            <input type="checkbox" id="useSavedAddressChk" checked onchange="toggleSavedAddress()" style="margin-top:3px">
+            <span>ใช้ที่อยู่เดิม<br><span id="savedAddressText" style="color:var(--g6);font-size:12px;white-space:pre-line"></span></span>
+          </label>
+        </div>
+        <textarea id="addressInput" placeholder="กรอกที่อยู่จัดส่ง (บ้านเลขที่ ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด รหัสไปรษณีย์)" rows="3" style="width:100%;padding:10px 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;resize:vertical"></textarea>
+      </div>
       <div id="discountSummary" style="margin-bottom:16px"></div>
       <div class="fg-coupon" style="display:flex;gap:8px;margin-bottom:16px">
         <input type="text" id="couponInput" placeholder="มีโค้ดพิเศษอื่น? กรอกตรงนี้" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif">
@@ -286,6 +296,9 @@ function goToCheckout(){
       return refreshDiscounts();
     })
     .then(function(){
+      return loadSavedAddress();
+    })
+    .then(function(){
       showState('checkoutState');
     })
     .catch(function(e){
@@ -317,6 +330,56 @@ function applyCoupon(){
   if (!code) return;
   appliedCouponCode = code;
   refreshDiscounts();
+}
+
+// ==================== ที่อยู่จัดส่ง ====================
+var savedAddress = ''; // ที่อยู่ล่าสุดที่เคยบันทึกไว้ (ถ้ามี) ดึงมาจากชีต Members ผ่าน getMyShippingAddress
+var savedAddressLoaded = false; // กันโหลดซ้ำทุกครั้งที่กดเข้าหน้าชำระเงิน โหลดครั้งแรกพอ
+
+// ดึงที่อยู่จัดส่งล่าสุดของสมาชิกคนนี้ (ถ้าเคยสั่งซื้อมาก่อน) มาเสนอให้ติ๊กเลือก "ใช้ที่อยู่เดิม"
+// แทนต้องพิมพ์ใหม่ทุกครั้ง — ถ้าไม่เคยมีที่อยู่บันทึกไว้เลย จะซ่อนกล่องติ๊กเลือกไปเลย เหลือแค่ช่องกรอกใหม่
+function loadSavedAddress(){
+  if (savedAddressLoaded) return Promise.resolve();
+  return getFreshIdToken().then(function(idToken){
+    return callApi('getMyShippingAddress', { idToken: idToken });
+  }).then(function(r){
+    savedAddressLoaded = true;
+    if (r && r.success && r.address) {
+      savedAddress = r.address;
+      document.getElementById('savedAddressText').textContent = savedAddress;
+      document.getElementById('savedAddressBox').classList.remove('sh');
+      document.getElementById('useSavedAddressChk').checked = true;
+      toggleSavedAddress();
+    } else {
+      document.getElementById('savedAddressBox').classList.add('sh');
+      document.getElementById('addressInput').style.display = '';
+    }
+  }).catch(function(){
+    savedAddressLoaded = true; // โหลดไม่สำเร็จก็ไม่เป็นไร แค่ให้กรอกที่อยู่ใหม่แทน ไม่ต้อง block การสั่งซื้อ
+    document.getElementById('savedAddressBox').classList.add('sh');
+  });
+}
+
+// สลับระหว่าง "ใช้ที่อยู่เดิม" (ซ่อนช่องกรอก) กับ "กรอกที่อยู่ใหม่" (โชว์ช่องกรอกว่างๆ ให้พิมพ์)
+function toggleSavedAddress(){
+  var useOld = document.getElementById('useSavedAddressChk').checked;
+  var input = document.getElementById('addressInput');
+  document.getElementById('optUseSavedAddress').classList.toggle('active', useOld);
+  if (useOld) {
+    input.style.display = 'none';
+  } else {
+    input.style.display = '';
+    input.focus();
+  }
+}
+
+// ค่าที่อยู่จัดส่งจริงที่จะส่งไปกับออเดอร์ — จากที่อยู่เดิม (ถ้าติ๊กเลือกไว้) หรือจากช่องกรอกใหม่
+function getShippingAddressValue(){
+  var chk = document.getElementById('useSavedAddressChk');
+  if (chk && !chk.closest('#savedAddressBox').classList.contains('sh') && chk.checked) {
+    return savedAddress;
+  }
+  return document.getElementById('addressInput').value.trim();
 }
 
 function getDiscountAmount(){
@@ -432,6 +495,9 @@ function submitOrder(){
   });
   if (!items.length) { showErrorState('ไม่มีสินค้าในตะกร้า'); return; }
 
+  var shippingAddress = getShippingAddressValue();
+  if (!shippingAddress) { showErrorState('กรุณากรอกที่อยู่จัดส่ง'); return; }
+
   var btn = document.getElementById('confirmOrderBtn');
   btn.disabled = true; btn.textContent = '⏳ กำลังบันทึกคำสั่งซื้อ...';
 
@@ -441,7 +507,7 @@ function submitOrder(){
   var itemsB64 = btoa(unescape(encodeURIComponent(itemsJsonRaw))); // UTF-8 safe base64 encode
 
   getFreshIdToken().then(function(idToken){
-    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode });
+    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress });
   })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
@@ -472,6 +538,7 @@ function submitOrder(){
       cart = {};
       appliedCouponCode = '';
       lastDiscountInfo = null;
+      savedAddressLoaded = false; // สั่งซื้อสำเร็จแล้ว ที่อยู่อาจเพิ่งอัปเดตใหม่ — รอบหน้าให้โหลดใหม่อีกครั้ง
       showState('orderDoneState');
     })
     .catch(function(e){
@@ -559,7 +626,7 @@ function getFreshIdToken(){
     var redirecting = startLineLogin();
     var errNoToken = new Error('ไม่พบ ID token กรุณาเข้าสู่ระบบ LINE ใหม่');
     if (!redirecting) { showErrorWithDiagnostics_('ไม่พบ ID token และเข้าสู่ระบบใหม่แล้วยังไม่สำเร็จ'); }
-    errNoToken.alreadyShown = true;
+    errNoToken.alreadyShown = !redirecting;
     return Promise.reject(errNoToken);
   }
 
@@ -571,7 +638,7 @@ function getFreshIdToken(){
     var redirectingExpired = startLineLogin();
     var errExpired = new Error('LINE session หมดอายุ (โทเคนมีอายุ 1 ชั่วโมง)');
     if (!redirectingExpired) { showErrorWithDiagnostics_('LINE session หมดอายุ และเข้าสู่ระบบใหม่แล้วยังไม่สำเร็จ'); }
-    errExpired.alreadyShown = true;
+    errExpired.alreadyShown = !redirectingExpired;
     return Promise.reject(errExpired);
   }
 
