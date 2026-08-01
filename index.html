@@ -292,19 +292,38 @@ function updateCartBar(){
 
 function backToCatalog(){ showState('catalogState'); }
 
+// ครอบ Promise ด้วยเวลาจำกัด — ถ้าไม่เสร็จภายในเวลาที่กำหนด จะ reject ออกมาเองพร้อมข้อความ กันปัญหา
+// "กดแล้วไม่เกิดอะไรขึ้นเลย ค้างอยู่แบบนั้นตลอดไป" ซึ่งเกิดได้ถ้า fetch() ค้างรอ response ไม่มีวันจบ
+// (เช่น ปัญหาเครือข่าย/DNS บางกรณีที่เบราว์เซอร์ไม่แจ้ง error ทันที) — อย่างน้อยผู้ใช้จะได้เห็นข้อความ
+// แทนที่จะรอเก้อไม่รู้จบ
+function withTimeout_(promise, ms, message){
+  return Promise.race([
+    promise,
+    new Promise(function(_, reject){ setTimeout(function(){ reject(new Error(message)); }, ms); })
+  ]);
+}
+
 function goToCheckout(){
-  callApi('getShopPaymentInfo')
-    .then(function(r){
-      if (r && r.success) paymentInfo = r;
-      return refreshDiscounts();
-    })
+  // ดึง idToken ครั้งเดียว แล้วยิงทั้ง 3 คำขอพร้อมกัน (แทนที่จะรอทีละอันต่อกันเป็นทอดๆ) — ลดเวลารอได้มาก
+  // เพราะ checkShopDiscounts และ getMyShippingAddress ต่างก็ต้องยืนยันตัวตนกับ LINE (ยิง API ภายนอก)
+  // ถ้าเรียกแยกกันคนละรอบจะเสียเวลายืนยันซ้ำ 2 ครั้ง ทั้งที่ใช้ idToken ตัวเดียวกันได้เลย
+  var btn = document.getElementById('checkoutBtn');
+  btn.disabled = true; var originalBtnText = btn.textContent; btn.textContent = '⏳ กำลังโหลด...';
+
+  var flow = getFreshIdToken().then(function(idToken){
+    return Promise.all([
+      callApi('getShopPaymentInfo').then(function(r){ if (r && r.success) paymentInfo = r; }),
+      refreshDiscounts(idToken),
+      loadSavedAddress(idToken)
+    ]);
+  });
+
+  withTimeout_(flow, 15000, 'หมดเวลารอ (เกิน 15 วินาที) — เครือข่ายอาจมีปัญหา หรือ Apps Script ตอบช้าผิดปกติ ลองกดใหม่อีกครั้ง')
     .then(function(){
-      return loadSavedAddress();
-    })
-    .then(function(){
+      btn.disabled = false; btn.textContent = originalBtnText;
       showState('checkoutState');
-    })
-    .catch(function(e){
+    }).catch(function(e){
+      btn.disabled = false; btn.textContent = originalBtnText;
       if (e && e.alreadyShown) return; // ข้อความที่มีประโยชน์กว่า (เช่น เรื่อง third-party cookies) แสดงไปแล้ว ไม่ต้องทับ
       var reason = (e && e.message) ? e.message : 'ไม่ทราบสาเหตุ';
       showErrorWithDiagnostics_('โหลดข้อมูลการชำระเงินไม่สำเร็จ: ' + reason);
@@ -314,11 +333,13 @@ function goToCheckout(){
 // เช็คส่วนลด (สิทธิ์ส่วนบุคคล + คูปองที่พิมพ์เอง หรือโปรโมชั่นอัตโนมัติถ้าไม่ได้พิมพ์อะไร) — เรียกตอน
 // เข้าหน้าเช็คเอาท์ครั้งแรก และตอนกดปุ่ม "ใช้โค้ด" (เช็คโค้ดที่พิมพ์เพิ่ม) จำนวนที่แสดงเป็นแค่ตัวช่วย
 // พรีวิว ของจริงคำนวณใหม่อีกครั้งฝั่งเซิร์ฟเวอร์ตอนกดยืนยันสั่งซื้อเสมอ
-function refreshDiscounts(){
+// รับ idTokenParam ได้ (เผื่อมีอยู่แล้วจาก goToCheckout จะได้ไม่ต้องไปขอซ้ำ) ถ้าไม่ส่งมาจะไปขอเองตามปกติ
+function refreshDiscounts(idTokenParam){
   var subtotal = getCartTotal();
   var items = Object.keys(cart).map(function(name){ return { name: name, qty: cart[name] }; });
   var itemsB64 = btoa(unescape(encodeURIComponent(JSON.stringify(items))));
-  return getFreshIdToken().then(function(idToken){
+  var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
+  return tokenPromise.then(function(idToken){
     return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64 });
   }).then(function(r){
     if (r && r.success) { lastDiscountInfo = r; }
@@ -356,9 +377,10 @@ populateProvinceDropdown();
 // ดึงที่อยู่จัดส่งล่าสุดของสมาชิกคนนี้ (ถ้าเคยสั่งซื้อมาก่อน) มาเสนอให้ติ๊กเลือก "ใช้ที่อยู่เดิม"
 // แทนต้องพิมพ์ใหม่ทุกครั้ง — ถ้าไม่เคยมีที่อยู่บันทึกไว้เลย จะซ่อนกล่องติ๊กเลือกไปเลย เหลือแค่ช่องกรอกใหม่
 // จังหวัดจะถูกเลือกไว้ล่วงหน้าให้ด้วยถ้าเคยมีบันทึกไว้ (แต่ยังแก้ไขได้เสมอ ไม่ได้ล็อกตาม checkbox ที่อยู่)
-function loadSavedAddress(){
+function loadSavedAddress(idTokenParam){
   if (savedAddressLoaded) return Promise.resolve();
-  return getFreshIdToken().then(function(idToken){
+  var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
+  return tokenPromise.then(function(idToken){
     return callApi('getMyShippingAddress', { idToken: idToken });
   }).then(function(r){
     savedAddressLoaded = true;
