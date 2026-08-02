@@ -225,14 +225,16 @@ function loadProducts(){
     .catch(function(e){ showErrorState('เรียก API ไม่สำเร็จ: ' + e.message); });
 }
 
-// หาโปรโมชั่นอัตโนมัติที่ลดได้เยอะที่สุดสำหรับสินค้าหมวดหมู่นี้ (ถ้ามีหลายโปรตรงกันพร้อมกัน) — restriction
-// ว่าง = ใช้ได้ทุกสินค้า, ไม่ว่าง = ต้องมีคำนั้นอยู่ในชื่อหมวดหมู่ (จับคู่แบบเดียวกับฝั่งเซิร์ฟเวอร์)
-function getBestPromoPrice_(categoryName, price){
+// หาโปรโมชั่นอัตโนมัติที่ลดได้เยอะที่สุดสำหรับสินค้าตัวนี้ (ถ้ามีหลายโปรตรงกันพร้อมกัน) — restriction
+// ว่าง = ใช้ได้ทุกสินค้า, ไม่ว่าง = ต้องมีคำนั้นอยู่ในชื่อเต็ม (ชื่อสินค้า+ขนาดบรรจุ) — ใช้ skuName เต็ม
+// ไม่ใช่แค่ชื่อสินค้าเฉยๆ เพื่อให้จับคู่ได้ถูกทั้งกรณีลดทั้งสินค้า (พิมพ์แค่ชื่อสินค้า) และกรณีลดเฉพาะ
+// ขนาดบรรจุใดขนาดหนึ่ง (พิมพ์ชื่อสินค้า+ขนาดเต็มๆ) — จับคู่แบบเดียวกับฝั่งเซิร์ฟเวอร์ทุกประการ
+function getBestPromoPrice_(skuName, price){
   var best = null;
   activeAutoCoupons.forEach(function(c){
     if (c.restriction) {
       var keywords = c.restriction.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-      var matches = keywords.some(function(kw){ return categoryName.indexOf(kw) !== -1; });
+      var matches = keywords.some(function(kw){ return skuName.indexOf(kw) !== -1; });
       if (!matches) return;
     }
     // หมายเหตุ: ไม่เช็ค minPurchase ตรงนี้เพราะมันคือยอดขั้นต่ำ "ทั้งออเดอร์" ไม่ใช่ราคาต่อชิ้น
@@ -277,7 +279,7 @@ function renderCatalog(){
     cat.variants.forEach(function(v){
       var idx = variantList.length;
       variantList.push(v);
-      var promoPrice = getBestPromoPrice_(cat.name, v.price);
+      var promoPrice = getBestPromoPrice_(v.skuName, v.price);
       var priceHtml = promoPrice !== null
         ? '<span style="text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="color:#c62828;font-weight:700">฿' + Math.round(promoPrice).toLocaleString('th-TH') + '</span>'
         : '฿' + v.price.toLocaleString('th-TH');
