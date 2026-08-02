@@ -203,16 +203,44 @@ function getIdTokenExpiryMs_(token){
   }
 }
 
+var activeAutoCoupons = []; // โปรโมชั่นอัตโนมัติที่ใช้งานอยู่ตอนนี้ (ไม่ต้องพิมพ์โค้ด) เอาไว้โชว์ราคาขีดฆ่า+ราคาแดง
+
 function loadProducts(){
-  callApi('getShopProducts')
-    .then(function(r){
+  Promise.all([
+    callApi('getShopProducts'),
+    callApi('getActiveCoupons').catch(function(){ return null; }) // โหลดพลาดไม่เป็นไร แค่ไม่มีป้ายลดราคาโชว์
+  ])
+    .then(function(results){
+      var r = results[0];
+      var couponsResult = results[1];
       if (!r || !r.success) { showErrorState('โหลดสินค้าไม่สำเร็จ: ' + (r ? r.error : '')); return; }
       categories = r.categories || [];
+      activeAutoCoupons = (couponsResult && couponsResult.success)
+        ? couponsResult.results.filter(function(c){ return c.autoApply; })
+        : [];
       renderCatalog();
       showState('catalogState');
       loadMyPrivileges();
     })
     .catch(function(e){ showErrorState('เรียก API ไม่สำเร็จ: ' + e.message); });
+}
+
+// หาโปรโมชั่นอัตโนมัติที่ลดได้เยอะที่สุดสำหรับสินค้าหมวดหมู่นี้ (ถ้ามีหลายโปรตรงกันพร้อมกัน) — restriction
+// ว่าง = ใช้ได้ทุกสินค้า, ไม่ว่าง = ต้องมีคำนั้นอยู่ในชื่อหมวดหมู่ (จับคู่แบบเดียวกับฝั่งเซิร์ฟเวอร์)
+function getBestPromoPrice_(categoryName, price){
+  var best = null;
+  activeAutoCoupons.forEach(function(c){
+    if (c.restriction) {
+      var keywords = c.restriction.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      var matches = keywords.some(function(kw){ return categoryName.indexOf(kw) !== -1; });
+      if (!matches) return;
+    }
+    // หมายเหตุ: ไม่เช็ค minPurchase ตรงนี้เพราะมันคือยอดขั้นต่ำ "ทั้งออเดอร์" ไม่ใช่ราคาต่อชิ้น
+    // เช็คแบบต่อชิ้นจะซ่อนโปรที่จริงๆ ใช้ได้ถ้ารวมกับสินค้าอื่นในตะกร้า — ราคาที่ยืนยันจริงคำนวณที่หน้าชำระเงินอีกที
+    var discounted = c.type === 'percent' ? price * (1 - c.value / 100) : Math.max(0, price - c.value);
+    if (!best || discounted < best) best = discounted;
+  });
+  return best;
 }
 
 // ดึงสิทธิ์พิเศษของลูกค้าคนนี้ (ส่วนลด VVIP ตลอดกาล หรือสิทธิ์ที่พนักงานให้ในช่วงเวลาหนึ่งๆ) มาโชว์
@@ -249,8 +277,12 @@ function renderCatalog(){
     cat.variants.forEach(function(v){
       var idx = variantList.length;
       variantList.push(v);
+      var promoPrice = getBestPromoPrice_(cat.name, v.price);
+      var priceHtml = promoPrice !== null
+        ? '<span style="text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="color:#c62828;font-weight:700">฿' + Math.round(promoPrice).toLocaleString('th-TH') + '</span>'
+        : '฿' + v.price.toLocaleString('th-TH');
       h += '<div class="prod-item">'
-        + '<div style="flex:1"><div class="prod-name">' + escHtml(v.label) + '</div><div class="prod-price">฿' + v.price.toLocaleString('th-TH') + '</div></div>'
+        + '<div style="flex:1"><div class="prod-name">' + escHtml(v.label) + '</div><div class="prod-price">' + priceHtml + '</div></div>'
         + '<div class="qty-ctl">'
         + '<button class="qty-btn" onclick="changeQty(' + idx + ',-1)">−</button>'
         + '<span class="qty-val" id="qty_' + idx + '">0</span>'
