@@ -221,35 +221,8 @@ function loadProducts(){
       renderCatalog();
       showState('catalogState');
       loadMyPrivileges();
-      showPromoDebugPanel_(couponsResult); // ⚠️ กล่อง debug ชั่วคราว ลบทิ้งได้ทีหลังเมื่อแก้ปัญหาราคาโปรเสร็จแล้ว
     })
     .catch(function(e){ showErrorState('เรียก API ไม่สำเร็จ: ' + e.message); });
-}
-
-// ⚠️ กล่อง debug ชั่วคราว — โชว์ข้อมูลดิบที่ได้จาก getActiveCoupons() เทียบกับชื่อสินค้าจริง (skuName)
-// ของตัวแรกในร้าน เพื่อเช็คว่าทำไมราคาโปรไม่ขึ้น (ตัวอักษรไม่ตรงกัน/ไม่มีโปรจริง/เงื่อนไขไม่ผ่าน ฯลฯ)
-// ลบฟังก์ชันนี้ทิ้งได้เลยทีหลังเมื่อแก้ปัญหาเสร็จ ไม่กระทบการทำงานปกติของร้าน
-function showPromoDebugPanel_(couponsResult){
-  var box = document.createElement('div');
-  box.style.cssText = 'background:#fff3e0;border:1.5px solid #ff9800;border-radius:10px;padding:12px;margin:10px 0;font-size:11px;white-space:pre-wrap;word-break:break-all;text-align:left';
-  var lines = [];
-  lines.push('=== DEBUG: ข้อมูลโปรโมชั่น (ลบกล่องนี้ได้ทีหลัง) ===');
-  lines.push('getActiveCoupons() success: ' + (couponsResult && couponsResult.success));
-  if (!couponsResult || !couponsResult.success) lines.push('error: ' + (couponsResult ? couponsResult.error : 'ไม่มีผลลัพธ์เลย (null)'));
-  lines.push('จำนวนโปรที่ auto-apply ทั้งหมด: ' + activeAutoCoupons.length);
-  activeAutoCoupons.forEach(function(c, i){
-    lines.push((i+1) + '. code=' + c.code + ' | type=' + c.type + ' | value=' + c.value + ' | restriction="' + c.restriction + '"');
-  });
-  lines.push('--- ตัวอย่างชื่อสินค้าจริง (skuName) 5 ตัวแรกในร้าน ---');
-  var count = 0;
-  categories.forEach(function(cat){
-    cat.variants.forEach(function(v){
-      if (count < 5) lines.push('skuName="' + v.skuName + '"');
-      count++;
-    });
-  });
-  box.textContent = lines.join('\n');
-  document.getElementById('catalogState').insertBefore(box, document.getElementById('prodList'));
 }
 
 // หาโปรโมชั่นอัตโนมัติที่ลดได้เยอะที่สุดสำหรับสินค้าตัวนี้ (ถ้ามีหลายโปรตรงกันพร้อมกัน) — restriction
