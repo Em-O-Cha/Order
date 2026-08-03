@@ -138,7 +138,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 // ⚠️ ใส่ LIFF ID ของ "หน้าร้าน" ตรงนี้ (สร้างเป็น LIFF App ใหม่ ใต้ LINE Login Channel เดิม)
 var LIFF_ID = '2010892131-3XYQXNzq';
 // ⚠️ ใส่ Apps Script Web App URL ตรงนี้ (URL เดียวกับที่ใช้ในหน้าสมัครสมาชิก ลงท้าย /exec)
-var API_URL = 'https://script.google.com/macros/s/AKfycbwNUP800QEj3J4aJhALA5ajEtnWI25xAITkdF2t_HAW6siswNAzkO4g6KHYahUcOCuUaw/exec';
+var API_URL = 'https://script.google.com/macros/s/AKfycby_bfO-sR2d3l55SMu62IoPQ1PkwO2AXHOKU562gEk9PhLDCR4Ml9uG2re89unqJbE/exec';
 
 var currentIdToken = null;
 var categories = [];
@@ -173,13 +173,39 @@ function showErrorState(msg){
 
 // เรียก Apps Script ผ่าน fetch() แบบ GET เสมอ (แม้แต่ action ที่เปลี่ยนแปลงข้อมูล) เพราะ POST ข้าม
 // domain เจอปัญหา CORS จากการ redirect ของ Apps Script ในเบราว์เซอร์ของแอป LINE มาก่อนแล้ว
-function callApi(action, payload){
+// เรียก Apps Script — พร้อมระบบ "ลองใหม่อัตโนมัติ" เมื่อเจอปัญหาชั่วคราว (เหมือนฝั่งหน้าสมาชิก)
+// Apps Script บางครั้งตอบกลับมาเป็นหน้า HTML ของ Google แทน JSON โดยไม่มีสาเหตุชัดเจน แล้วลองใหม่ก็หายเอง
+// จึงลองใหม่ให้เงียบๆ สูงสุด 3 ครั้งก่อน แทนที่จะเด้ง error ที่มีโค้ด HTML เต็มหน้าจอให้ลูกค้างง
+function callApi(action, payload, _attempt){
   payload = payload || {};
   payload.action = action;
+  var attempt = _attempt || 1;
+  var MAX_ATTEMPTS = 3;
   var qs = Object.keys(payload).map(function(k){
     return encodeURIComponent(k) + '=' + encodeURIComponent(payload[k]);
   }).join('&');
-  return fetch(API_URL + '?' + qs, { method: 'GET' }).then(function(res){ return res.json(); });
+
+  return fetch(API_URL + '?' + qs, { method: 'GET' }).then(function(res){
+    return res.text().then(function(text){
+      try {
+        return JSON.parse(text);
+      } catch (parseErr) {
+        if (attempt < MAX_ATTEMPTS) {
+          return new Promise(function(resolve){
+            setTimeout(function(){ resolve(callApi(action, payload, attempt + 1)); }, attempt * 800);
+          });
+        }
+        throw new Error('ระบบไม่ตอบสนองชั่วคราว กรุณาลองใหม่อีกครั้งในสักครู่');
+      }
+    });
+  }).catch(function(networkErr){
+    if (attempt < MAX_ATTEMPTS && networkErr.message.indexOf('ระบบไม่ตอบสนอง') === -1) {
+      return new Promise(function(resolve){
+        setTimeout(function(){ resolve(callApi(action, payload, attempt + 1)); }, attempt * 800);
+      });
+    }
+    throw networkErr;
+  });
 }
 
 // ถอด exp (เวลาหมดอายุ) ออกจาก idToken โดยไม่ต้องยิง API — เพื่อเช็คฝั่ง client ก่อนส่งไปให้เซิร์ฟเวอร์
