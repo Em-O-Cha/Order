@@ -138,7 +138,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 // ⚠️ ใส่ LIFF ID ของ "หน้าร้าน" ตรงนี้ (สร้างเป็น LIFF App ใหม่ ใต้ LINE Login Channel เดิม)
 var LIFF_ID = '2010892131-3XYQXNzq';
 // ⚠️ ใส่ Apps Script Web App URL ตรงนี้ (URL เดียวกับที่ใช้ในหน้าสมัครสมาชิก ลงท้าย /exec)
-var API_URL = 'https://script.google.com/macros/s/AKfycbw8NyT6FLn9AM6M55CGIKY8_oMwsHR2N-4rfs7rtz5vrCkpXNaFhHZ4S7nwtnMMZl6QDg/exec';
+var API_URL = 'https://script.google.com/macros/s/AKfycby9b-iuB5voNHdHMzLxB6YrGJBqXUi0E3gTyRlrpsKLFd-z6_Mo7ZidVvRRT_535eGJ6g/exec';
 
 var currentIdToken = null;
 var categories = [];
@@ -324,7 +324,7 @@ function updateCartBar(){
   document.getElementById('checkoutBtn').disabled = count === 0;
 }
 
-function backToCatalog(){ showState('catalogState'); }
+function backToCatalog(){ excludedPrivilegeName = ''; showState('catalogState'); }
 
 // ครอบ Promise ด้วยเวลาจำกัด — ถ้าไม่เสร็จภายในเวลาที่กำหนด จะ reject ออกมาเองพร้อมข้อความ กันปัญหา
 // "กดแล้วไม่เกิดอะไรขึ้นเลย ค้างอยู่แบบนั้นตลอดไป" ซึ่งเกิดได้ถ้า fetch() ค้างรอ response ไม่มีวันจบ
@@ -368,19 +368,33 @@ function goToCheckout(){
 // เข้าหน้าเช็คเอาท์ครั้งแรก และตอนกดปุ่ม "ใช้โค้ด" (เช็คโค้ดที่พิมพ์เพิ่ม) จำนวนที่แสดงเป็นแค่ตัวช่วย
 // พรีวิว ของจริงคำนวณใหม่อีกครั้งฝั่งเซิร์ฟเวอร์ตอนกดยืนยันสั่งซื้อเสมอ
 // รับ idTokenParam ได้ (เผื่อมีอยู่แล้วจาก goToCheckout จะได้ไม่ต้องไปขอซ้ำ) ถ้าไม่ส่งมาจะไปขอเองตามปกติ
+var excludedPrivilegeName = ''; // ถ้าลูกค้ากด "ลบ" สิทธิ์พิเศษออกจากออเดอร์นี้ (ยังไม่อยากใช้ตอนนี้ เก็บไว้
+// ใช้ครั้งหน้า) จะเก็บชื่อสิทธิ์นั้นไว้ตรงนี้ แล้วส่งไปบอกเซิร์ฟเวอร์ให้ข้ามสิทธิ์นี้ในการคำนวณ — รีเซ็ตกลับ
+// เป็นค่าว่างทุกครั้งที่กลับไปเลือกสินค้าใหม่ (backToCatalog) เพื่อไม่ให้ค้างข้ามไปออเดอร์ถัดไปโดยไม่ตั้งใจ
+
 function refreshDiscounts(idTokenParam){
   var subtotal = getCartTotal();
   var items = Object.keys(cart).map(function(name){ return { name: name, qty: cart[name] }; });
   var itemsB64 = btoa(unescape(encodeURIComponent(JSON.stringify(items))));
   var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
   return tokenPromise.then(function(idToken){
-    return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64 });
+    return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeName });
   }).then(function(r){
     if (r && r.success) { lastDiscountInfo = r; }
     else { console.warn('checkShopDiscounts ล้มเหลว:', r && r.error); }
     renderDiscountSummary();
     renderPaymentDetail();
   });
+}
+
+// ลูกค้ากด "ลบ" ที่บรรทัดสิทธิ์พิเศษ — ไม่ใช้สิทธิ์นี้กับออเดอร์นี้ (สิทธิ์ยังอยู่ครบ ใช้ครั้งหน้าได้ปกติ)
+function removePrivilegeFromOrder(name){
+  excludedPrivilegeName = name;
+  refreshDiscounts();
+}
+function undoRemovePrivilege(){
+  excludedPrivilegeName = '';
+  refreshDiscounts();
 }
 
 function applyCoupon(){
@@ -474,12 +488,21 @@ function getDiscountAmount(){
   return Math.min(getCartTotal(), d);
 }
 
+function getShippingCost(){
+  return (lastDiscountInfo && lastDiscountInfo.shippingCost) ? lastDiscountInfo.shippingCost : 0;
+}
+
 function renderDiscountSummary(){
   var wrap = document.getElementById('discountSummary');
   var subtotal = getCartTotal();
   var h = '<div class="bank-box"><div class="row"><span>ยอดสินค้า</span><span>฿' + subtotal.toLocaleString('th-TH') + '</span></div>';
   if (lastDiscountInfo && lastDiscountInfo.privilege) {
-    h += '<div class="row"><span>🎁 ' + escHtml(lastDiscountInfo.privilege.name) + '</span><span>-฿' + Math.round(lastDiscountInfo.privilege.discount).toLocaleString('th-TH') + '</span></div>';
+    h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(lastDiscountInfo.privilege.name) + '</span>'
+      + '<span style="display:flex;align-items:center;gap:8px">-฿' + Math.round(lastDiscountInfo.privilege.discount).toLocaleString('th-TH')
+      + ' <button type="button" onclick="removePrivilegeFromOrder(\'' + escHtml(lastDiscountInfo.privilege.name).replace(/'/g, "\\'") + '\')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button></span></div>';
+  } else if (excludedPrivilegeName) {
+    h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>✅ ไม่ใช้สิทธิ์ "' + escHtml(excludedPrivilegeName) + '" ในออเดอร์นี้ (ยังใช้ได้ครั้งถัดไป)</span>'
+      + '<span><button type="button" onclick="undoRemovePrivilege()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ยกเลิก</button></span></div>';
   }
   if (lastDiscountInfo && lastDiscountInfo.coupon) {
     h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + '</span><span>-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
@@ -489,6 +512,7 @@ function renderDiscountSummary(){
   if (lastDiscountInfo && lastDiscountInfo.couponError) {
     h += '<div class="row" style="color:#c62828"><span colspan="2">⚠️ ' + escHtml(lastDiscountInfo.couponError) + '</span></div>';
   }
+  h += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(getShippingCost()).toLocaleString('th-TH') + '</span></div>';
   h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดสุทธิ</b></span><span><b>฿' + getFinalTotal().toLocaleString('th-TH') + '</b></span></div>';
   h += '</div>';
   wrap.innerHTML = h;
@@ -511,7 +535,7 @@ function getCartTotal(){
 }
 
 function getFinalTotal(){
-  return Math.max(0, getCartTotal() - getDiscountAmount());
+  return Math.max(0, getCartTotal() - getDiscountAmount()) + getShippingCost();
 }
 
 function renderPaymentDetail(){
@@ -592,7 +616,7 @@ function submitOrder(){
   var itemsB64 = btoa(unescape(encodeURIComponent(itemsJsonRaw))); // UTF-8 safe base64 encode
 
   getFreshIdToken().then(function(idToken){
-    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province });
+    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeName });
   })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
@@ -611,6 +635,7 @@ function submitOrder(){
       if (r.discount > 0) {
         summaryHtml += '<div class="row"><span>ส่วนลดรวม</span><span>-฿' + Math.round(r.discount).toLocaleString('th-TH') + '</span></div>';
       }
+      summaryHtml += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(r.shippingCost || 0).toLocaleString('th-TH') + '</span></div>';
       summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span><b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
         + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : 'โอนธนาคาร') + '</span></div>';
       document.getElementById('orderSummary').innerHTML = summaryHtml;
@@ -623,6 +648,7 @@ function submitOrder(){
       cart = {};
       appliedCouponCode = '';
       lastDiscountInfo = null;
+      excludedPrivilegeName = '';
       savedAddressLoaded = false; // สั่งซื้อสำเร็จแล้ว ที่อยู่อาจเพิ่งอัปเดตใหม่ — รอบหน้าให้โหลดใหม่อีกครั้ง
       showState('orderDoneState');
     })
