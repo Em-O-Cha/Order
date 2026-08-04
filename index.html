@@ -562,6 +562,19 @@ function renderDiscountSummary(){
   h += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(getShippingCost()).toLocaleString('th-TH') + '</span></div>';
   h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดสุทธิ</b></span><span><b>฿' + getFinalTotal().toLocaleString('th-TH') + '</b></span></div>';
   h += '</div>';
+  // ⚠️ กล่อง debug ชั่วคราว — โชว์ข้อมูลดิบเรื่องน้ำหนัก เพื่อหาสาเหตุค่าจัดส่งเป็น 0 ลบทิ้งได้ทีหลัง
+  if (lastDiscountInfo && lastDiscountInfo.weightDebug_) {
+    h += '<div style="background:#fff3e0;border:1.5px solid #ff9800;border-radius:10px;padding:12px;margin:10px 0;font-size:11px;white-space:pre-wrap;word-break:break-all;text-align:left">';
+    h += '=== DEBUG น้ำหนัก (ลบกล่องนี้ได้ทีหลัง) ===\n';
+    h += 'totalWeightG = ' + lastDiscountInfo.totalWeightG + '\n\n';
+    h += '--- รายการในตะกร้า ---\n';
+    lastDiscountInfo.weightDebug_.forEach(function(d){
+      h += 'name="' + d.name + '" qty=' + d.qty + ' weightG=' + d.weightG + ' foundInMap=' + d.foundInMap + '\n';
+    });
+    h += '\n--- ตัวอย่างข้อมูลน้ำหนักที่ระบบมี (8 ตัวแรก) ---\n';
+    (lastDiscountInfo.weightMapSample_ || []).forEach(function(s){ h += s + '\n'; });
+    h += '</div>';
+  }
   wrap.innerHTML = h;
 }
 
