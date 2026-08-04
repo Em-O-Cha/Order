@@ -419,13 +419,23 @@ function refreshDiscounts(idTokenParam){
 }
 
 // ลูกค้ากด "ลบ" ที่บรรทัดสิทธิ์พิเศษ — ไม่ใช้สิทธิ์นี้กับออเดอร์นี้ (สิทธิ์ยังอยู่ครบ ใช้ครั้งหน้าได้ปกติ)
+// ทำงานฝั่ง client ล้วนๆ ไม่ยิง API ไปเซิร์ฟเวอร์เลย (ข้อมูลส่วนลดที่ต้องใช้คำนวณมีอยู่ในมือแล้วทั้งหมด
+// จากที่โหลดมาก่อนหน้านี้) จึงเห็นผลทันทีไม่ต้องรอเครือข่ายเลยแม้แต่วินาทีเดียว — ค่าสุดท้ายจริงๆ ยังคง
+// ถูกคำนวณ/ตรวจสอบซ้ำอีกทีฝั่งเซิร์ฟเวอร์ตอนกดยืนยันสั่งซื้อจริงอยู่ดี (ส่ง excludedPrivilegeName ไปด้วย)
+// จึงมั่นใจได้ว่ายอดที่โชว์กับยอดที่เก็บเงินจริงตรงกันเสมอ ไม่มีช่องโหว่ให้เอาเปรียบระบบ
+var removedPrivilegeBackup_ = null; // เก็บสำรองไว้ตอนกด "ลบ" เผื่อกด "ยกเลิก" จะได้เอากลับมาแบบเป๊ะๆ ทันที
 function removePrivilegeFromOrder(name){
+  if (lastDiscountInfo && lastDiscountInfo.privilege) removedPrivilegeBackup_ = lastDiscountInfo.privilege;
   excludedPrivilegeName = name;
-  refreshDiscounts();
+  if (lastDiscountInfo) lastDiscountInfo.privilege = null;
+  renderDiscountSummary();
+  renderPaymentDetail();
 }
 function undoRemovePrivilege(){
   excludedPrivilegeName = '';
-  refreshDiscounts();
+  if (lastDiscountInfo && removedPrivilegeBackup_) lastDiscountInfo.privilege = removedPrivilegeBackup_;
+  renderDiscountSummary();
+  renderPaymentDetail();
 }
 
 function applyCoupon(){
@@ -528,9 +538,15 @@ function renderDiscountSummary(){
   var subtotal = getCartTotal();
   var h = '<div class="bank-box"><div class="row"><span>ยอดสินค้า</span><span>฿' + subtotal.toLocaleString('th-TH') + '</span></div>';
   if (lastDiscountInfo && lastDiscountInfo.privilege) {
+    // ลบออกจากออเดอร์นี้ได้เฉพาะสิทธิ์ที่ได้มาจาก "แลกด้วยแต้ม" เท่านั้น (ลูกค้าเลือกแลกเองได้ ก็เลือกไม่ใช้
+    // เองได้เช่นกัน) — สิทธิ์ประเภทอื่น เช่น ของขวัญวันเกิด/สิทธิ์ที่พนักงานให้เอง ไม่ให้ลบออกจากออเดอร์ได้
+    var isRedeemable = lastDiscountInfo.privilege.givenBy === 'แลกด้วยแต้ม';
+    var removeBtnHtml = isRedeemable
+      ? ' <button type="button" onclick="removePrivilegeFromOrder(\'' + escHtml(lastDiscountInfo.privilege.name).replace(/'/g, "\\'") + '\')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
+      : '';
     h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(lastDiscountInfo.privilege.name) + '</span>'
       + '<span style="display:flex;align-items:center;gap:8px">-฿' + Math.round(lastDiscountInfo.privilege.discount).toLocaleString('th-TH')
-      + ' <button type="button" onclick="removePrivilegeFromOrder(\'' + escHtml(lastDiscountInfo.privilege.name).replace(/'/g, "\\'") + '\')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button></span></div>';
+      + removeBtnHtml + '</span></div>';
   } else if (excludedPrivilegeName) {
     h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>✅ ไม่ใช้สิทธิ์ "' + escHtml(excludedPrivilegeName) + '" ในออเดอร์นี้ (ยังใช้ได้ครั้งถัดไป)</span>'
       + '<span><button type="button" onclick="undoRemovePrivilege()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ยกเลิก</button></span></div>';
