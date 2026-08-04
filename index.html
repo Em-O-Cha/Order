@@ -562,19 +562,6 @@ function renderDiscountSummary(){
   h += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(getShippingCost()).toLocaleString('th-TH') + '</span></div>';
   h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดสุทธิ</b></span><span><b>฿' + getFinalTotal().toLocaleString('th-TH') + '</b></span></div>';
   h += '</div>';
-  // ⚠️ กล่อง debug ชั่วคราว — โชว์ข้อมูลดิบเรื่องน้ำหนัก เพื่อหาสาเหตุค่าจัดส่งเป็น 0 ลบทิ้งได้ทีหลัง
-  if (lastDiscountInfo && lastDiscountInfo.weightDebug_) {
-    h += '<div style="background:#fff3e0;border:1.5px solid #ff9800;border-radius:10px;padding:12px;margin:10px 0;font-size:11px;white-space:pre-wrap;word-break:break-all;text-align:left">';
-    h += '=== DEBUG น้ำหนัก (ลบกล่องนี้ได้ทีหลัง) ===\n';
-    h += 'totalWeightG = ' + lastDiscountInfo.totalWeightG + '\n\n';
-    h += '--- รายการในตะกร้า ---\n';
-    lastDiscountInfo.weightDebug_.forEach(function(d){
-      h += 'name="' + d.name + '" qty=' + d.qty + ' weightG=' + d.weightG + ' foundInMap=' + d.foundInMap + '\n';
-    });
-    h += '\n--- ตัวอย่างข้อมูลน้ำหนักที่ระบบมี (8 ตัวแรก) ---\n';
-    (lastDiscountInfo.weightMapSample_ || []).forEach(function(s){ h += s + '\n'; });
-    h += '</div>';
-  }
   wrap.innerHTML = h;
 }
 
@@ -808,8 +795,11 @@ function getFreshIdToken(){
 
   if (!token) {
     var redirecting = startLineLogin();
+    // หมายเหตุ: ถ้า redirecting เป็น false แปลว่า startLineLogin() เจอตัวกันวน (เคยลองแล้ว 1 รอบ) ซึ่งมันจะ
+    // แสดงข้อความที่ชัดเจนกว่านี้ให้อยู่แล้ว (อธิบายเรื่อง third-party cookies + แนะนำให้ใช้แอป LINE แทน)
+    // ห้ามเรียก showErrorWithDiagnostics_() ทับตรงนี้อีก เพราะจะไปเขียนทับข้อความที่ดีกว่านั้นทิ้ง
+    // กลายเป็นข้อความทั่วไปที่ไม่มีคำแนะนำอะไรให้ลูกค้าทำต่อได้เลย (นี่คือบั๊กที่เคยเกิดขึ้นจริง)
     var errNoToken = new Error('ไม่พบ ID token กรุณาเข้าสู่ระบบ LINE ใหม่');
-    if (!redirecting) { showErrorWithDiagnostics_('ไม่พบ ID token และเข้าสู่ระบบใหม่แล้วยังไม่สำเร็จ'); }
     errNoToken.alreadyShown = !redirecting;
     return Promise.reject(errNoToken);
   }
@@ -819,9 +809,8 @@ function getFreshIdToken(){
   // (เซิร์ฟเวอร์มีระบบวินิจฉัยละเอียดอยู่แล้ว ถ้า token เสียจริงจะได้ข้อความบอกสาเหตุตรงๆ กลับมา)
   var expiryMs = getIdTokenExpiryMs_(token);
   if (expiryMs && Date.now() >= expiryMs - 30000) {
-    var redirectingExpired = startLineLogin();
+    var redirectingExpired = startLineLogin(); // เหตุผลเดียวกับด้านบน — ไม่เรียก showErrorWithDiagnostics_() ซ้ำ
     var errExpired = new Error('LINE session หมดอายุ (โทเคนมีอายุ 1 ชั่วโมง)');
-    if (!redirectingExpired) { showErrorWithDiagnostics_('LINE session หมดอายุ และเข้าสู่ระบบใหม่แล้วยังไม่สำเร็จ'); }
     errExpired.alreadyShown = !redirectingExpired;
     return Promise.reject(errExpired);
   }
