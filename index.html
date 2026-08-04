@@ -2,6 +2,10 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
+<link rel="preconnect" href="https://static.line-scdn.net">
+<link rel="preconnect" href="https://access.line.me">
+<link rel="dns-prefetch" href="https://static.line-scdn.net">
+<link rel="dns-prefetch" href="https://access.line.me">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>สั่งซื้อสินค้า</title>
 <style>
@@ -111,6 +115,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
         <input type="radio" name="pay" value="bank" onchange="selectPayment('bank')"> 🏦 โอนเข้าบัญชีธนาคาร
       </label>
       <div id="paymentDetail"></div>
+      <div id="checkoutErrBox" class="sh" style="background:#fff3e0;color:#e65100;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px"></div>
       <button class="btn btn-block" style="margin-top:18px" onclick="submitOrder()" id="confirmOrderBtn">✅ ยืนยันสั่งซื้อ</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px" onclick="backToCatalog()">← กลับไปเลือกสินค้าต่อ</button>
     </div>
@@ -138,7 +143,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 // ⚠️ ใส่ LIFF ID ของ "หน้าร้าน" ตรงนี้ (สร้างเป็น LIFF App ใหม่ ใต้ LINE Login Channel เดิม)
 var LIFF_ID = '2010892131-3XYQXNzq';
 // ⚠️ ใส่ Apps Script Web App URL ตรงนี้ (URL เดียวกับที่ใช้ในหน้าสมัครสมาชิก ลงท้าย /exec)
-var API_URL = 'https://script.google.com/macros/s/AKfycby_bfO-sR2d3l55SMu62IoPQ1PkwO2AXHOKU562gEk9PhLDCR4Ml9uG2re89unqJbE/exec';
+var API_URL = 'https://script.google.com/macros/s/AKfycby9b-iuB5voNHdHMzLxB6YrGJBqXUi0E3gTyRlrpsKLFd-z6_Mo7ZidVvRRT_535eGJ6g/exec';
 
 var currentIdToken = null;
 var categories = [];
@@ -623,15 +628,18 @@ function buildPromptPayPayload(promptPayId, amount){
 }
 
 function submitOrder(){
+  var errBox = document.getElementById('checkoutErrBox');
+  errBox.classList.add('sh');
+
   var items = Object.keys(cart).map(function(name){
     return { name: name, qty: cart[name] }; // ไม่ต้องส่งราคามา เซิร์ฟเวอร์ดึงราคาจริงเองเสมอ
   });
-  if (!items.length) { showErrorState('ไม่มีสินค้าในตะกร้า'); return; }
+  if (!items.length) { showInlineCheckoutError_('ไม่มีสินค้าในตะกร้า'); return; }
 
   var shippingAddress = getShippingAddressValue();
-  if (!shippingAddress) { showErrorState('กรุณากรอกที่อยู่จัดส่ง'); return; }
+  if (!shippingAddress) { showInlineCheckoutError_('กรุณากรอกที่อยู่จัดส่ง'); return; }
   var province = getProvinceValue();
-  if (!province) { showErrorState('กรุณาเลือกจังหวัด'); return; }
+  if (!province) { showInlineCheckoutError_('กรุณาเลือกจังหวัด'); return; }
 
   var btn = document.getElementById('confirmOrderBtn');
   btn.disabled = true; btn.textContent = '⏳ กำลังบันทึกคำสั่งซื้อ...';
@@ -651,7 +659,7 @@ function submitOrder(){
         // 3 ส่วนคั่นด้วยจุด 2 จุดพอดี ถ้าจำนวนจุดไม่ใช่ 2 แปลว่า token เพี้ยน/ถูกตัดขาดระหว่างทางแน่นอน)
         var dotCount = currentIdToken ? (currentIdToken.match(/\./g) || []).length : 0;
         var tokenInfo = 'idToken ยาว ' + (currentIdToken ? currentIdToken.length : 0) + ' ตัวอักษร, มี ' + dotCount + ' จุด (ต้องมี 2 จุดพอดีถึงจะถูกต้อง)';
-        showErrorState('สั่งซื้อไม่สำเร็จ: ' + (r ? r.error : '') + '\n\n' + tokenInfo);
+        showInlineCheckoutError_('สั่งซื้อไม่สำเร็จ: ' + (r ? r.error : '') + ' (' + tokenInfo + ')');
         return;
       }
 
@@ -681,8 +689,18 @@ function submitOrder(){
     .catch(function(e){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
       if (e && e.alreadyShown) return; // ข้อความที่มีประโยชน์กว่าแสดงไปแล้ว ไม่ต้องทับ
-      showErrorState('เรียก API ไม่สำเร็จ: ' + e.message);
+      showInlineCheckoutError_('เรียก API ไม่สำเร็จ: ' + e.message);
     });
+}
+
+// แสดง error แบบฝังอยู่ในหน้าชำระเงินเลย (ไม่เด้งไปหน้า error เต็มจอ) — สำคัญมาก เพราะ error ที่พบบ่อย
+// ที่สุดคือ "ลืมกรอกที่อยู่" ซึ่งเป็นเรื่องแก้ไขง่ายๆ แค่กรอกเพิ่ม ไม่ควรทำให้ลูกค้าหลุดออกจากหน้าชำระเงิน
+// (ตะกร้า/ส่วนลด/ที่อยู่ที่กรอกไว้แล้วจะไม่หายไปไหน) ต่างจาก error ระบบจริงๆ ที่ยังใช้ showErrorState ปกติ
+function showInlineCheckoutError_(msg){
+  var errBox = document.getElementById('checkoutErrBox');
+  errBox.textContent = '⚠️ ' + msg;
+  errBox.classList.remove('sh');
+  errBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // ==================== LIFF session (login + token) ====================
