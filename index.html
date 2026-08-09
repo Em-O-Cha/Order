@@ -715,7 +715,10 @@ function submitOrder(){
       // เก็บ URL หน้าแนบสลิปไว้เรียกผ่าน window.open() ตอนกดปุ่ม (แทนการตั้ง href ของ <a> ตรงๆ)
       // เพราะเปิดผ่าน window.open() แล้วหน้าใหม่จะปิดตัวเองด้วย window.close() ได้จริง ต่างจากเปิดผ่าน
       // การคลิกลิงก์ธรรมดาที่เบราว์เซอร์ส่วนใหญ่จะไม่ยอมให้สคริปต์สั่งปิดแท็บที่ตัวเองไม่ได้เปิดเอง
-      pendingSlipUploadUrl = API_URL + '?page=uploadSlip&orderId=' + encodeURIComponent(r.orderId);
+      // หน้านี้ย้ายไปโฮสต์บน GitHub Pages แล้ว (เดิมเป็นหน้าที่ Apps Script เสิร์ฟเอง ?page=uploadSlip)
+      // เพื่อไม่ให้ขึ้นหัว URL เป็น script.google.com ตอนเปิด ดูเป็นมืออาชีพกว่า — ต้องอัปโหลดไฟล์
+      // slipUpload.html ไปไว้ที่ repo toinatadee/Order (โฟลเดอร์เดียวกับ index.html นี้) ด้วย
+      pendingSlipUploadUrl = 'https://toinatadee.github.io/Order/slipUpload.html?orderId=' + encodeURIComponent(r.orderId);
 
       cart = {};
       appliedCouponCode = '';
