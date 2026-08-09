@@ -285,8 +285,7 @@ function loadMyPrivileges(){
       var h = '<div class="bank-box" style="margin-bottom:16px;text-align:left">';
       h += '<p style="font-weight:600;margin-bottom:8px">🎖️ สิทธิพิเศษของคุณ</p>';
       r.results.forEach(function(p){
-        var valueText = String(p.type) === 'percent' ? ('ลด ' + p.value + '%') : ('ลด ' + p.value + ' บาท');
-        h += '<div class="row"><span>' + escHtml(p.name) + ' (' + valueText + ')</span><span style="color:var(--g6);font-size:12px">' + escHtml(p.expiry) + '</span></div>';
+        h += '<div class="row"><span>' + escHtml(p.name) + ' (' + escHtml(p.expiry) + ')</span></div>';
       });
       h += '</div>';
       document.getElementById('myPrivileges').innerHTML = h;
@@ -355,7 +354,7 @@ function updateCartBar(){
   document.getElementById('checkoutBtn').disabled = count === 0;
 }
 
-function backToCatalog(){ excludedPrivilegeNames = []; showState('catalogState'); }
+function backToCatalog(){ excludedPrivilegeRowIndexes = []; showState('catalogState'); }
 
 // ครอบ Promise ด้วยเวลาจำกัด — ถ้าไม่เสร็จภายในเวลาที่กำหนด จะ reject ออกมาเองพร้อมข้อความ กันปัญหา
 // "กดแล้วไม่เกิดอะไรขึ้นเลย ค้างอยู่แบบนั้นตลอดไป" ซึ่งเกิดได้ถ้า fetch() ค้างรอ response ไม่มีวันจบ
@@ -399,10 +398,13 @@ function goToCheckout(){
 // เข้าหน้าเช็คเอาท์ครั้งแรก และตอนกดปุ่ม "ใช้โค้ด" (เช็คโค้ดที่พิมพ์เพิ่ม) จำนวนที่แสดงเป็นแค่ตัวช่วย
 // พรีวิว ของจริงคำนวณใหม่อีกครั้งฝั่งเซิร์ฟเวอร์ตอนกดยืนยันสั่งซื้อเสมอ
 // รับ idTokenParam ได้ (เผื่อมีอยู่แล้วจาก goToCheckout จะได้ไม่ต้องไปขอซ้ำ) ถ้าไม่ส่งมาจะไปขอเองตามปกติ
-var excludedPrivilegeNames = []; // ถ้าลูกค้ากด "ลบ" สิทธิ์พิเศษออกจากออเดอร์นี้ (ยังไม่อยากใช้ตอนนี้ เก็บไว้
-// ใช้ครั้งหน้า) จะเก็บชื่อสิทธิ์เหล่านั้นไว้ในอาร์เรย์นี้ (ลบได้มากกว่า 1 รายการพร้อมกัน — เดิมรับได้แค่
-// รายการเดียว) แล้วส่งไปบอกเซิร์ฟเวอร์ให้ข้ามสิทธิ์เหล่านี้ในการคำนวณ — รีเซ็ตกลับเป็นอาร์เรย์ว่างทุกครั้งที่
-// กลับไปเลือกสินค้าใหม่ (backToCatalog) เพื่อไม่ให้ค้างข้ามไปออเดอร์ถัดไปโดยไม่ตั้งใจ
+var excludedPrivilegeRowIndexes = []; // ถ้าลูกค้ากด "ลบ" สิทธิ์พิเศษออกจากออเดอร์นี้ (ยังไม่อยากใช้ตอนนี้
+// เก็บไว้ใช้ครั้งหน้า) จะเก็บ "เลขแถว" (rowIndex) ของสิทธิ์เหล่านั้นไว้ในอาร์เรย์นี้ (ลบได้มากกว่า 1 รายการ
+// พร้อมกัน) แล้วส่งไปบอกเซิร์ฟเวอร์ให้ข้ามสิทธิ์เหล่านี้ในการคำนวณ — ใช้ "เลขแถว" แทน "ชื่อสิทธิ์" เพราะถ้า
+// ลูกค้าแลกของรางวัลชิ้นเดียวกันซ้ำ 2 ครั้ง จะได้สิทธิ์ 2 แถวชื่อเหมือนกันเป๊ะ ถ้าอ้างอิงด้วยชื่อ กดลบอันหนึ่ง
+// จะดันไปลบพร้อมกันทั้งคู่โดยไม่ตั้งใจ (เลขแถวไม่มีวันซ้ำกัน แก้ปัญหานี้ได้เด็ดขาด แต่ละรายการอิสระจากกัน
+// จริงๆ) — รีเซ็ตกลับเป็นอาร์เรย์ว่างทุกครั้งที่กลับไปเลือกสินค้าใหม่ (backToCatalog) เพื่อไม่ให้ค้างข้ามไป
+// ออเดอร์ถัดไปโดยไม่ตั้งใจ
 
 function refreshDiscounts(idTokenParam){
   var subtotal = getCartTotal();
@@ -410,7 +412,7 @@ function refreshDiscounts(idTokenParam){
   var itemsB64 = btoa(unescape(encodeURIComponent(JSON.stringify(items))));
   var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
   return tokenPromise.then(function(idToken){
-    return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeNames.join('|') });
+    return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|') });
   }).then(function(r){
     if (r && r.success) { lastDiscountInfo = r; }
     else { console.warn('checkShopDiscounts ล้มเหลว:', r && r.error); }
@@ -419,21 +421,22 @@ function refreshDiscounts(idTokenParam){
   });
 }
 
-// ลูกค้ากด "ลบ" ที่บรรทัดสิทธิ์พิเศษรายการใดรายการหนึ่ง (ตอนนี้ลบได้มากกว่า 1 รายการพร้อมกันแล้ว — เดิม
-// ลบได้แค่รายการเดียว) — ไม่ใช้สิทธิ์นั้นกับออเดอร์นี้ (สิทธิ์ยังอยู่ครบ ใช้ครั้งหน้าได้ปกติ) ทำงานฝั่ง
-// client ล้วนๆ ไม่ยิง API ไปเซิร์ฟเวอร์เลย (ข้อมูลส่วนลดของทุกสิทธิ์ที่ต้องใช้คำนวณมีอยู่ในมือแล้วทั้งหมด
-// จาก allPrivileges ที่โหลดมาก่อนหน้านี้) จึงเห็นผลทันทีไม่ต้องรอเครือข่ายเลยแม้แต่วินาทีเดียว — ค่าสุดท้าย
-// จริงๆ ยังคงถูกคำนวณ/ตรวจสอบซ้ำอีกทีฝั่งเซิร์ฟเวอร์ตอนกดยืนยันสั่งซื้อจริงอยู่ดี (ส่ง excludedPrivilegeNames
-// ไปด้วย) จึงมั่นใจได้ว่ายอดที่โชว์กับยอดที่เก็บเงินจริงตรงกันเสมอ ไม่มีช่องโหว่ให้เอาเปรียบระบบ
-function removePrivilegeFromOrder(name){
-  if (excludedPrivilegeNames.indexOf(name) === -1) excludedPrivilegeNames.push(name);
+// ลูกค้ากด "ลบ" ที่บรรทัดสิทธิ์พิเศษรายการใดรายการหนึ่ง (ระบุด้วย rowIndex เฉพาะของรายการนั้น — แต่ละ
+// รายการเป็นอิสระจากกันเต็มที่ กดลบ/ยกเลิกรายการไหนก็ได้ ไม่ผูกติดกับรายการอื่นแม้จะชื่อเดียวกันก็ตาม) —
+// ไม่ใช้สิทธิ์นั้นกับออเดอร์นี้ (สิทธิ์ยังอยู่ครบ ใช้ครั้งหน้าได้ปกติ) ทำงานฝั่ง client ล้วนๆ ไม่ยิง API ไป
+// เซิร์ฟเวอร์เลย (ข้อมูลส่วนลดของทุกสิทธิ์ที่ต้องใช้คำนวณมีอยู่ในมือแล้วทั้งหมดจาก allPrivileges ที่โหลดมา
+// ก่อนหน้านี้) จึงเห็นผลทันทีไม่ต้องรอเครือข่ายเลยแม้แต่วินาทีเดียว — ค่าสุดท้ายจริงๆ ยังคงถูกคำนวณ/ตรวจสอบ
+// ซ้ำอีกทีฝั่งเซิร์ฟเวอร์ตอนกดยืนยันสั่งซื้อจริงอยู่ดี (ส่ง excludedPrivilegeRowIndexes ไปด้วย) จึงมั่นใจได้
+// ว่ายอดที่โชว์กับยอดที่เก็บเงินจริงตรงกันเสมอ ไม่มีช่องโหว่ให้เอาเปรียบระบบ
+function removePrivilegeFromOrder(rowIndex){
+  if (excludedPrivilegeRowIndexes.indexOf(rowIndex) === -1) excludedPrivilegeRowIndexes.push(rowIndex);
   recomputeAppliedPrivilegesClientSide_();
   renderDiscountSummary();
   renderPaymentDetail();
 }
-function undoRemovePrivilege(name){
-  var idx = excludedPrivilegeNames.indexOf(name);
-  if (idx !== -1) excludedPrivilegeNames.splice(idx, 1);
+function undoRemovePrivilege(rowIndex){
+  var idx = excludedPrivilegeRowIndexes.indexOf(rowIndex);
+  if (idx !== -1) excludedPrivilegeRowIndexes.splice(idx, 1);
   recomputeAppliedPrivilegesClientSide_();
   renderDiscountSummary();
   renderPaymentDetail();
@@ -445,7 +448,7 @@ function undoRemovePrivilege(name){
 function recomputeAppliedPrivilegesClientSide_(){
   if (!lastDiscountInfo || !lastDiscountInfo.allPrivileges) return;
   var applied = lastDiscountInfo.allPrivileges.filter(function(p){
-    return excludedPrivilegeNames.indexOf(p.name) === -1;
+    return excludedPrivilegeRowIndexes.indexOf(p.rowIndex) === -1;
   });
   lastDiscountInfo.privileges = applied;
   lastDiscountInfo.privilegeDiscount = applied.reduce(function(sum, p){ return sum + p.discount; }, 0);
@@ -556,16 +559,15 @@ function renderDiscountSummary(){
   // ออเดอร์ได้เหมือนเดิม) กด "ลบ" แล้วขึ้นปุ่ม "ยกเลิก" กดกลับมาใช้ได้ทันที ส่วนลดก็กลับมาเหมือนเดิม
   var allPrivileges = (lastDiscountInfo && lastDiscountInfo.allPrivileges) || [];
   allPrivileges.forEach(function(p){
-    var isExcluded = excludedPrivilegeNames.indexOf(p.name) !== -1;
+    var isExcluded = excludedPrivilegeRowIndexes.indexOf(p.rowIndex) !== -1;
     var isRedeemable = p.givenBy === 'แลกด้วยแต้ม';
-    var nameForJs = escHtml(p.name).replace(/'/g, "\\'");
     if (isExcluded) {
       h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>✅ ไม่ใช้สิทธิ์ "' + escHtml(p.name) + '" ในออเดอร์นี้ (ยังใช้ได้ครั้งถัดไป)</span>'
-        + '<span><button type="button" onclick="undoRemovePrivilege(\'' + nameForJs + '\')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ยกเลิก</button></span></div>';
+        + '<span><button type="button" onclick="undoRemovePrivilege(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ยกเลิก</button></span></div>';
       return;
     }
     var removeBtnHtml = isRedeemable
-      ? ' <button type="button" onclick="removePrivilegeFromOrder(\'' + nameForJs + '\')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
+      ? ' <button type="button" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
       : '';
     // ทุกรายการที่ไม่ถูกลบ ถือว่า "ใช้จริง" ทั้งหมด (ลดได้จริงพร้อมกันทุกอัน) จึงโชว์ยอดลดตรงๆ เสมอ
     h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(p.name) + '</span>'
@@ -686,7 +688,7 @@ function submitOrder(){
   var itemsB64 = btoa(unescape(encodeURIComponent(itemsJsonRaw))); // UTF-8 safe base64 encode
 
   getFreshIdToken().then(function(idToken){
-    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeNames.join('|') });
+    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|') });
   })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
@@ -718,7 +720,7 @@ function submitOrder(){
       cart = {};
       appliedCouponCode = '';
       lastDiscountInfo = null;
-      excludedPrivilegeNames = [];
+      excludedPrivilegeRowIndexes = [];
       savedAddressLoaded = false; // สั่งซื้อสำเร็จแล้ว ที่อยู่อาจเพิ่งอัปเดตใหม่ — รอบหน้าให้โหลดใหม่อีกครั้ง
       showState('orderDoneState');
     })
