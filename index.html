@@ -355,7 +355,7 @@ function updateCartBar(){
   document.getElementById('checkoutBtn').disabled = count === 0;
 }
 
-function backToCatalog(){ excludedPrivilegeName = ''; showState('catalogState'); }
+function backToCatalog(){ excludedPrivilegeNames = []; showState('catalogState'); }
 
 // ครอบ Promise ด้วยเวลาจำกัด — ถ้าไม่เสร็จภายในเวลาที่กำหนด จะ reject ออกมาเองพร้อมข้อความ กันปัญหา
 // "กดแล้วไม่เกิดอะไรขึ้นเลย ค้างอยู่แบบนั้นตลอดไป" ซึ่งเกิดได้ถ้า fetch() ค้างรอ response ไม่มีวันจบ
@@ -399,9 +399,10 @@ function goToCheckout(){
 // เข้าหน้าเช็คเอาท์ครั้งแรก และตอนกดปุ่ม "ใช้โค้ด" (เช็คโค้ดที่พิมพ์เพิ่ม) จำนวนที่แสดงเป็นแค่ตัวช่วย
 // พรีวิว ของจริงคำนวณใหม่อีกครั้งฝั่งเซิร์ฟเวอร์ตอนกดยืนยันสั่งซื้อเสมอ
 // รับ idTokenParam ได้ (เผื่อมีอยู่แล้วจาก goToCheckout จะได้ไม่ต้องไปขอซ้ำ) ถ้าไม่ส่งมาจะไปขอเองตามปกติ
-var excludedPrivilegeName = ''; // ถ้าลูกค้ากด "ลบ" สิทธิ์พิเศษออกจากออเดอร์นี้ (ยังไม่อยากใช้ตอนนี้ เก็บไว้
-// ใช้ครั้งหน้า) จะเก็บชื่อสิทธิ์นั้นไว้ตรงนี้ แล้วส่งไปบอกเซิร์ฟเวอร์ให้ข้ามสิทธิ์นี้ในการคำนวณ — รีเซ็ตกลับ
-// เป็นค่าว่างทุกครั้งที่กลับไปเลือกสินค้าใหม่ (backToCatalog) เพื่อไม่ให้ค้างข้ามไปออเดอร์ถัดไปโดยไม่ตั้งใจ
+var excludedPrivilegeNames = []; // ถ้าลูกค้ากด "ลบ" สิทธิ์พิเศษออกจากออเดอร์นี้ (ยังไม่อยากใช้ตอนนี้ เก็บไว้
+// ใช้ครั้งหน้า) จะเก็บชื่อสิทธิ์เหล่านั้นไว้ในอาร์เรย์นี้ (ลบได้มากกว่า 1 รายการพร้อมกัน — เดิมรับได้แค่
+// รายการเดียว) แล้วส่งไปบอกเซิร์ฟเวอร์ให้ข้ามสิทธิ์เหล่านี้ในการคำนวณ — รีเซ็ตกลับเป็นอาร์เรย์ว่างทุกครั้งที่
+// กลับไปเลือกสินค้าใหม่ (backToCatalog) เพื่อไม่ให้ค้างข้ามไปออเดอร์ถัดไปโดยไม่ตั้งใจ
 
 function refreshDiscounts(idTokenParam){
   var subtotal = getCartTotal();
@@ -409,7 +410,7 @@ function refreshDiscounts(idTokenParam){
   var itemsB64 = btoa(unescape(encodeURIComponent(JSON.stringify(items))));
   var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
   return tokenPromise.then(function(idToken){
-    return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeName });
+    return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeNames.join('|') });
   }).then(function(r){
     if (r && r.success) { lastDiscountInfo = r; }
     else { console.warn('checkShopDiscounts ล้มเหลว:', r && r.error); }
@@ -418,24 +419,36 @@ function refreshDiscounts(idTokenParam){
   });
 }
 
-// ลูกค้ากด "ลบ" ที่บรรทัดสิทธิ์พิเศษ — ไม่ใช้สิทธิ์นี้กับออเดอร์นี้ (สิทธิ์ยังอยู่ครบ ใช้ครั้งหน้าได้ปกติ)
-// ทำงานฝั่ง client ล้วนๆ ไม่ยิง API ไปเซิร์ฟเวอร์เลย (ข้อมูลส่วนลดที่ต้องใช้คำนวณมีอยู่ในมือแล้วทั้งหมด
-// จากที่โหลดมาก่อนหน้านี้) จึงเห็นผลทันทีไม่ต้องรอเครือข่ายเลยแม้แต่วินาทีเดียว — ค่าสุดท้ายจริงๆ ยังคง
-// ถูกคำนวณ/ตรวจสอบซ้ำอีกทีฝั่งเซิร์ฟเวอร์ตอนกดยืนยันสั่งซื้อจริงอยู่ดี (ส่ง excludedPrivilegeName ไปด้วย)
-// จึงมั่นใจได้ว่ายอดที่โชว์กับยอดที่เก็บเงินจริงตรงกันเสมอ ไม่มีช่องโหว่ให้เอาเปรียบระบบ
-var removedPrivilegeBackup_ = null; // เก็บสำรองไว้ตอนกด "ลบ" เผื่อกด "ยกเลิก" จะได้เอากลับมาแบบเป๊ะๆ ทันที
+// ลูกค้ากด "ลบ" ที่บรรทัดสิทธิ์พิเศษรายการใดรายการหนึ่ง (ตอนนี้ลบได้มากกว่า 1 รายการพร้อมกันแล้ว — เดิม
+// ลบได้แค่รายการเดียว) — ไม่ใช้สิทธิ์นั้นกับออเดอร์นี้ (สิทธิ์ยังอยู่ครบ ใช้ครั้งหน้าได้ปกติ) ทำงานฝั่ง
+// client ล้วนๆ ไม่ยิง API ไปเซิร์ฟเวอร์เลย (ข้อมูลส่วนลดของทุกสิทธิ์ที่ต้องใช้คำนวณมีอยู่ในมือแล้วทั้งหมด
+// จาก allPrivileges ที่โหลดมาก่อนหน้านี้) จึงเห็นผลทันทีไม่ต้องรอเครือข่ายเลยแม้แต่วินาทีเดียว — ค่าสุดท้าย
+// จริงๆ ยังคงถูกคำนวณ/ตรวจสอบซ้ำอีกทีฝั่งเซิร์ฟเวอร์ตอนกดยืนยันสั่งซื้อจริงอยู่ดี (ส่ง excludedPrivilegeNames
+// ไปด้วย) จึงมั่นใจได้ว่ายอดที่โชว์กับยอดที่เก็บเงินจริงตรงกันเสมอ ไม่มีช่องโหว่ให้เอาเปรียบระบบ
 function removePrivilegeFromOrder(name){
-  if (lastDiscountInfo && lastDiscountInfo.privilege) removedPrivilegeBackup_ = lastDiscountInfo.privilege;
-  excludedPrivilegeName = name;
-  if (lastDiscountInfo) lastDiscountInfo.privilege = null;
+  if (excludedPrivilegeNames.indexOf(name) === -1) excludedPrivilegeNames.push(name);
+  recomputeAppliedPrivilegesClientSide_();
   renderDiscountSummary();
   renderPaymentDetail();
 }
-function undoRemovePrivilege(){
-  excludedPrivilegeName = '';
-  if (lastDiscountInfo && removedPrivilegeBackup_) lastDiscountInfo.privilege = removedPrivilegeBackup_;
+function undoRemovePrivilege(name){
+  var idx = excludedPrivilegeNames.indexOf(name);
+  if (idx !== -1) excludedPrivilegeNames.splice(idx, 1);
+  recomputeAppliedPrivilegesClientSide_();
   renderDiscountSummary();
   renderPaymentDetail();
+}
+
+// รวมส่วนลดจากสิทธิ์ทุกรายการที่ยังไม่ถูกลบ จาก allPrivileges ที่มีอยู่แล้วในมือ — คำนวณฝั่ง client ล้วนๆ
+// เพื่อให้เห็นผลทันทีตอนกด "ลบ"/"เอากลับมาใช้" โดยไม่ต้องรอยิง API ไปเซิร์ฟเวอร์ใหม่ทุกครั้ง (สิทธิ์ทุก
+// รายการที่ไม่ถูกลบใช้ได้พร้อมกันจริงๆ ไม่ใช่เลือกใช้แค่ตัวที่ดีที่สุดตัวเดียวแบบเดิมอีกต่อไป)
+function recomputeAppliedPrivilegesClientSide_(){
+  if (!lastDiscountInfo || !lastDiscountInfo.allPrivileges) return;
+  var applied = lastDiscountInfo.allPrivileges.filter(function(p){
+    return excludedPrivilegeNames.indexOf(p.name) === -1;
+  });
+  lastDiscountInfo.privileges = applied;
+  lastDiscountInfo.privilegeDiscount = applied.reduce(function(sum, p){ return sum + p.discount; }, 0);
 }
 
 function applyCoupon(){
@@ -522,8 +535,7 @@ function getShippingAddressValue(){
 
 function getDiscountAmount(){
   if (!lastDiscountInfo) return 0;
-  var d = 0;
-  if (lastDiscountInfo.privilege) d += lastDiscountInfo.privilege.discount;
+  var d = lastDiscountInfo.privilegeDiscount || 0;
   if (lastDiscountInfo.coupon) d += lastDiscountInfo.coupon.discount;
   else if (lastDiscountInfo.autoCoupon) d += lastDiscountInfo.autoCoupon.discount;
   return Math.min(getCartTotal(), d);
@@ -537,20 +549,28 @@ function renderDiscountSummary(){
   var wrap = document.getElementById('discountSummary');
   var subtotal = getCartTotal();
   var h = '<div class="bank-box"><div class="row"><span>ยอดสินค้า</span><span>฿' + subtotal.toLocaleString('th-TH') + '</span></div>';
-  if (lastDiscountInfo && lastDiscountInfo.privilege) {
-    // ลบออกจากออเดอร์นี้ได้เฉพาะสิทธิ์ที่ได้มาจาก "แลกด้วยแต้ม" เท่านั้น (ลูกค้าเลือกแลกเองได้ ก็เลือกไม่ใช้
-    // เองได้เช่นกัน) — สิทธิ์ประเภทอื่น เช่น ของขวัญวันเกิด/สิทธิ์ที่พนักงานให้เอง ไม่ให้ลบออกจากออเดอร์ได้
-    var isRedeemable = lastDiscountInfo.privilege.givenBy === 'แลกด้วยแต้ม';
+
+  // แสดงสิทธิ์พิเศษ "ทุกรายการ" ที่ลูกค้ามี — ใช้ได้พร้อมกันทุกรายการจริงๆ (ลดได้จริงทุกอันที่ยังไม่ถูกลบ
+  // ไม่ใช่เลือกใช้แค่ตัวเดียวที่ดีที่สุดแบบเดิม) แต่ละรายการลบออกจากออเดอร์นี้ได้เอง (เฉพาะสิทธิ์ที่ได้มา
+  // จาก "แลกด้วยแต้ม" เท่านั้น — สิทธิ์ประเภทอื่น เช่น ของขวัญวันเกิด/สิทธิ์ที่พนักงานให้เอง ไม่ให้ลบออกจาก
+  // ออเดอร์ได้เหมือนเดิม) กด "ลบ" แล้วขึ้นปุ่ม "ยกเลิก" กดกลับมาใช้ได้ทันที ส่วนลดก็กลับมาเหมือนเดิม
+  var allPrivileges = (lastDiscountInfo && lastDiscountInfo.allPrivileges) || [];
+  allPrivileges.forEach(function(p){
+    var isExcluded = excludedPrivilegeNames.indexOf(p.name) !== -1;
+    var isRedeemable = p.givenBy === 'แลกด้วยแต้ม';
+    var nameForJs = escHtml(p.name).replace(/'/g, "\\'");
+    if (isExcluded) {
+      h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>✅ ไม่ใช้สิทธิ์ "' + escHtml(p.name) + '" ในออเดอร์นี้ (ยังใช้ได้ครั้งถัดไป)</span>'
+        + '<span><button type="button" onclick="undoRemovePrivilege(\'' + nameForJs + '\')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ยกเลิก</button></span></div>';
+      return;
+    }
     var removeBtnHtml = isRedeemable
-      ? ' <button type="button" onclick="removePrivilegeFromOrder(\'' + escHtml(lastDiscountInfo.privilege.name).replace(/'/g, "\\'") + '\')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
+      ? ' <button type="button" onclick="removePrivilegeFromOrder(\'' + nameForJs + '\')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
       : '';
-    h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(lastDiscountInfo.privilege.name) + '</span>'
-      + '<span style="display:flex;align-items:center;gap:8px">-฿' + Math.round(lastDiscountInfo.privilege.discount).toLocaleString('th-TH')
-      + removeBtnHtml + '</span></div>';
-  } else if (excludedPrivilegeName) {
-    h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>✅ ไม่ใช้สิทธิ์ "' + escHtml(excludedPrivilegeName) + '" ในออเดอร์นี้ (ยังใช้ได้ครั้งถัดไป)</span>'
-      + '<span><button type="button" onclick="undoRemovePrivilege()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ยกเลิก</button></span></div>';
-  }
+    // ทุกรายการที่ไม่ถูกลบ ถือว่า "ใช้จริง" ทั้งหมด (ลดได้จริงพร้อมกันทุกอัน) จึงโชว์ยอดลดตรงๆ เสมอ
+    h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(p.name) + '</span>'
+      + '<span style="display:flex;align-items:center;gap:8px">-฿' + Math.round(p.discount).toLocaleString('th-TH') + removeBtnHtml + '</span></div>';
+  });
   if (lastDiscountInfo && lastDiscountInfo.coupon) {
     h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + '</span><span>-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
   } else if (lastDiscountInfo && lastDiscountInfo.autoCoupon) {
@@ -666,7 +686,7 @@ function submitOrder(){
   var itemsB64 = btoa(unescape(encodeURIComponent(itemsJsonRaw))); // UTF-8 safe base64 encode
 
   getFreshIdToken().then(function(idToken){
-    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeName });
+    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeNames.join('|') });
   })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
@@ -698,7 +718,7 @@ function submitOrder(){
       cart = {};
       appliedCouponCode = '';
       lastDiscountInfo = null;
-      excludedPrivilegeName = '';
+      excludedPrivilegeNames = [];
       savedAddressLoaded = false; // สั่งซื้อสำเร็จแล้ว ที่อยู่อาจเพิ่งอัปเดตใหม่ — รอบหน้าให้โหลดใหม่อีกครั้ง
       showState('orderDoneState');
     })
