@@ -156,6 +156,10 @@ var lastDiscountInfo = null; // { privilege, coupon, autoCoupon, couponError } �
 // ใช้กันไม่ให้ liff.login() ถูกเรียกซ้ำไม่รู้จบบนคอมพิวเตอร์ (ดูรายละเอียดที่ startLineLogin() ด้านล่าง)
 var LIFF_LOGIN_GUARD = 'emocha.shop.login-attempted';
 var pendingSlipUploadUrl = ''; // URL หน้าแนบสลิปที่รอเปิดผ่าน window.open() (เซ็ตค่าไว้ตอน submitOrder สำเร็จ)
+// เลขที่ออเดอร์ล่าสุดที่สั่งซื้อสำเร็จแล้วแต่ยังไม่ได้แนบสลิป — ถ้าลูกค้ากดกลับไปหน้าชำระเงินเพื่อแก้ไข
+// อะไรบางอย่าง (เช่น แก้ที่อยู่/จำนวนสินค้า) แล้วกดยืนยันซ้ำ จะส่งเลขที่นี้ไปด้วยเพื่อบันทึกทับของเดิม แทนที่
+// จะสร้างออเดอร์ใหม่ซ้อนขึ้นมา — เคลียร์กลับเป็นค่าว่างตอนเปิดหน้าแนบสลิป (ถือว่าจบขั้นตอนแก้ไขแล้ว)
+var currentOrderId = '';
 
 // เปิดหน้าแนบสลิปด้วย window.open() แทนการคลิกลิงก์ <a target="_blank"> ธรรมดา — สำคัญ: ต้อง window.open()
 // เท่านั้นถึงจะทำให้หน้าใหม่ "รู้ว่าตัวเองถูกเปิดโดยสคริปต์" และสั่ง window.close() ปิดตัวเองได้จริงตอนแนบ
@@ -163,6 +167,56 @@ var pendingSlipUploadUrl = ''; // URL หน้าแนบสลิปที่
 function openSlipUploadPage(){
   if (!pendingSlipUploadUrl) return;
   window.open(pendingSlipUploadUrl, '_blank');
+
+  // ถือว่าขั้นตอนแก้ไขออเดอร์นี้จบแล้วตั้งแต่ตรงนี้ (ลูกค้าไปแนบสลิปต่อแล้ว) เคลียร์เลขที่ออเดอร์ที่แก้ไข
+  // ค้างไว้ทิ้ง กันพลาดไปทับออเดอร์นี้ซ้ำถ้าบังเอิญมีการยิง submitOrder() อีกครั้งในอนาคตโดยไม่ตั้งใจ
+  currentOrderId = '';
+
+  // ปิดหน้าร้าน (หน้า LIFF หลัก) อัตโนมัติทันทีหลังเปิดหน้าแนบสลิป — ลูกค้าไม่จำเป็นต้องใช้หน้านี้อีกแล้ว
+  // ปล่อยให้เหลือแค่หน้าแนบสลิปที่เพิ่งเปิดขึ้นมาใหม่ (ซึ่งจะปิดตัวเองอัตโนมัติหลังแนบสลิปสำเร็จอยู่แล้ว
+  // เหมือนกัน — ดูฟังก์ชัน startCloseCountdown ในไฟล์ slipUpload.html)
+  // ลำดับการลองปิด 3 ชั้น:
+  //   1) liff.closeWindow() — ใช้ได้เฉพาะตอนเปิดอยู่ในแอป LINE เท่านั้น (เช็ค liff.isInClient() ก่อนเสมอ)
+  //      เป็นคำสั่งพิเศษของ LINE ที่ปิดหน้าต่าง LIFF ได้แน่นอน แม้หน้านี้จะไม่ได้ถูกเปิดผ่าน window.open()
+  //      มาก่อนก็ตาม (ปกติ window.close() ธรรมดาทำแบบนี้ไม่ได้ — นี่คือเหตุผลที่ต้องใช้ liff.closeWindow()
+  //      แทน ไม่ใช่ window.close() เฉยๆ)
+  //   2) window.close() ธรรมดา — เผื่อบังเอิญหน้านี้ถูกเปิดผ่าน window.open() มาจากที่อื่นจริงๆ (ไม่ใช่กรณี
+  //      ปกติของหน้าร้าน แต่เผื่อไว้เฉยๆ ไม่มีผลเสีย ถ้าปิดไม่ได้ก็แค่ไม่มีอะไรเกิดขึ้น ไม่ error)
+  //   3) ถ้าทั้ง 2 อย่างข้างบนไม่เวิร์ก (กรณีเปิดผ่านเบราว์เซอร์ปกติอย่าง Safari/Chrome นอกแอป LINE โดยตรง
+  //      เช่น พิมพ์ลิงก์เอง หรือแตะจากที่อื่นที่ไม่ใช่ LINE) จะไม่มีทางบังคับปิดแท็บได้เลยไม่ว่าจะเขียนโค้ด
+  //      แบบไหนก็ตาม — เป็นข้อจำกัดด้านความปลอดภัยที่เบราว์เซอร์ทุกยี่ห้อ (Chrome/Safari/Firefox/Edge)
+  //      บังคับใช้เหมือนกันหมด เพื่อกันเว็บอันตรายปิดแท็บของผู้ใช้เองโดยไม่ได้รับอนุญาต ไม่มีคำสั่ง JavaScript
+  //      ไหนเลี่ยงกฎนี้ได้ — ทางที่ดีที่สุดที่ทำได้คือโชว์ข้อความบอกให้ลูกค้าปิดแท็บเองแทน
+  setTimeout(function(){
+    var closedViaLiff = false;
+    try {
+      if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
+        liff.closeWindow();
+        closedViaLiff = true;
+      }
+    } catch (e) { /* liff ยังไม่พร้อม/error — ไปลองวิธีถัดไปต่อ */ }
+
+    if (!closedViaLiff) {
+      try { window.close(); } catch (e) { /* ปิดไม่ได้ตามคาด — ไปโชว์ข้อความให้ปิดเองแทน */ }
+    }
+
+    // เช็คอีกทีหลังพยายามปิดไปแล้ว — ถ้าปิดสำเร็จจริง โค้ดตรงนี้จะไม่มีทางรันต่อได้เพราะหน้าต่างหายไปแล้ว
+    // (แปลว่าถ้ารันมาถึงจุดนี้ได้ แสดงว่าปิดอัตโนมัติไม่สำเร็จแน่นอน) จึงโชว์ข้อความให้ลูกค้าปิดเองแทน
+    setTimeout(showManualCloseMessage_, 400);
+  }, 300); // หน่วงเล็กน้อยกันบาง browser ยกเลิกการเปิดป็อปอัพถ้า opener ปิดตัวเร็วเกินไป
+}
+
+// โชว์ข้อความบอกให้ลูกค้าปิดหน้านี้เอง — ใช้ตอนพยายามปิดหน้าอัตโนมัติ 3 ชั้นข้างบนไม่สำเร็จสักอย่าง (ส่วน
+// ใหญ่เกิดตอนเปิดผ่านเบราว์เซอร์ปกตินอกแอป LINE) แสดงเป็นแถบข้อความลอยด้านล่างจอ ไม่บังเนื้อหาอื่น
+function showManualCloseMessage_(){
+  if (document.getElementById('closeManualMsgBox')) return; // กันโชว์ซ้ำถ้าเผลอเรียกซ้ำ
+  var div = document.createElement('div');
+  div.id = 'closeManualMsgBox';
+  div.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;max-width:360px;margin:0 auto;'
+    + 'background:var(--gd,#1a5c2a);color:#fff;padding:12px 16px;border-radius:10px;text-align:center;'
+    + 'font-size:14px;font-family:"Sarabun",sans-serif;z-index:999;box-shadow:0 4px 14px rgba(0,0,0,.2)';
+  div.textContent = '📎 ไปหน้าแนบสลิปแล้วนะคะ ปิดหน้านี้ทิ้งได้เลยค่ะ 🙏';
+  document.body.appendChild(div);
 }
 
 function showState(id){
@@ -688,7 +742,7 @@ function submitOrder(){
   var itemsB64 = btoa(unescape(encodeURIComponent(itemsJsonRaw))); // UTF-8 safe base64 encode
 
   getFreshIdToken().then(function(idToken){
-    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|') });
+    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId });
   })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
@@ -720,10 +774,12 @@ function submitOrder(){
       // slipUpload.html ไปไว้ที่ repo toinatadee/Order (โฟลเดอร์เดียวกับ index.html นี้) ด้วย
       pendingSlipUploadUrl = 'https://toinatadee.github.io/Order/slipUpload.html?orderId=' + encodeURIComponent(r.orderId);
 
-      cart = {};
-      appliedCouponCode = '';
-      lastDiscountInfo = null;
-      excludedPrivilegeRowIndexes = [];
+      // จำเลขที่ออเดอร์นี้ไว้ — ถ้าลูกค้ากดกลับไปหน้าชำระเงินเพื่อแก้ไข (เช่น แก้ที่อยู่/จำนวนสินค้า) แล้ว
+      // กดยืนยันซ้ำ จะได้บันทึกทับออเดอร์เดิมแทนที่จะสร้างใหม่ซ้อนขึ้นมา — เจตนา "ไม่เคลียร์" ตะกร้า/โค้ด/
+      // สิทธิ์ที่ใช้ไปแล้วตรงนี้ (ต่างจากเดิมที่เคยล้างทิ้งทันที) เพราะถ้าลูกค้ากดกลับไปแก้ไข ต้องยังเห็น
+      // ออเดอร์เดิมของตัวเองอยู่ครบ ไม่ใช่ตะกร้าว่างเปล่า — จะเคลียร์จริงๆ ก็ต่อเมื่อกดปุ่ม "แนบสลิป" แล้ว
+      // (ดูฟังก์ชัน openSlipUploadPage) ซึ่งถือว่าจบขั้นตอนแก้ไขแล้วจริงๆ
+      currentOrderId = r.orderId;
       savedAddressLoaded = false; // สั่งซื้อสำเร็จแล้ว ที่อยู่อาจเพิ่งอัปเดตใหม่ — รอบหน้าให้โหลดใหม่อีกครั้ง
       showState('orderDoneState');
     })
