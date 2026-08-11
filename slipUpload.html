@@ -159,14 +159,14 @@ function handleFile(inp){
   reader.readAsDataURL(file);
 }
 
-// นับถอยหลัง 10 วินาทีหลังแนบสลิปสำเร็จ แล้วพยายามปิดหน้าอัตโนมัติ (เฉพาะกรณีที่ปิดเองได้จริงเท่านั้น —
+// นับถอยหลัง 15 วินาทีหลังแนบสลิปสำเร็จ แล้วพยายามปิดหน้าอัตโนมัติ (เฉพาะกรณีที่ปิดเองได้จริงเท่านั้น —
 // ถ้า canSelfClose เป็น false ตั้งแต่แรก จะข้ามการนับถอยหลังไปเลย โชว์ปุ่ม "ปิดหน้านี้เลย" ไว้ให้กดเองแทน)
 function startCloseCountdown(){
   if (!canSelfClose) {
     document.getElementById('closeCountdown').textContent = 'ปิดหน้านี้ได้เลยค่ะ 🙏';
     return;
   }
-  var secondsLeft = 10;
+  var secondsLeft = 15;
   var el = document.getElementById('closeCountdown');
   (function tick(){
     if (secondsLeft <= 0) {
@@ -204,6 +204,14 @@ function submitSlip(){
       if (r && r.success) {
         document.getElementById('formState').classList.add('sh');
         document.getElementById('successState').classList.remove('sh');
+        // แจ้งหน้าร้าน (opener) ว่าแนบสลิปสำเร็จแล้ว ให้ปิดตัวเองตามได้เลย — ส่งสัญญาณตอนนี้แทนที่จะให้
+        // หน้าร้านปิดตัวเองไปก่อนหน้านี้แล้ว (ถ้าหน้าร้านปิดไปก่อน window.opener ของหน้านี้จะหายไปด้วย
+        // ทำให้ canSelfClose ด้านบนกลายเป็น false และข้ามการนับถอยหลังปิดอัตโนมัติของหน้านี้เองไปเลย)
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage({ type: 'emocha-slip-uploaded' }, '*');
+          }
+        } catch (e) { /* ปิด opener ไปแล้ว/เข้าถึงไม่ได้ — ไม่กระทบการทำงานหลักของหน้านี้ */ }
         startCloseCountdown();
       } else {
         errBox.textContent = r ? r.error : 'เกิดข้อผิดพลาด';
