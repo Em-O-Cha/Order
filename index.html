@@ -395,18 +395,21 @@ function withTimeout_(promise, ms, message){
 }
 
 function goToCheckout(){
-  // ดึง idToken ครั้งเดียว แล้วยิงทั้ง 3 คำขอพร้อมกัน (แทนที่จะรอทีละอันต่อกันเป็นทอดๆ) — ลดเวลารอได้มาก
+  // ดึง idToken ครั้งเดียว แล้วยิงคำขอที่จำเป็นพร้อมกัน (แทนที่จะรอทีละอันต่อกันเป็นทอดๆ) — ลดเวลารอได้มาก
   // เพราะ checkShopDiscounts และ getMyShippingAddress ต่างก็ต้องยืนยันตัวตนกับ LINE (ยิง API ภายนอก)
   // ถ้าเรียกแยกกันคนละรอบจะเสียเวลายืนยันซ้ำ 2 ครั้ง ทั้งที่ใช้ idToken ตัวเดียวกันได้เลย
   var btn = document.getElementById('checkoutBtn');
   btn.disabled = true; var originalBtnText = btn.textContent; btn.textContent = '⏳ กำลังโหลด...';
 
   var flow = getFreshIdToken().then(function(idToken){
-    return Promise.all([
-      callApi('getShopPaymentInfo').then(function(r){ if (r && r.success) paymentInfo = r; }),
-      refreshDiscounts(idToken),
-      loadSavedAddress(idToken)
-    ]);
+    var calls = [refreshDiscounts(idToken), loadSavedAddress(idToken)];
+    // ⚡ ข้อมูลการชำระเงิน (เลขพร้อมเพย์/เลขบัญชี/ชื่อบัญชี) เป็นค่านิ่ง ไม่เปลี่ยนระหว่างที่เปิดแอปอยู่เลย
+    // เดิมยิงซ้ำทุกครั้งที่กด "ไปหน้าชำระเงิน" แม้จะเคยดึงมาแล้วก็ตาม — ถ้าเคยได้ paymentInfo มาแล้ว
+    // (ไม่ว่าจากรอบไหน) ข้ามการยิงซ้ำไปเลย ลดจำนวนคำขอที่แย่งกันตอบพร้อมกันตอนกดปุ่มนี้ลงได้ 1 ใน 3
+    if (!paymentInfo) {
+      calls.push(callApi('getShopPaymentInfo').then(function(r){ if (r && r.success) paymentInfo = r; }));
+    }
+    return Promise.all(calls);
   });
 
   withTimeout_(flow, 15000, 'หมดเวลารอ (เกิน 15 วินาที) — เครือข่ายอาจมีปัญหา หรือ Apps Script ตอบช้าผิดปกติ ลองกดใหม่อีกครั้ง')
