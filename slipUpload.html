@@ -86,7 +86,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 <script>
 // ⚠️ Apps Script Web App URL เดียวกับที่หน้าอื่นๆ ในระบบใช้ (index.html หน้าสมัครสมาชิก/หน้าสั่งซื้อ)
 // ถ้าเคย Deploy เวอร์ชันใหม่จน URL เปลี่ยน ต้องมาแก้ตรงนี้ให้ตรงกันด้วย
-var API_URL = 'https://script.google.com/macros/s/AKfycby_bfO-sR2d3l55SMu62IoPQ1PkwO2AXHOKU562gEk9PhLDCR4Ml9uG2re89unqJbE/exec';
+var API_URL = 'https://script.google.com/macros/s/AKfycbzfhB83ccV-gnji-A_-rNnGmM7K1O4XnV9w6NBcTRm_d_fN_raU6BjBwyOIWz-SIeL7Bw/exec';
 
 // เดิมหน้านี้เป็นหน้าที่ Apps Script เสิร์ฟเอง (ผ่าน doGet ?page=uploadSlip) รับค่า orderId ผ่านตัวแปร
 // เทมเพลตของ Apps Script (<?= orderId ?>) ได้ตรงๆ — ตอนนี้ย้ายมาเป็นหน้า static บน GitHub Pages แล้ว จึง
@@ -184,6 +184,34 @@ function startCloseCountdown(){
 // Apps Script แทน (เหมือนวิธีที่หน้าสมัครสมาชิกใช้ตอน registerMember) ส่ง Content-Type เป็น text/plain
 // (ไม่ใช่ application/json) เพื่อเลี่ยง CORS preflight request ที่ browser ต้องใช้ตอน Content-Type เป็น
 // application/json แต่ Apps Script ไม่รองรับ doOptions ที่ preflight ต้องการ
+//
+// ⚡ เพิ่มลองใหม่อัตโนมัติสูงสุด 3 ครั้ง เฉพาะตอนเน็ตสะดุดระดับเครือข่าย (เช่น "Load failed" บน iOS/แอป LINE,
+// "Failed to fetch" บน Android) ก่อนค่อยโชว์ error ให้ผู้ใช้เห็น — ไม่ลองใหม่ถ้าเซิร์ฟเวอร์ตอบกลับมาแล้วแต่
+// เป็น error ทางธุรกิจ (เช่น "ไม่พบเลขที่ออเดอร์นี้") เพราะลองใหม่กี่ครั้งก็ไม่มีทางสำเร็จ มีแต่จะทำให้ผู้ใช้
+// รอนานขึ้นเฉยๆ โดยไม่ได้ประโยชน์ — ระหว่างลองใหม่ ปุ่มยังคงเป็น disabled/"กำลังอัปโหลด..." อยู่เหมือนเดิม
+// ผู้ใช้จะไม่เห็นความต่างอะไรเลย นอกจากโอกาสที่จะไม่ต้องกดยืนยันซ้ำเองเวลาเน็ตสะดุดแค่แป๊บเดียว
+function uploadSlipAttempt_(attempt){
+  return fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ action: 'uploadShopSlip', orderId: ORDER_ID, base64: slipData.base64, fileName: slipData.fileName, mimeType: slipData.mimeType })
+  })
+    .then(function(res){ return res.text(); })
+    .then(function(text){
+      try { return JSON.parse(text); } catch (parseErr) { throw new Error('ระบบตอบกลับไม่ถูกต้อง (ไม่ใช่ JSON) — ลองใหม่อีกครั้ง'); }
+    })
+    .catch(function(networkErr){
+      // เข้าตรงนี้เฉพาะตอน fetch() ล้มเหลวระดับเครือข่าย (ไม่ได้รับ response เลย) — ลองใหม่แบบเงียบๆ
+      // ถ้ายังไม่ครบ 3 ครั้ง (เว้นระยะสั้นๆ กันยิงรัวเกินไปตอนเน็ตหลุดจริงจัง)
+      if (attempt < 3) {
+        return new Promise(function(resolve){
+          setTimeout(function(){ resolve(uploadSlipAttempt_(attempt + 1)); }, attempt * 700);
+        });
+      }
+      throw networkErr;
+    });
+}
+
 function submitSlip(){
   if (!slipData) return;
   var btn = document.getElementById('submitBtn');
@@ -191,15 +219,8 @@ function submitSlip(){
   errBox.classList.remove('show');
   btn.disabled = true; btn.textContent = '⏳ กำลังอัปโหลด...';
 
-  fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ action: 'uploadShopSlip', orderId: ORDER_ID, base64: slipData.base64, fileName: slipData.fileName, mimeType: slipData.mimeType })
-  })
-    .then(function(res){ return res.text(); })
-    .then(function(text){
-      var r;
-      try { r = JSON.parse(text); } catch (parseErr) { throw new Error('ระบบตอบกลับไม่ถูกต้อง (ไม่ใช่ JSON) — ลองใหม่อีกครั้ง'); }
+  uploadSlipAttempt_(1)
+    .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันแนบสลิป';
       if (r && r.success) {
         document.getElementById('formState').classList.add('sh');
