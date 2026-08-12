@@ -126,6 +126,12 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
       <div class="order-box" id="orderSummary"></div>
       <button class="btn btn-block" style="margin-top:16px" onclick="openSlipUploadPage()">📎 แนบสลิปการโอนเงิน</button>
       <p style="font-size:12px;color:var(--g6);margin-top:10px">กดปุ่มด้านบนเพื่อแนบสลิป — ทีมงานจะตรวจสอบและจัดส่งให้เร็วที่สุด</p>
+      <!-- ⚡ ข้อความสำรอง โชว์เฉพาะตอนแนบสลิปสำเร็จแล้วแต่หน้านี้ปิดตัวเองไม่สำเร็จ (liff.closeWindow()/
+           window.close() ใช้ไม่ได้ในบางกรณีของแอป LINE — ข้อจำกัดของแพลตฟอร์ม ไม่ใช่บั๊กโค้ด) เดิมถ้าปิด
+           ไม่สำเร็จ ผู้ใช้จะไม่เห็นอะไรเลย ค้างอยู่หน้าเดิมแบบไม่มีข้อความบอกอะไรทั้งสิ้น -->
+      <div id="slipDoneNotice" class="sh" style="margin-top:14px;padding:12px 14px;background:#e8f5e9;border-radius:12px;font-size:13.5px;color:#1b5e20;text-align:center">
+        ✅ แนบสลิปเรียบร้อยแล้ว ขอบคุณค่ะ 🙏<br>ปิดหน้านี้ได้เลย
+      </div>
     </div>
 
     <div id="errorState" class="sh state"></div>
@@ -183,13 +189,30 @@ function openSlipUploadPage(){
 // พร้อมกันแบบสุ่มเสี่ยงจนทำให้หน้าลูกปิดตัวเองไม่ได้แบบที่เคยเจอปัญหามาก่อน)
 window.addEventListener('message', function(evt){
   if (!evt || !evt.data || evt.data.type !== 'emocha-slip-uploaded') return;
-  try {
-    if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
-      liff.closeWindow();
-    } else {
-      window.close();
-    }
-  } catch (e) { /* ปิดไม่ได้ (เช่น เปิดผ่านเบราว์เซอร์ปกตินอกแอป LINE) — ปล่อยไว้เฉยๆ ไม่ต้องทำอะไรต่อ */ }
+  // ⚡ โชว์ข้อความยืนยัน "แนบสลิปเรียบร้อยแล้ว" ไว้ก่อนเลย ไม่ว่าการปิดหน้าด้านล่างจะสำเร็จหรือไม่ก็ตาม —
+  // ถ้าปิดสำเร็จ ผู้ใช้จะไม่ทันเห็นข้อความนี้อยู่แล้ว (หน้าปิดไปก่อน) แต่ถ้าปิดไม่สำเร็จ (ข้อจำกัดของ
+  // เบราว์เซอร์ในแอป LINE บางกรณี) อย่างน้อยผู้ใช้จะเห็นข้อความนี้แทนที่จะค้างอยู่แบบไม่มีอะไรบอกเลย
+  var notice = document.getElementById('slipDoneNotice');
+  if (notice) notice.classList.remove('sh');
+
+  // ⚡ ลองปิดซ้ำ 3 ครั้ง ห่างกันครั้งละ 500ms (ไม่ใช่ครั้งเดียวจบแบบเดิม) — เผื่อหน้าร้านนี้ถูก LINE พัก
+  // การทำงานไว้ (background/suspend) ระหว่างที่ลูกค้าอยู่ที่หน้าแนบสลิป ทำให้ liff.closeWindow() ครั้งแรก
+  // ที่ยิงมาพร้อมกับตอนเพิ่งได้รับสัญญาณอาจจะยังไม่ติด (หน้ายังไม่ "ตื่น" เต็มที่) ลองซ้ำเผื่อรอบถัดไปติด
+  // — ไม่ได้เปลี่ยนจังหวะที่เริ่มปิด (ยังคงรอสัญญาณแนบสลิปสำเร็จก่อนเสมอเหมือนที่แก้ไว้เมื่อวาน กันความเสี่ยง
+  // เรื่องปิดหน้าร้านเร็วเกินไปจนหน้าต่างลูกถูกปิดตามไปด้วยกลางคัน) แค่เพิ่มความ "เหนียว" ตอนพยายามปิดเท่านั้น
+  var closeAttempts = 0;
+  function tryClose(){
+    closeAttempts++;
+    try {
+      if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
+        liff.closeWindow();
+      } else {
+        window.close();
+      }
+    } catch (e) { /* ปิดไม่ได้ (เช่น เปิดผ่านเบราว์เซอร์ปกตินอกแอป LINE) — ข้อความสำรองด้านบนโชว์ไว้ให้แล้ว */ }
+    if (closeAttempts < 3) setTimeout(tryClose, 500);
+  }
+  tryClose();
 });
 
 function showState(id){
