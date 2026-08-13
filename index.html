@@ -144,7 +144,14 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 </div>
 
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<!-- ⚡ เพิ่ม defer ตรงนี้ (13/8/69) — ไลบรารีสร้าง QR code นี้ใช้แค่ตอนแสดง QR พร้อมเพย์ที่หน้าชำระเงิน
+     (ดูจุดที่เรียกใช้ "new QRCode(...)" ด้านล่าง) ไม่ได้ใช้ตอนเริ่มโหลดหน้าเลย แต่เดิมวางไว้เป็น script
+     แบบบล็อกหน้า (ไม่มี defer) ทำให้ต้องรอโหลดไลบรารีนี้จาก cdnjs.cloudflare.com ให้เสร็จก่อน ถึงจะไปถึง
+     โค้ดที่เรียก initLiff() ท้ายไฟล์ได้ — ถ้า cdnjs ตอบช้าวันไหน จะหน่วงการเชื่อมต่อ LINE ให้ช้าตามไปด้วย
+     ทั้งที่ไม่เกี่ยวกันเลย ใส่ defer ให้โหลดคู่ขนานแทน (สคริปต์นี้มี src จริง ไม่ใช่ inline จึง defer ได้ผล
+     ต่างจาก inline script — ดูคอมเมนต์ที่ slipUpload.html เรื่องข้อจำกัดของ defer กับ inline script) โค้ด
+     หลักของหน้า (รวมถึง initLiff()) จะรันได้ทันทีที่ LIFF SDK โหลดเสร็จ ไม่ต้องรอไลบรารี QR อีกต่อไป -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 <script>
 // ⚠️ ใส่ LIFF ID ของ "หน้าร้าน" ตรงนี้ (สร้างเป็น LIFF App ใหม่ ใต้ LINE Login Channel เดิม)
 var LIFF_ID = '2010892131-3XYQXNzq';
