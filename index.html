@@ -319,6 +319,21 @@ function loadProducts(){
       renderCatalog();
       showState('catalogState');
       loadMyPrivileges();
+
+      // ⚡ ดึงล่วงหน้าตั้งแต่ตอนนี้เลย (13/8/69) — เดิมข้อมูล 2 อย่างนี้ (ที่อยู่เดิม/ข้อมูลการชำระเงิน) ถูก
+      // ดึงตอนกด "ไปหน้าชำระเงิน" พร้อมกับเช็คส่วนลดทีเดียว 2-3 คำขอพร้อมกัน ซึ่ง Apps Script (โดยเฉพาะ
+      // บัญชี Google ทั่วไป) มักรันคำขอพร้อมกันจากสคริปต์เดียวกันไม่ได้จริง ต้องต่อคิวกันเอง รวมกับตอนนั้น
+      // แคชฝั่งเซิร์ฟเวอร์ (Tier_Config/Shipping_Config ฯลฯ) มักยังไม่อุ่นเครื่อง ทำให้รวมกันแล้วเกิน 15
+      // วินาทีเกือบทุกครั้ง (กดรอบแรกโดนบอกให้ลองใหม่ รอบสองไวเพราะแคชอุ่นแล้วจากรอบแรก) — ย้ายมาดึงตั้งแต่
+      // ตอนนี้แทน (ไม่ต้องรอผู้ใช้กดปุ่มก่อน) ข้อมูล 2 อย่างนี้ไม่ขึ้นกับตะกร้าสินค้าเลย ดึงได้ทันทีที่เข้าร้าน
+      // พอถึงตอนกด "ไปหน้าชำระเงิน" จริง loadSavedAddress()/paymentInfo ส่วนใหญ่จะเสร็จไปแล้ว (มีการ์ด
+      // savedAddressLoaded / "if (!paymentInfo)" กันดึงซ้ำอยู่แล้วในตัวมันเอง ไม่ต้องแก้อะไรเพิ่มตรงนั้น)
+      // เหลือรอแค่ checkShopDiscounts() เพียงคำขอเดียว (ต้องรอตะกร้าจริง ดึงล่วงหน้าไม่ได้) จึงติด 15 วินาที
+      // น้อยลงมาก เพราะไม่ต้องแย่งคิวกับอีก 2 คำขอที่เหลือ
+      loadSavedAddress().catch(function(){ /* ไม่เป็นไร ไปโหลดใหม่ตอนกดเข้าหน้าชำระเงินอีกทีถ้ารอบนี้พลาด */ });
+      if (!paymentInfo) {
+        callApi('getShopPaymentInfo').then(function(r){ if (r && r.success) paymentInfo = r; }).catch(function(){});
+      }
     })
     .catch(function(e){ showErrorState('เรียก API ไม่สำเร็จ: ' + e.message); });
 }
@@ -435,9 +450,10 @@ function withTimeout_(promise, ms, message){
 }
 
 function goToCheckout(){
-  // ดึง idToken ครั้งเดียว แล้วยิงคำขอที่จำเป็นพร้อมกัน (แทนที่จะรอทีละอันต่อกันเป็นทอดๆ) — ลดเวลารอได้มาก
-  // เพราะ checkShopDiscounts และ getMyShippingAddress ต่างก็ต้องยืนยันตัวตนกับ LINE (ยิง API ภายนอก)
-  // ถ้าเรียกแยกกันคนละรอบจะเสียเวลายืนยันซ้ำ 2 ครั้ง ทั้งที่ใช้ idToken ตัวเดียวกันได้เลย
+  // ⚡ ตอนนี้ loadSavedAddress()/paymentInfo ถูกดึงล่วงหน้าไปแล้วตั้งแต่ตอนหน้าสินค้าโหลดเสร็จ (ดูใน
+  // loadProducts() ด้านบน) — ทั้งสองมีการ์ดกันดึงซ้ำในตัวเองอยู่แล้ว (savedAddressLoaded / "if
+  // (!paymentInfo)") เรียกซ้ำตรงนี้ได้อย่างปลอดภัย ส่วนใหญ่จะ resolve ทันทีไม่ต้องรอเครือข่ายอีกรอบเลย
+  // เหลือแค่ refreshDiscounts() ที่ต้องรอข้อมูลตะกร้าจริงเท่านั้นที่ยังต้องยิงคำขอใหม่ทุกครั้งจริงๆ
   var btn = document.getElementById('checkoutBtn');
   btn.disabled = true; var originalBtnText = btn.textContent; btn.textContent = '⏳ กำลังโหลด...';
 
@@ -452,7 +468,7 @@ function goToCheckout(){
     return Promise.all(calls);
   });
 
-  withTimeout_(flow, 15000, 'หมดเวลารอ (เกิน 15 วินาที) — เครือข่ายอาจมีปัญหา หรือ Apps Script ตอบช้าผิดปกติ ลองกดใหม่อีกครั้ง')
+  withTimeout_(flow, 25000, 'หมดเวลารอ (เกิน 25 วินาที) — เครือข่ายอาจมีปัญหา หรือ Apps Script ตอบช้าผิดปกติ ลองกดใหม่อีกครั้ง')
     .then(function(){
       btn.disabled = false; btn.textContent = originalBtnText;
       showState('checkoutState');
