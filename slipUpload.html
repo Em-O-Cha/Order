@@ -84,6 +84,41 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 </div>
 
 <script>
+// ⚡ แก้ปัญหาเดิม (13/8/69): แท็ก <script src="...sdk.js"> ปกติ (ไม่มี defer/async) เป็น script แบบ
+// บล็อกการโหลดหน้า (render-blocking) — เบราว์เซอร์ต้องรอโหลด+รัน SDK จาก LINE ให้เสร็จก่อน ถึงจะไปแตะ
+// โค้ดส่วนที่เหลือของหน้านี้ได้เลยสักบรรทัด (รวมถึงฟังก์ชันเลือกรูป/กดอัปโหลด) ถ้าเน็ตช้าหรือ LINE server
+// ตอบช้าเป็นพิเศษ ปุ่มต่างๆ บนหน้าจะกดไม่ได้เลยจนกว่าจะโหลดเสร็จ ทั้งที่ผู้ใช้เห็นหน้าตาการ์ดครบแล้ว
+//
+// ลองใส่ defer ให้ script tag ตัวนั้นดูก่อน แต่พบว่า defer ไม่มีผลกับ inline script ที่ไม่มี src (ตาม
+// สเปกเบราว์เซอร์) ทำให้ inline script อันนี้ (ที่ไม่มี defer) จะรันก่อน SDK โหลดเสร็จอยู่ดี จนตัวแปร liff
+// ยังไม่มีค่าตอนเรียก liff.init() (พัง) — แก้ให้ถูกต้องจริงๆ โดยโหลด SDK แบบ inject เข้ามาด้วยโค้ดเองแทน
+// ฟังก์ชันหลักของหน้านี้ (handleFile/submitSlip/closeThisPage) ประกาศพร้อมใช้งานได้ทันทีไม่ต้องรอ SDK เลย
+// ส่วน liff.init() จะถูกเรียกก็ต่อเมื่อ SDK โหลดเสร็จจริงๆ เท่านั้น (ผ่าน onload ของ script ที่ inject เอง)
+//
+// ⚡ พบจากการทดสอบจริงในแอป LINE บน iOS (13/8/69): window.open() บน iOS ของแอป LINE มักไม่ได้เปิด "หน้าต่าง
+// ใหม่" จริงๆ แต่เป็นการนำทางหน้าเดิม (หน้าร้าน) ไปยัง URL นี้แทน (มีแค่หน้าเดียวตลอดเวลา ไม่ใช่ 2 หน้าต่าง)
+// ผลคือ window.opener ไม่มีค่าตั้งแต่แรกอยู่แล้วในสภาพแวดล้อมนี้ (ปิดตัวเองผ่าน window.close() ไม่ได้แน่นอน
+// ไม่ว่าจะพยายามกี่ครั้ง) — จึงเพิ่มโหลด LIFF SDK เข้ามาในหน้านี้ด้วย แล้วลองปิดผ่าน liff.closeWindow()
+// เป็นทางเลือกที่สอง เพราะเป็นคำสั่งที่คุยตรงกับแอป LINE เอง (ไม่ผ่านกลไก window.opener ของเบราว์เซอร์เลย)
+// ถึงจะเปิดมาจาก URL ที่ไม่ตรงกับ Endpoint URL ที่ลงทะเบียนไว้ของ LIFF ID นี้ก็ตาม ยังทำงานได้ตราบใดที่ยัง
+// อยู่ในเบราว์เซอร์ในแอป LINE เดิม (liff.isInClient() เป็นจริง) — ใช้ LIFF ID เดียวกับหน้าร้าน (Order/index.html)
+// เพราะจากการทดสอบพบว่ายังอยู่ใน context ของ LIFF ตัวเดิมต่อเนื่องมา ไม่ได้หลุดออกไปเป็นเบราว์เซอร์แยก
+var SLIP_LIFF_ID = '2010892131-3XYQXNzq';
+var liffReady_ = false;
+var liffInClient_ = false;
+
+var liffSdkScript_ = document.createElement('script');
+liffSdkScript_.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
+liffSdkScript_.onload = function(){
+  try {
+    liff.init({ liffId: SLIP_LIFF_ID }).then(function(){
+      liffReady_ = true;
+      liffInClient_ = !!(liff.isInClient && liff.isInClient());
+    }).catch(function(){ /* init ไม่สำเร็จ (เช่น เปิดนอกแอป LINE) — ไม่เป็นไร ใช้ window.close() แทนต่อไป */ });
+  } catch (e) { /* ไม่ควรเกิดขึ้นเลยเพราะเรียกหลัง onload แล้ว แต่กันไว้เผื่อ */ }
+};
+document.head.appendChild(liffSdkScript_);
+
 // ⚠️ Apps Script Web App URL เดียวกับที่หน้าอื่นๆ ในระบบใช้ (index.html หน้าสมัครสมาชิก/หน้าสั่งซื้อ)
 // ถ้าเคย Deploy เวอร์ชันใหม่จน URL เปลี่ยน ต้องมาแก้ตรงนี้ให้ตรงกันด้วย
 var API_URL = 'https://script.google.com/macros/s/AKfycbzfhB83ccV-gnji-A_-rNnGmM7K1O4XnV9w6NBcTRm_d_fN_raU6BjBwyOIWz-SIeL7Bw/exec';
@@ -95,32 +130,27 @@ var ORDER_ID = new URLSearchParams(location.search).get('orderId') || '';
 document.getElementById('orderIdDisplay').textContent = ORDER_ID;
 var slipData = null;
 
-// เช็คตั้งแต่เปิดหน้าเลยว่า "หน้านี้ถูกเปิดโดยสคริปต์" หรือไม่ (window.opener มีค่า = ถูกเปิดผ่าน
-// window.open() จากหน้าร้าน) — สำคัญมาก: เบราว์เซอร์ส่วนใหญ่อนุญาตให้สคริปต์สั่ง window.close() ปิด
-// หน้าต่างได้ "เฉพาะหน้าที่สคริปต์เป็นคนเปิดเองเท่านั้น" ถ้าเปิดผ่านการคลิกลิงก์ธรรมดา หรือพิมพ์ URL เอง
-// หรือเปิดจากไฟล์ index.html เวอร์ชันเก่าที่ยังไม่ได้อัปเดต จะสั่งปิดเองไม่ได้เด็ดขาดไม่ว่าจะพยายามกี่ครั้ง
-// (ข้อจำกัดด้านความปลอดภัยของเบราว์เซอร์ ไม่ใช่บั๊กของหน้านี้) เช็คไว้ล่วงหน้าจะได้ไม่หลอกผู้ใช้ว่าจะปิดให้ได้
+// เช็คว่า "หน้านี้ถูกเปิดโดยสคริปต์" หรือไม่ (window.opener มีค่า = ถูกเปิดผ่าน window.open() จากหน้าร้าน)
+// เก็บไว้เผื่ออนาคตต้องใช้วินิจฉัย — ตอนนี้ไม่ได้ใช้ตัดสินใจอะไรอีกแล้ว (ดูคอมเมนต์ SLIP_LIFF_ID ด้านบน:
+// บน iOS/แอป LINE window.opener มักไม่มีค่าอยู่แล้วแม้เปิดถูกทาง จึงเปลี่ยนไปพึ่ง liff.closeWindow() เป็นหลัก
+// แทน ปุ่มปิดจึงแสดงไว้เสมอไม่ว่า window.opener จะมีค่าหรือไม่ก็ตาม)
 var canSelfClose = !!window.opener;
 
-// ถ้าปิดเองไม่ได้จริงๆ (ไม่ได้เปิดผ่าน window.open()) ปุ่มปิดทั้งสองจุด (X มุมขวาบน และ "ปิดหน้านี้เลย"
-// ด้านล่าง) ก็ไม่มีประโยชน์ที่จะกด — ซ่อนไปเลยดีกว่าปล่อยให้มีปุ่มที่กดแล้วไม่เกิดอะไรขึ้น เหลือแค่ข้อความบอก
-// ให้ปิดเองพอ
-if (!canSelfClose) {
-  ['closeBtn', 'closeXBtn'].forEach(function(id){
-    var el = document.getElementById(id);
-    if (el) el.style.display = 'none';
-  });
-}
-
 function closeThisPage(){
-  // ฟังก์ชันนี้ถูกเรียกได้ 2 ทาง: กดปุ่ม (มีปุ่มเฉพาะตอนปิดเองได้จริง) หรือ countdown หมดเวลา
+  // ฟังก์ชันนี้ถูกเรียกได้ 2 ทาง: กดปุ่ม หรือ countdown หมดเวลา — ลองปิดทั้ง liff.closeWindow() (ถ้าอยู่
+  // ในแอป LINE) และ window.close() (เผื่อกรณีเปิดผ่านเบราว์เซอร์ปกติที่มี opener จริง) พร้อมกันทั้งคู่
+  try {
+    if (liffReady_ && liffInClient_) { liff.closeWindow(); }
+  } catch (e) { /* ปิดผ่าน LIFF ไม่สำเร็จ — ลองทางที่เหลือต่อไปตามปกติ */ }
   window.close();
-  // เผื่อ browser ปฏิเสธแม้จะมี opener ก็ตาม (เช่น ผู้ใช้เคยคลิกอย่างอื่นในแท็บนี้จนตัดความสัมพันธ์ไปแล้ว)
+  // เผื่อทั้งสองทางปฏิเสธ (เช่น liff ยังไม่ init เสร็จตอนกดปุ่มพอดี หรือไม่มี opener จริง) — โชว์ข้อความ
+  // ให้ปิดเองแทน กันหน้าจอค้างเงียบๆ ไม่บอกอะไรผู้ใช้เลย
   setTimeout(function(){
     var el = document.getElementById('closeCountdown');
     if (el) el.textContent = 'ปิดหน้านี้ได้เลยค่ะ 🙏';
   }, 400);
 }
+
 
 function showErrorState(msg){
   document.getElementById('errorState').innerHTML = '<div class="ico">⚠️</div><p style="color:#c62828">' + msg.replace(/</g,'&lt;') + '</p>';
@@ -159,13 +189,11 @@ function handleFile(inp){
   reader.readAsDataURL(file);
 }
 
-// นับถอยหลัง 10 วินาทีหลังแนบสลิปสำเร็จ แล้วพยายามปิดหน้าอัตโนมัติ (เฉพาะกรณีที่ปิดเองได้จริงเท่านั้น —
-// ถ้า canSelfClose เป็น false ตั้งแต่แรก จะข้ามการนับถอยหลังไปเลย โชว์ปุ่ม "ปิดหน้านี้เลย" ไว้ให้กดเองแทน)
+// นับถอยหลัง 10 วินาทีหลังแนบสลิปสำเร็จ แล้วพยายามปิดหน้าอัตโนมัติเสมอ (ไม่เช็ค canSelfClose ก่อนอีก
+// ต่อไปแล้ว — เดิมข้ามการนับถอยหลังไปเลยถ้าไม่มี window.opener แต่ตอนนี้มีทางปิดเพิ่มผ่าน liff.closeWindow()
+// ที่ไม่ต้องพึ่ง window.opener ด้วย จึงลองนับถอยหลัง+ปิดเสมอ ถ้าสุดท้ายปิดไม่ได้จริงๆ ทั้ง 2 ทาง closeThisPage()
+// ก็จะโชว์ข้อความ "ปิดหน้านี้ได้เลยค่ะ" ให้ปิดเองอยู่ดี ไม่ได้แย่ไปกว่าเดิม)
 function startCloseCountdown(){
-  if (!canSelfClose) {
-    document.getElementById('closeCountdown').textContent = 'ปิดหน้านี้ได้เลยค่ะ 🙏';
-    return;
-  }
   var secondsLeft = 10;
   var el = document.getElementById('closeCountdown');
   (function tick(){
@@ -227,7 +255,7 @@ function submitSlip(){
         document.getElementById('successState').classList.remove('sh');
         // แจ้งหน้าร้าน (opener) ว่าแนบสลิปสำเร็จแล้ว ให้ปิดตัวเองตามได้เลย — ส่งสัญญาณตอนนี้แทนที่จะให้
         // หน้าร้านปิดตัวเองไปก่อนหน้านี้แล้ว (ถ้าหน้าร้านปิดไปก่อน window.opener ของหน้านี้จะหายไปด้วย
-        // ทำให้ canSelfClose ด้านบนกลายเป็น false และข้ามการนับถอยหลังปิดอัตโนมัติของหน้านี้เองไปเลย)
+        // แต่ไม่กระทบ startCloseCountdown() ด้านล่างอีกต่อไปแล้ว เพราะไม่ได้เช็ค canSelfClose ก่อนนับถอยหลัง)
         try {
           if (window.opener && !window.opener.closed) {
             window.opener.postMessage({ type: 'emocha-slip-uploaded' }, '*');
