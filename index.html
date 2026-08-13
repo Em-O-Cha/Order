@@ -171,10 +171,10 @@ var currentOrderId = '';
 // เท่านั้นถึงจะทำให้หน้าใหม่ "รู้ว่าตัวเองถูกเปิดโดยสคริปต์" และสั่ง window.close() ปิดตัวเองได้จริงตอนแนบ
 // สลิปเสร็จ ถ้าเปิดผ่านคลิกลิงก์ปกติ เบราว์เซอร์ส่วนใหญ่จะบล็อกไม่ให้สคริปต์สั่งปิดแท็บนั้น (ค้างปิดไม่ได้)
 //
-// ⚡ ปิดหน้าร้านนี้ (ตัว opener) ทันทีหลังเปิดหน้าแนบสลิป ตามที่ขอ — เพราะออเดอร์บันทึกสำเร็จเรียบร้อยแล้ว
-// ตั้งแต่ก่อนเปิดหน้านี้ ไม่มีอะไรต้องรออีก (เดิมเคยเปลี่ยนให้ "รอสัญญาณแนบสลิปสำเร็จก่อนค่อยปิด" เพื่อกัน
-// ความเสี่ยงที่การปิดหน้าร้านเร็วเกินไปอาจทำให้หน้าต่างลูก (popup แนบสลิป) ถูกปิดตามไปด้วยกลางคันในบาง
-// เบราว์เซอร์ — แต่ตอนนี้เปลี่ยนกลับตามที่พี่ยืนยันว่ารับความเสี่ยงนี้ได้ ในเมื่อวิธีรอสัญญาณก็ปิดไม่สำเร็จอยู่ดี)
+// ⚡ ไม่ปิดหน้าร้านนี้ (ตัว opener) ทันทีอีกต่อไปหลังเปิดหน้าแนบสลิป — ต้องรอสัญญาณ 'emocha-slip-uploaded'
+// จากหน้าต่างแนบสลิปก่อนว่าแนบสลิปสำเร็จแล้วจริงๆ (ดู window.addEventListener('message', ...) ด้านล่าง)
+// ถึงจะเริ่มปิด เพราะการปิดหน้าร้านทันทีเสี่ยงทำให้หน้าต่างลูก (popup แนบสลิป) ถูกปิดตามไปด้วยกลางคันใน
+// บางเบราว์เซอร์/แอป LINE ก่อนที่ลูกค้าจะแนบสลิปเสร็จ (ลูกค้าเจอปัญหานี้จริง — ทั้งสองหน้าปิดพร้อมกันหมด)
 function openSlipUploadPage(){
   if (!pendingSlipUploadUrl) return;
   window.open(pendingSlipUploadUrl, '_blank');
@@ -183,12 +183,8 @@ function openSlipUploadPage(){
   // ค้างไว้ทิ้ง กันพลาดไปทับออเดอร์นี้ซ้ำถ้าบังเอิญมีการยิง submitOrder() อีกครั้งในอนาคตโดยไม่ตั้งใจ
   currentOrderId = '';
 
-  var notice = document.getElementById('slipDoneNotice');
-  if (notice) notice.classList.remove('sh');
-
-  // หน่วง 300ms ก่อนเริ่มปิด กันบางเบราว์เซอร์ยกเลิกการเปิดป็อปอัพถ้า opener ปิดตัวเร็วเกินไปจนเกินไป —
-  // แล้วลองปิดซ้ำ 3 ครั้งห่างกันครั้งละ 500ms (ไม่ใช่ครั้งเดียวจบ) เผื่อครั้งแรกยังไม่ติด
-  setTimeout(closeThisShopWindow_, 300);
+  // หน้าร้านนี้จะปิดเองก็ต่อเมื่อได้รับสัญญาณแนบสลิปสำเร็จจากหน้าต่างลูกเท่านั้น (ดู addEventListener
+  // ด้านล่าง ซึ่งเป็นจุดเดียวที่เรียก closeThisShopWindow_() ตอนนี้) ไม่ต้องทำอะไรเพิ่มตรงนี้
 }
 
 function closeThisShopWindow_(){
@@ -207,8 +203,8 @@ function closeThisShopWindow_(){
   tryClose();
 }
 
-// สำรอง: ถ้าหน้าแนบสลิปแนบสำเร็จแล้วยังส่งสัญญาณมาได้ (เช่น การปิดตอนเปิดหน้าด้านบนไม่ติดสักครั้ง) ลองปิดซ้ำ
-// อีกรอบตรงนี้ด้วย ไม่มีผลเสียถ้าหน้านี้ปิดไปแล้วก่อนหน้านี้แล้ว (โค้ดจะไม่ถูกรันเลยเพราะหน้าไม่มีอยู่แล้ว)
+// จุดเดียวที่สั่งปิดหน้าร้านนี้ตอนนี้ — รอสัญญาณจากหน้าต่างแนบสลิปว่าแนบสำเร็จแล้วจริงๆ ก่อนค่อยปิด
+// (ดูเหตุผลที่ openSlipUploadPage() ด้านบน)
 window.addEventListener('message', function(evt){
   if (!evt || !evt.data || evt.data.type !== 'emocha-slip-uploaded') return;
   var notice = document.getElementById('slipDoneNotice');
@@ -444,7 +440,7 @@ function goToCheckout(){
       btn.disabled = false; btn.textContent = originalBtnText;
       if (e && e.alreadyShown) return; // ข้อความที่มีประโยชน์กว่า (เช่น เรื่อง third-party cookies) แสดงไปแล้ว ไม่ต้องทับ
       var reason = (e && e.message) ? e.message : 'ไม่ทราบสาเหตุ';
-      showErrorWithDiagnostics_('โหลดข้อมูลการชำระเงินไม่สำเร็จ: ' + reason);
+      showFriendlyCheckoutError_(reason);
     });
 }
 
@@ -862,6 +858,22 @@ function buildDiagnostics_(){
 
 function showErrorWithDiagnostics_(msg){
   showErrorState(msg + '\n\n──────────\nข้อมูลวินิจฉัย (แคปหน้าจอนี้ส่งให้ผู้ดูแลระบบได้)\n' + buildDiagnostics_());
+}
+
+// ⚡ ใช้แทน showErrorWithDiagnostics_() เฉพาะตอน "โหลดหน้าชำระเงินไม่สำเร็จ" (goToCheckout timeout/error)
+// ซึ่งเป็นจุดที่ลูกค้าเจอบ่อยที่สุดตอนเครือข่ายสะดุดชั่วคราว — ไม่โชว์ข้อมูลวินิจฉัยทางเทคนิค (LIFF version/
+// token/เวลาหมดอายุ ฯลฯ) ให้ลูกค้าเห็นตรงๆ เพราะทำให้ตกใจโดยไม่จำเป็น (ลูกค้าไม่รู้เรื่องพวกนี้อยู่แล้ว)
+// เปลี่ยนเป็นข้อความสั้นๆ เข้าใจง่าย + ปุ่มลองใหม่แทน ส่วนข้อมูลวินิจฉัยเต็มยังคงถูกบันทึกไว้ใน console
+// เหมือนเดิมทุกประการ เผื่อทีมงานต้องเปิด DevTools ตรวจสอบภายหลัง (ไม่ได้ตัดข้อมูลนี้ทิ้งไปไหน)
+function showFriendlyCheckoutError_(msg){
+  console.error('[Em-O-Cha] โหลดหน้าชำระเงินไม่สำเร็จ: ' + msg + '\n' + buildDiagnostics_());
+  document.getElementById('errorState').innerHTML =
+    '<div class="ico">🙏</div>' +
+    '<p style="font-weight:600">ขออภัยค่ะ ระบบตอบสนองช้าชั่วคราว</p>' +
+    '<p style="color:var(--g6);font-size:14px;margin-top:6px">เครือข่ายอาจไม่เสถียรชั่วขณะ กรุณาลองใหม่อีกครั้งนะคะ</p>' +
+    '<button class="btn" style="margin-top:18px" onclick="showState(\'catalogState\');goToCheckout()">🔄 ลองใหม่อีกครั้ง</button>' +
+    '<button class="btn btn-outline" style="margin-top:10px" onclick="showState(\'catalogState\')">← กลับไปเลือกสินค้า</button>';
+  showState('errorState');
 }
 
 // ดึง idToken สำหรับใช้เรียก API ที่ต้องยืนยันตัวตน
