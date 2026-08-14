@@ -75,7 +75,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
       <p style="color:var(--g6);font-size:14px;margin-top:6px">ทีมงานจะตรวจสอบและดำเนินการจัดส่งให้เร็วที่สุด</p>
       <p style="color:var(--gd);font-weight:600;margin-top:14px">🙏 ขอบคุณที่รักเอมโอชา ในทุกๆ วันนะคะ</p>
       <p id="closeCountdown" style="font-size:12px;color:var(--g6);margin-top:16px"></p>
-      <button type="button" class="btn btn-outline" id="closeBtn" onclick="closeThisPage()" style="margin-top:14px">ปิดหน้านี้เลย</button>
+      <p style="font-size:13px;color:var(--g6);margin-top:14px">ปิดหน้าต่างนี้ได้เลยค่ะ 🙏</p>
     </div>
 
     <div id="errorState" class="sh state"></div>
@@ -189,24 +189,6 @@ function handleFile(inp){
   reader.readAsDataURL(file);
 }
 
-// นับถอยหลัง 10 วินาทีหลังแนบสลิปสำเร็จ แล้วพยายามปิดหน้าอัตโนมัติเสมอ (ไม่เช็ค canSelfClose ก่อนอีก
-// ต่อไปแล้ว — เดิมข้ามการนับถอยหลังไปเลยถ้าไม่มี window.opener แต่ตอนนี้มีทางปิดเพิ่มผ่าน liff.closeWindow()
-// ที่ไม่ต้องพึ่ง window.opener ด้วย จึงลองนับถอยหลัง+ปิดเสมอ ถ้าสุดท้ายปิดไม่ได้จริงๆ ทั้ง 2 ทาง closeThisPage()
-// ก็จะโชว์ข้อความ "ปิดหน้านี้ได้เลยค่ะ" ให้ปิดเองอยู่ดี ไม่ได้แย่ไปกว่าเดิม)
-function startCloseCountdown(){
-  var secondsLeft = 10;
-  var el = document.getElementById('closeCountdown');
-  (function tick(){
-    if (secondsLeft <= 0) {
-      closeThisPage();
-      return;
-    }
-    el.textContent = 'หน้านี้จะปิดอัตโนมัติใน ' + secondsLeft + ' วินาที...';
-    secondsLeft--;
-    setTimeout(tick, 1000);
-  })();
-}
-
 // เดิมหน้านี้เรียก google.script.run.uploadShopSlip(...) ได้ตรงๆ เพราะ Apps Script เป็นคนเสิร์ฟหน้านี้เอง
 // (ไม่ติดปัญหาข้าม domain) — ตอนนี้ย้ายมาอยู่บน GitHub แล้ว ต้องยิงผ่าน fetch() POST ไปที่ doPost() ของ
 // Apps Script แทน (เหมือนวิธีที่หน้าสมัครสมาชิกใช้ตอน registerMember) ส่ง Content-Type เป็น text/plain
@@ -254,14 +236,12 @@ function submitSlip(){
         document.getElementById('formState').classList.add('sh');
         document.getElementById('successState').classList.remove('sh');
         // แจ้งหน้าร้าน (opener) ว่าแนบสลิปสำเร็จแล้ว ให้ปิดตัวเองตามได้เลย — ส่งสัญญาณตอนนี้แทนที่จะให้
-        // หน้าร้านปิดตัวเองไปก่อนหน้านี้แล้ว (ถ้าหน้าร้านปิดไปก่อน window.opener ของหน้านี้จะหายไปด้วย
-        // แต่ไม่กระทบ startCloseCountdown() ด้านล่างอีกต่อไปแล้ว เพราะไม่ได้เช็ค canSelfClose ก่อนนับถอยหลัง)
+        // หน้าร้านปิดตัวเองไปก่อนหน้านี้แล้ว
         try {
           if (window.opener && !window.opener.closed) {
             window.opener.postMessage({ type: 'emocha-slip-uploaded' }, '*');
           }
         } catch (e) { /* ปิด opener ไปแล้ว/เข้าถึงไม่ได้ — ไม่กระทบการทำงานหลักของหน้านี้ */ }
-        startCloseCountdown();
       } else {
         errBox.textContent = r ? r.error : 'เกิดข้อผิดพลาด';
         errBox.classList.add('show');
