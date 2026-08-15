@@ -441,7 +441,7 @@ function submitSlipInline(){
           loadOrderHistory(); // รีเฟรชรายการ ตัดออเดอร์นี้ออกไปเพราะแนบสลิปครบแล้ว (เผื่อปิดหน้าไม่สำเร็จ)
         }
         // รอสักครู่ให้ลูกค้าเห็นข้อความขอบคุณ แล้วปิดหน้าร้านอัตโนมัติกลับไปแชท LINE (เหมือนพฤติกรรมเดิม)
-        setTimeout(closeThisShopWindow_, 2000);
+        setTimeout(closeThisShopWindow_, 4000);
       } else {
         errBox.textContent = r ? r.error : 'เกิดข้อผิดพลาด';
         errBox.classList.add('show');
