@@ -42,8 +42,19 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 .cat-name{font-size:15px;font-weight:600;padding:12px 14px 4px;}
 .cat-card .prod-item{padding:10px 14px;}
 
-.cart-bar{position:sticky;bottom:0;background:#fff;border-top:1.5px solid #eee;padding:14px 20px;
-  display:flex;justify-content:space-between;align-items:center;}
+/* ⚡ แถบปุ่มด้านล่าง (15/8/69) — เดิมใช้ position:sticky แต่ .card ตั้ง overflow:hidden ไว้ (กันรูปภาพ/
+   การ์ดมุมโค้งล้นขอบ) ซึ่งดันทำให้ .card กลายเป็น "กรอบอ้างอิง" ของ sticky แทนที่จะเป็นทั้งหน้าจอ — ผลคือ
+   แถบนี้เลื่อนหายไปพร้อมเนื้อหาจริงๆ ไม่ได้ค้างอยู่กับที่ตามที่ตั้งใจไว้เลย เปลี่ยนมาใช้ position:fixed
+   ยึดกับหน้าจอโดยตรงแทน ไม่ผูกกับ .card อีกต่อไป จึงค้างอยู่กับที่แน่นอนไม่ว่าจะเลื่อนดูตรงไหนก็ตาม
+   ถือโอกาสปรับเป็นทรงแคปซูลลอย (โค้งมน มีระยะห่างขอบจอ มีเงา) ให้ดูทันสมัยขึ้นด้วยในตัว แทนแถบเหลี่ยม
+   ที่ชิดขอบจอเดิม — env(safe-area-inset-bottom) กันแถบไปชนแถบ home indicator ของ iPhone รุ่นใหม่ */
+.cart-bar{position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(16px + env(safe-area-inset-bottom));
+  width:min(420px,calc(100% - 32px));
+  background:#fff;border-radius:20px;box-shadow:0 10px 28px rgba(0,0,0,.16);
+  padding:14px 20px;display:flex;justify-content:space-between;align-items:center;z-index:80;}
+/* กันเนื้อหาบรรทัดสุดท้ายโดนแถบลอยด้านล่างบัง เผื่อพื้นที่ไว้เท่ากับความสูงแถบ + ระยะห่างขอบจอ */
+.bd{padding-bottom:96px;}
 .cart-total{font-size:13px;color:var(--g6);}
 .cart-total b{font-size:17px;color:var(--gd);display:block;}
 .btn{padding:12px 24px;border:none;border-radius:10px;background:var(--gm);color:#fff;
