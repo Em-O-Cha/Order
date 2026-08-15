@@ -126,7 +126,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
     </div>
 
     <div id="catalogState" class="sh">
-      <div class="history-link"><button type="button" onclick="showHistory()">🧾 ประวัติคำสั่งซื้อ</button></div>
+      <div class="history-link"><button type="button" onclick="showHistory()">🧾 คำสั่งซื้อรอดำเนินการ</button></div>
       <div id="myPrivileges" class="sh"></div>
       <div id="prodList"></div>
     </div>
@@ -142,19 +142,8 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
         <input type="text" id="couponInput" placeholder="มีโค้ดพิเศษอื่น? กรอกตรงนี้" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif">
         <button class="btn" onclick="applyCoupon()" style="white-space:nowrap">ใช้โค้ด</button>
       </div>
-      <div style="margin-bottom:16px">
-        <p style="font-weight:600;margin-bottom:8px">📍 ที่อยู่จัดส่ง</p>
-        <div id="savedAddressBox" class="sh" style="margin-bottom:8px">
-          <label class="pay-opt active" id="optUseSavedAddress" style="align-items:flex-start">
-            <input type="checkbox" id="useSavedAddressChk" checked onchange="toggleSavedAddress()" style="margin-top:3px">
-            <span>ใช้ที่อยู่เดิม<br><span id="savedAddressText" style="color:var(--g6);font-size:12px;white-space:pre-line"></span></span>
-          </label>
-        </div>
-        <textarea id="addressInput" placeholder="กรอกที่อยู่จัดส่ง (บ้านเลขที่ ถนน ตำบล/แขวง อำเภอ/เขต รหัสไปรษณีย์)" rows="3" style="width:100%;padding:10px 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;resize:vertical;margin-bottom:8px"></textarea>
-        <select id="provinceSelect" style="width:100%;height:44px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;background:#fff">
-          <option value="">— เลือกจังหวัด —</option>
-        </select>
-      </div>
+      <!-- ⚡ เอาช่องที่อยู่จัดส่งออกจากหน้านี้แล้ว (14/8/69) — ย้ายไปกรอก/ยืนยันที่ popup ก่อนสั่งซื้อ
+           แทน (ดู addressConfirmModal) กันมีช่องที่อยู่ซ้ำกันถึง 2 จุดในขั้นตอนเดียวกัน -->
       <p style="font-weight:600;margin-bottom:12px">เลือกวิธีชำระเงิน</p>
       <label class="pay-opt active" id="optPromptpay">
         <input type="radio" name="pay" value="promptpay" checked onchange="selectPayment('promptpay')"> 📱 สแกน QR พร้อมเพย์
@@ -196,7 +185,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
   <div class="mo-card">
     <div class="mo-hd"><h2>📍 ยืนยันที่อยู่จัดส่ง</h2></div>
     <div class="mo-bd">
-      <p style="font-size:13px;color:var(--g6);margin-bottom:10px">กรุณาตรวจสอบที่อยู่ให้ถูกต้องก่อนยืนยันสั่งซื้อ แก้ไขได้ตรงนี้เลย</p>
+      <p style="font-size:13px;color:var(--g6);margin-bottom:10px">กรุณากรอก/ตรวจสอบที่อยู่จัดส่งให้ถูกต้องก่อนยืนยันสั่งซื้อ</p>
       <textarea id="confirmAddressInput" rows="3" style="width:100%;padding:10px 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;resize:vertical;margin-bottom:8px"></textarea>
       <select id="confirmProvinceSelect" style="width:100%;height:44px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;background:#fff;margin-bottom:18px">
         <option value="">— เลือกจังหวัด —</option>
@@ -524,9 +513,10 @@ function updateCartBar(){
 
 function backToCatalog(){ excludedPrivilegeRowIndexes = []; showState('catalogState'); }
 
-// ==================== ประวัติคำสั่งซื้อ (14/8/69) ====================
-// แสดงรายการคำสั่งซื้อของลูกค้าคนนี้ (จาก getMyOrderHistory) — ออเดอร์ไหนยังไม่แนบสลิป (hasSlip=false)
-// จะมีปุ่ม "ดำเนินการต่อ" ให้กดไปหน้าแนบสลิปของออเดอร์นั้นได้ตรงๆ โดยไม่ต้องสั่งซื้อใหม่
+// ==================== คำสั่งซื้อรอดำเนินการ (14/8/69) ====================
+// แสดงเฉพาะออเดอร์ที่ยังไม่แนบสลิป (hasSlip=false) เท่านั้น — ออเดอร์ที่แนบสลิปสมบูรณ์แล้วถือว่าจบ
+// ขั้นตอนของลูกค้าแล้ว ไม่ต้องโชว์ปนกันในนี้อีก แต่ละรายการมีปุ่ม "ดำเนินการต่อ" ให้กดไปหน้าแนบสลิป
+// ของออเดอร์นั้นได้ตรงๆ โดยไม่ต้องสั่งซื้อใหม่
 function showHistory(){
   showState('historyState');
   loadOrderHistory();
@@ -538,33 +528,30 @@ function loadOrderHistory(){
     return callApi('getMyOrderHistory', { idToken: idToken });
   }).then(function(r){
     if (!r || !r.success) {
-      document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:#c62828">โหลดประวัติไม่สำเร็จ: ' + escHtml(r ? r.error : '') + '</p>';
+      document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:#c62828">โหลดรายการไม่สำเร็จ: ' + escHtml(r ? r.error : '') + '</p>';
       return;
     }
-    renderOrderHistory(r.results || []);
+    // กรองเหลือเฉพาะออเดอร์ที่ยังไม่แนบสลิป — ตัวหน้านี้ใช้ดูแค่ "รอดำเนินการ" เท่านั้น ไม่ใช่ประวัติทั้งหมด
+    var pending = (r.results || []).filter(function(o){ return !o.hasSlip; });
+    renderOrderHistory(pending);
   }).catch(function(e){
     if (e && e.alreadyShown) return;
-    document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:#c62828">โหลดประวัติไม่สำเร็จ: ' + escHtml(e.message) + '</p>';
+    document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:#c62828">โหลดรายการไม่สำเร็จ: ' + escHtml(e.message) + '</p>';
   });
 }
 
 function renderOrderHistory(list){
   if (!list.length) {
-    document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:var(--g6);padding:20px 0">ยังไม่มีประวัติการสั่งซื้อ</p>';
+    document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:var(--g6);padding:20px 0">🎉 ไม่มีคำสั่งซื้อที่รอดำเนินการ</p>';
     return;
   }
   var h = list.map(function(o){
-    var badge = o.hasSlip
-      ? '<span class="badge-done">✅ แนบสลิปแล้ว</span>'
-      : '<span class="badge-pending">⏳ รอแนบสลิป</span>';
-    var continueBtn = o.hasSlip ? '' :
-      '<button class="btn btn-block" style="margin-top:10px" onclick="continueToSlipUpload(\'' + escHtml(o.orderId) + '\')">📎 ดำเนินการต่อ — แนบสลิป</button>';
     return '<div class="history-item">'
-      + '<div class="row"><span><b>#' + escHtml(o.orderId) + '</b></span>' + badge + '</div>'
+      + '<div class="row"><span><b>#' + escHtml(o.orderId) + '</b></span><span class="badge-pending">⏳ รอแนบสลิป</span></div>'
       + '<div class="row"><span>วันที่</span><span>' + escHtml(o.date) + '</span></div>'
       + '<div class="row"><span>สินค้า</span><span>' + escHtml(o.firstItemName) + '</span></div>'
       + '<div class="row"><span>ยอดชำระ</span><span>฿' + Math.round(o.totalAmount).toLocaleString('th-TH') + '</span></div>'
-      + continueBtn
+      + '<button class="btn btn-block" style="margin-top:10px" onclick="continueToSlipUpload(\'' + escHtml(o.orderId) + '\')">📎 ดำเนินการต่อ — แนบสลิป</button>'
       + '</div>';
   }).join('');
   document.getElementById('historyList').innerHTML = h;
@@ -691,8 +678,8 @@ var savedAddressLoaded = false; // กันโหลดซ้ำทุกคร
 // รายชื่อ 77 จังหวัดของไทย — ให้ลูกค้าเลือกจาก dropdown ตรงๆ แทนการพิมพ์เอง กันสะกดผิด/ตัดคำเดายาก
 var THAI_PROVINCES = ['กรุงเทพมหานคร','กระบี่','กาญจนบุรี','กาฬสินธุ์','กำแพงเพชร','ขอนแก่น','จันทบุรี','ฉะเชิงเทรา','ชลบุรี','ชัยนาท','ชัยภูมิ','ชุมพร','เชียงราย','เชียงใหม่','ตรัง','ตราด','ตาก','นครนายก','นครปฐม','นครพนม','นครราชสีมา','นครศรีธรรมราช','นครสวรรค์','นนทบุรี','นราธิวาส','น่าน','บึงกาฬ','บุรีรัมย์','ปทุมธานี','ประจวบคีรีขันธ์','ปราจีนบุรี','ปัตตานี','พระนครศรีอยุธยา','พะเยา','พังงา','พัทลุง','พิจิตร','พิษณุโลก','เพชรบุรี','เพชรบูรณ์','แพร่','ภูเก็ต','มหาสารคาม','มุกดาหาร','แม่ฮ่องสอน','ยโสธร','ยะลา','ร้อยเอ็ด','ระนอง','ระยอง','ราชบุรี','ลพบุรี','ลำปาง','ลำพูน','เลย','ศรีสะเกษ','สกลนคร','สงขลา','สตูล','สมุทรปราการ','สมุทรสงคราม','สมุทรสาคร','สระแก้ว','สระบุรี','สิงห์บุรี','สุโขทัย','สุพรรณบุรี','สุราษฎร์ธานี','สุรินทร์','หนองคาย','หนองบัวลำภู','อ่างทอง','อำนาจเจริญ','อุดรธานี','อุตรดิตถ์','อุทัยธานี','อุบลราชธานี'];
 
-// เติมตัวเลือกจังหวัดให้ <select> — เดิมมีแค่ช่องเดียว (provinceSelect) ตอนนี้มี 2 ช่อง (เพิ่ม
-// confirmProvinceSelect ใน popup ยืนยันที่อยู่) จึงรับ selectId เป็นพารามิเตอร์แทนที่จะ hardcode ไว้
+// เติมตัวเลือกจังหวัดให้ <select> — เหลือแค่ช่องเดียวแล้ว (confirmProvinceSelect ใน popup ยืนยันที่อยู่)
+// หลังจากเอาช่องที่อยู่ออกจากหน้าชำระเงินแล้ว (14/8/69) ยังรับ selectId เป็นพารามิเตอร์ไว้เผื่ออนาคต
 function populateProvinceDropdown(selectId){
   var sel = document.getElementById(selectId);
   THAI_PROVINCES.forEach(function(p){
@@ -701,12 +688,12 @@ function populateProvinceDropdown(selectId){
     sel.appendChild(opt);
   });
 }
-populateProvinceDropdown('provinceSelect');
 populateProvinceDropdown('confirmProvinceSelect');
 
-// ดึงที่อยู่จัดส่งล่าสุดของสมาชิกคนนี้ (ถ้าเคยสั่งซื้อมาก่อน) มาเสนอให้ติ๊กเลือก "ใช้ที่อยู่เดิม"
-// แทนต้องพิมพ์ใหม่ทุกครั้ง — ถ้าไม่เคยมีที่อยู่บันทึกไว้เลย จะซ่อนกล่องติ๊กเลือกไปเลย เหลือแค่ช่องกรอกใหม่
-// จังหวัดจะถูกเลือกไว้ล่วงหน้าให้ด้วยถ้าเคยมีบันทึกไว้ (แต่ยังแก้ไขได้เสมอ ไม่ได้ล็อกตาม checkbox ที่อยู่)
+// ดึงที่อยู่จัดส่งล่าสุดของสมาชิกคนนี้ (ถ้าเคยสั่งซื้อมาก่อน) เก็บไว้ในตัวแปร savedAddress/savedProvince
+// เฉยๆ — ⚡ (14/8/69) เอาช่องกรอกที่อยู่ออกจากหน้าชำระเงินแล้ว (ย้ายไปอยู่ใน popup ยืนยันที่อยู่แทน กัน
+// มีช่องซ้ำกัน 2 จุด) ฟังก์ชันนี้จึงไม่ต้องยุ่งกับ DOM ของหน้าชำระเงินอีกต่อไป แค่ดึงค่ามาเตรียมไว้ล่วงหน้า
+// ให้ openAddressConfirmPopup() เอาไปเติมในช่องของ popup ตอนเปิดใช้งานจริง
 function loadSavedAddress(idTokenParam){
   if (savedAddressLoaded) return Promise.resolve();
   var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
@@ -714,51 +701,11 @@ function loadSavedAddress(idTokenParam){
     return callApi('getMyShippingAddress', { idToken: idToken });
   }).then(function(r){
     savedAddressLoaded = true;
-    if (r && r.success && r.province) {
-      savedProvince = r.province;
-      document.getElementById('provinceSelect').value = savedProvince;
-    }
-    if (r && r.success && r.address) {
-      savedAddress = r.address;
-      document.getElementById('savedAddressText').textContent = savedAddress;
-      document.getElementById('savedAddressBox').classList.remove('sh');
-      document.getElementById('useSavedAddressChk').checked = true;
-      toggleSavedAddress();
-    } else {
-      document.getElementById('savedAddressBox').classList.add('sh');
-      document.getElementById('addressInput').style.display = '';
-    }
+    if (r && r.success && r.province) savedProvince = r.province;
+    if (r && r.success && r.address) savedAddress = r.address;
   }).catch(function(){
-    savedAddressLoaded = true; // โหลดไม่สำเร็จก็ไม่เป็นไร แค่ให้กรอกที่อยู่ใหม่แทน ไม่ต้อง block การสั่งซื้อ
-    document.getElementById('savedAddressBox').classList.add('sh');
+    savedAddressLoaded = true; // โหลดไม่สำเร็จก็ไม่เป็นไร แค่ให้กรอกที่อยู่ใหม่ใน popup แทน ไม่ต้อง block การสั่งซื้อ
   });
-}
-
-// สลับระหว่าง "ใช้ที่อยู่เดิม" (ซ่อนช่องกรอก) กับ "กรอกที่อยู่ใหม่" (โชว์ช่องกรอกว่างๆ ให้พิมพ์)
-function toggleSavedAddress(){
-  var useOld = document.getElementById('useSavedAddressChk').checked;
-  var input = document.getElementById('addressInput');
-  document.getElementById('optUseSavedAddress').classList.toggle('active', useOld);
-  if (useOld) {
-    input.style.display = 'none';
-  } else {
-    input.style.display = '';
-    input.focus();
-  }
-}
-
-// ค่าจังหวัดที่เลือกไว้ตอนนี้
-function getProvinceValue(){
-  return document.getElementById('provinceSelect').value;
-}
-
-// ค่าที่อยู่จัดส่งจริงที่จะส่งไปกับออเดอร์ — จากที่อยู่เดิม (ถ้าติ๊กเลือกไว้) หรือจากช่องกรอกใหม่
-function getShippingAddressValue(){
-  var chk = document.getElementById('useSavedAddressChk');
-  if (chk && !chk.closest('#savedAddressBox').classList.contains('sh') && chk.checked) {
-    return savedAddress;
-  }
-  return document.getElementById('addressInput').value.trim();
 }
 
 function getDiscountAmount(){
@@ -891,22 +838,22 @@ function buildPromptPayPayload(promptPayId, amount){
 }
 
 // ==================== Popup ยืนยันที่อยู่จัดส่ง (14/8/69) ====================
-// เดิมกดปุ่ม "ยืนยันสั่งซื้อ" แล้วยิง API ทันที — ตอนนี้แทรก popup ให้ตรวจสอบ/แก้ไขที่อยู่อีกครั้งก่อน
-// เสมอ (ดึงค่าปัจจุบันจากหน้าชำระเงินมาเติมล่วงหน้าให้) กด "ยืนยันที่อยู่และสั่งซื้อ" ใน popup ถึงจะยิง
-// API จริง — ถ้ากด "แก้ไขที่อยู่" จะปิด popup กลับไปแก้ในหน้าชำระเงินตามปกติ ไม่มีการสั่งซื้อเกิดขึ้น
+// ⚡ เอาช่องกรอกที่อยู่ออกจากหน้าชำระเงินไปแล้ว (14/8/69) — ตอนนี้ popup นี้เป็นจุดเดียวที่กรอก/แก้ไข
+// ที่อยู่จัดส่งได้ กด "ยืนยันสั่งซื้อ" ในหน้าชำระเงินจะเปิด popup นี้ขึ้นมาเลย พร้อมเติมที่อยู่เดิมของ
+// ลูกค้าไว้ล่วงหน้าให้ถ้ามี (จาก loadSavedAddress ที่ดึงไว้ล่วงหน้าตั้งแต่ตอนเข้าร้านแล้ว) แก้ไขในนี้ได้
+// เลยก่อนกด "ยืนยันที่อยู่และสั่งซื้อ" ถึงจะยิง API จริง — ถ้ากด "แก้ไขที่อยู่" (ปิด popup) จะไม่มีการ
+// สั่งซื้อเกิดขึ้น กลับไปหน้าชำระเงินตามปกติ เปิด popup ใหม่ได้เรื่อยๆ ไม่จำกัดครั้ง
 function openAddressConfirmPopup(){
   var errBox = document.getElementById('checkoutErrBox');
   errBox.classList.add('sh');
 
   var items = Object.keys(cart).map(function(name){ return { name: name, qty: cart[name] }; });
   if (!items.length) { showInlineCheckoutError_('ไม่มีสินค้าในตะกร้า'); return; }
-  var shippingAddress = getShippingAddressValue();
-  if (!shippingAddress) { showInlineCheckoutError_('กรุณากรอกที่อยู่จัดส่ง'); return; }
-  var province = getProvinceValue();
-  if (!province) { showInlineCheckoutError_('กรุณาเลือกจังหวัด'); return; }
 
-  document.getElementById('confirmAddressInput').value = shippingAddress;
-  document.getElementById('confirmProvinceSelect').value = province;
+  // เติมที่อยู่/จังหวัดเดิมไว้ล่วงหน้าถ้ามี (ไม่บล็อกการเปิด popup แม้ยังไม่มีที่อยู่เดิมเลยก็ตาม —
+  // ให้ลูกค้ากรอกใหม่ในนี้ได้เสมอ การตรวจสอบว่าต้องกรอกครบก่อนสั่งซื้อจริงอยู่ที่ confirmSubmitOrder แทน)
+  document.getElementById('confirmAddressInput').value = savedAddress || '';
+  document.getElementById('confirmProvinceSelect').value = savedProvince || '';
   document.getElementById('addressConfirmModal').classList.add('show');
 }
 
