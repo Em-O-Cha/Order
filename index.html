@@ -67,6 +67,16 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 .order-box{background:var(--gp);border-radius:12px;padding:18px;text-align:left;margin-top:10px;}
 .order-box .row{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;}
 
+/* ==================== แนบสลิป (popup) ==================== */
+.fg{display:flex;flex-direction:column;gap:6px;margin-bottom:18px;}
+.fg label{font-size:13px;font-weight:600;color:var(--g8);}
+.sbox{border:1.5px dashed var(--gb);border-radius:12px;padding:20px;text-align:center;background:var(--gp);}
+.sbox img{max-width:100%;max-height:220px;border-radius:8px;margin-bottom:10px;}
+.sbu{padding:10px 20px;border:none;border-radius:8px;background:var(--gm);color:#fff;font-size:14px;
+  font-weight:600;font-family:'Sarabun',sans-serif;cursor:pointer;}
+.err{background:#ffebee;color:#c62828;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;display:none;}
+.err.show{display:block;}
+
 /* ==================== Stepper ==================== */
 .stepper{display:flex;align-items:flex-start;padding:14px 16px 4px;gap:0;}
 .stepper.sh{display:none;}
@@ -153,16 +163,14 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
       </label>
       <div id="paymentDetail"></div>
       <div id="checkoutErrBox" class="sh" style="background:#fff3e0;color:#e65100;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px"></div>
-      <button class="btn btn-block" style="margin-top:18px" onclick="openAddressConfirmPopup()" id="confirmOrderBtn">✅ ยืนยันสั่งซื้อ</button>
-      <button class="btn btn-outline btn-block" style="margin-top:10px" onclick="backToCatalog()">← กลับไปเลือกสินค้าต่อ</button>
+      <button class="btn btn-outline btn-block" style="margin-top:18px" onclick="backToCatalog()">← กลับไปเลือกสินค้าต่อ</button>
     </div>
 
     <div id="orderDoneState" class="sh state">
       <div class="ico">🎉</div>
       <p style="font-weight:600">สั่งซื้อสำเร็จ!</p>
       <div class="order-box" id="orderSummary"></div>
-      <button class="btn btn-block" style="margin-top:16px" onclick="openSlipUploadPage()">📎 แนบสลิปการโอนเงิน</button>
-      <p style="font-size:12px;color:var(--g6);margin-top:10px">กดปุ่มด้านบนเพื่อแนบสลิป — ทีมงานจะตรวจสอบและจัดส่งให้เร็วที่สุด</p>
+      <p style="font-size:12px;color:var(--g6);margin-top:10px">กดปุ่มด้านล่างเพื่อแนบสลิป — ทีมงานจะตรวจสอบและจัดส่งให้เร็วที่สุด</p>
       <!-- ⚡ ข้อความสำรอง โชว์เฉพาะตอนแนบสลิปสำเร็จแล้วแต่หน้านี้ปิดตัวเองไม่สำเร็จ (liff.closeWindow()/
            window.close() ใช้ไม่ได้ในบางกรณีของแอป LINE — ข้อจำกัดของแพลตฟอร์ม ไม่ใช่บั๊กโค้ด) เดิมถ้าปิด
            ไม่สำเร็จ ผู้ใช้จะไม่เห็นอะไรเลย ค้างอยู่หน้าเดิมแบบไม่มีข้อความบอกอะไรทั้งสิ้น -->
@@ -178,6 +186,16 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
     <div class="cart-total">รวม <span id="cartCount">0</span> ชิ้น<b id="cartTotal">฿0</b></div>
     <button class="btn btn-outline" onclick="goToCheckout()" id="checkoutBtn" disabled>ไปหน้าชำระเงิน</button>
   </div>
+  <!-- ⚡ แถบปุ่ม "Step ถัดไป" ด้านล่าง ต้องอยู่กับที่เสมอทุกหน้าในขั้นตอนสั่งซื้อ (15/8/69) — เดิมปุ่มหลัก
+       ของหน้าชำระเงิน/หน้าสั่งซื้อสำเร็จ อยู่ปะปนในเนื้อหาที่เลื่อนได้ ต้องเลื่อนจอลงไปหาถึงจะกดได้ ย้ายมา
+       ไว้เป็นแถบ sticky ด้านล่างเหมือนแถบตะกร้าสินค้า (#cartBar) ด้านบน ให้เห็น/กดได้เสมอไม่ว่าจะเลื่อนแค่ไหน -->
+  <div class="cart-bar sh" id="checkoutBar">
+    <div class="cart-total">ยอดสุทธิ<b id="checkoutBarTotal">฿0</b></div>
+    <button class="btn" onclick="openAddressConfirmPopup()" id="confirmOrderBtn">✅ ยืนยันสั่งซื้อ</button>
+  </div>
+  <div class="cart-bar sh" id="orderDoneBar">
+    <button class="btn btn-block" onclick="openSlipUploadPage()">📎 แนบสลิปการโอนเงิน</button>
+  </div>
 </div>
 
 <!-- ==================== Popup ยืนยันที่อยู่จัดส่ง (ก่อนสั่งซื้อสำเร็จ) ==================== -->
@@ -191,7 +209,46 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
         <option value="">— เลือกจังหวัด —</option>
       </select>
       <button class="btn btn-block" onclick="confirmSubmitOrder()" id="confirmAddressBtn">✅ ยืนยันที่อยู่และสั่งซื้อ</button>
-      <button class="btn btn-outline btn-block" style="margin-top:10px" onclick="closeAddressConfirmModal()">← แก้ไขที่อยู่</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px" onclick="closeAddressConfirmModal()">← กลับไปหน้าชำระเงิน</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Popup แนบสลิปการโอนเงิน (15/8/69) ====================
+     ⚡ เดิมเปิดเป็นหน้าใหม่ (slipUpload.html บน GitHub Pages) ผ่าน window.open() — ทำให้รู้สึกหลุดออกจาก
+     ขั้นตอนการสั่งซื้อ แถมยังมีปัญหาการปิดหน้าต่างบน iOS/แอป LINE ตามคอมเมนต์เดิม เปลี่ยนมาเป็น popup ในหน้า
+     เดียวกันนี้แทน (โครงหน้าตา/ลอจิกอัปโหลดพอร์ตมาจาก slipUpload.html) ไม่ต้องเปิด/ปิดหน้าต่างอีกต่อไป จึง
+     ตัดปัญหาเรื่อง window.close()/liff.closeWindow() บน iOS ที่เคยแก้กันไปหลายรอบออกไปได้เลยในตัว -->
+<div class="mo" id="slipUploadModal">
+  <div class="mo-card">
+    <div class="mo-hd">
+      <h2>📎 แนบสลิปการโอนเงิน</h2>
+      <p style="font-size:12.5px;opacity:.9;margin-top:4px">เลขที่ออเดอร์: <b id="slipOrderIdDisplay"></b></p>
+    </div>
+    <div class="mo-bd">
+      <div id="slipFormState">
+        <div class="err" id="slipErrBox"></div>
+        <div class="fg">
+          <label>รูปสลิปการโอนเงิน</label>
+          <div class="sbox">
+            <input type="file" id="slipFileInput" accept="image/*" style="display:none" onchange="handleSlipFile(this)">
+            <div id="slipPreviewWrap">
+              <p style="font-size:13px;color:var(--g6);margin-bottom:10px">ยังไม่ได้เลือกรูป</p>
+              <button type="button" class="sbu" onclick="document.getElementById('slipFileInput').click()">📷 เลือกรูปสลิป</button>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-block" id="slipSubmitBtn" onclick="submitSlipInline()" disabled>✅ ยืนยันแนบสลิป</button>
+        <button class="btn btn-outline btn-block" style="margin-top:10px" onclick="closeSlipUploadModal()">ปิดหน้าต่างนี้</button>
+      </div>
+      <div id="slipSuccessState" class="sh state">
+        <div class="ico">🎉</div>
+        <p style="font-weight:600">แนบสลิปสำเร็จ!</p>
+        <p style="color:var(--g6);font-size:14px;margin-top:6px">ทีมงานจะตรวจสอบและดำเนินการจัดส่งให้เร็วที่สุด</p>
+        <p style="color:var(--gd);font-weight:600;margin-top:14px">🙏 ขอบคุณที่รักเอมโอชา ในทุกๆ วันนะคะ</p>
+        <p id="slipCloseNotice" style="font-size:12px;color:var(--g6);margin-top:16px">กำลังปิดหน้าต่างอัตโนมัติ...</p>
+        <button class="btn btn-block" style="margin-top:10px" onclick="closeThisShopWindow_()">ปิดตอนนี้เลย</button>
+      </div>
     </div>
   </div>
 </div>
@@ -221,11 +278,15 @@ var appliedCouponCode = '';
 var lastDiscountInfo = null; // { privilege, coupon, autoCoupon, couponError } จาก checkShopDiscounts ล่าสุด
 // ใช้กันไม่ให้ liff.login() ถูกเรียกซ้ำไม่รู้จบบนคอมพิวเตอร์ (ดูรายละเอียดที่ startLineLogin() ด้านล่าง)
 var LIFF_LOGIN_GUARD = 'emocha.shop.login-attempted';
-var pendingSlipUploadUrl = ''; // URL หน้าแนบสลิปที่รอเปิดผ่าน window.open() (เซ็ตค่าไว้ตอน submitOrder สำเร็จ)
+var pendingSlipOrderId = ''; // เลขที่ออเดอร์ที่รอแนบสลิป (เซ็ตค่าไว้ตอน submitOrder สำเร็จ) ใช้เปิด popup แนบสลิป
 // เลขที่ออเดอร์ล่าสุดที่สั่งซื้อสำเร็จแล้วแต่ยังไม่ได้แนบสลิป — ถ้าลูกค้ากดกลับไปหน้าชำระเงินเพื่อแก้ไข
 // อะไรบางอย่าง (เช่น แก้ที่อยู่/จำนวนสินค้า) แล้วกดยืนยันซ้ำ จะส่งเลขที่นี้ไปด้วยเพื่อบันทึกทับของเดิม แทนที่
-// จะสร้างออเดอร์ใหม่ซ้อนขึ้นมา — เคลียร์กลับเป็นค่าว่างตอนเปิดหน้าแนบสลิป (ถือว่าจบขั้นตอนแก้ไขแล้ว)
+// จะสร้างออเดอร์ใหม่ซ้อนขึ้นมา — เคลียร์กลับเป็นค่าว่างตอนเปิด popup แนบสลิป (ถือว่าจบขั้นตอนแก้ไขแล้ว)
 var currentOrderId = '';
+// ข้อมูลรูปสลิป/เลขออเดอร์เป้าหมาย/แหล่งที่มา ของ popup แนบสลิป (ดูฟังก์ชัน openSlipUploadModal ด้านล่าง)
+var slipUploadData = null;
+var slipTargetOrderId = '';
+var slipUploadSource_ = ''; // 'orderDone' (จากหน้าสั่งซื้อสำเร็จ) หรือ 'history' (จากหน้าประวัติ/รอดำเนินการ)
 
 // ==================== Stepper (14/8/69) ====================
 // แสดงขั้นตอนปัจจุบันของการสั่งซื้อไว้ใต้ header เสมอ ระหว่างขั้นตอนเลือกสินค้า/ชำระเงิน/สั่งซื้อสำเร็จ
@@ -246,38 +307,49 @@ function setStepper(stepIdx){
   });
 }
 
-// เปิดหน้าแนบสลิปด้วย window.open() แทนการคลิกลิงก์ <a target="_blank"> ธรรมดา — สำคัญ: ต้อง window.open()
-// เท่านั้นถึงจะทำให้หน้าใหม่ "รู้ว่าตัวเองถูกเปิดโดยสคริปต์" และสั่ง window.close() ปิดตัวเองได้จริงตอนแนบ
-// สลิปเสร็จ ถ้าเปิดผ่านคลิกลิงก์ปกติ เบราว์เซอร์ส่วนใหญ่จะบล็อกไม่ให้สคริปต์สั่งปิดแท็บนั้น (ค้างปิดไม่ได้)
-//
-// ⚡ พบจากการทดสอบจริงในแอป LINE บน iOS (13/8/69): window.open() บน iOS มักเป็นการสลับออกไปเปิด Safari
-// ภายนอกจริงๆ ไม่ใช่ป๊อปอัพในหน้าเดิม การสลับแอปนี้มีดีเลย์ตามธรรมชาติอยู่แล้ว — และ window.opener ระหว่าง
-// สองหน้ามักขาดการเชื่อมโยงกันไปเลยในสภาพแวดล้อมนี้ (ไม่ใช่แค่ช้า แต่ไม่ทำงานถาวร) ทำให้วิธี "รอสัญญาณ
-// postMessage ก่อนค่อยปิด" (ที่เคยลองมาก่อนหน้านี้ในระบบนี้ และเพิ่งลองอีกรอบ) ไม่ได้รับสัญญาณกลับมาเลย
-// สุดท้ายทั้งสองหน้าค้างไม่ปิดเลยสักหน้า จึงเปลี่ยนมาใช้ "ดีเลย์แบบมีเพดานเวลา" แทน — นานพอให้ iOS สลับแอป
-// ไปเปิดหน้าต่างใหม่เสร็จสมบูรณ์ก่อน (กันปัญหาปิด opener เร็วเกินไปจนขัดจังหวะการเปิดหน้าใหม่ ซึ่งเป็น
-// ต้นเหตุของอาการ "กว่าจะแนบได้นานมาก" ที่เจอ) แต่ก็ไม่รอไม่มีที่สิ้นสุดเหมือนวิธี postMessage อย่างเดียว
-// ยังคงฟัง postMessage ไว้เป็นตัวช่วยเสริมด้วย (ปิดได้เร็วขึ้นทันทีถ้าบังเอิญได้รับสัญญาณในบางเบราว์เซอร์)
-var shopWindowClosed_ = false; // กันปิดซ้ำ 2 ครั้งจากทั้ง 2 เส้นทาง (ดีเลย์ + postMessage)
+// ==================== Popup แนบสลิปการโอนเงิน (15/8/69) ====================
+// ⚡ เดิมเปิดเป็นหน้าใหม่ด้วย window.open() แล้วต้องคอยปิดตัวเองด้วย window.close()/liff.closeWindow()
+// (มีปัญหาเยอะมากบน iOS/แอป LINE ตามที่เคยแก้กันมาหลายรอบ) ตอนนี้เปลี่ยนเป็น popup ในหน้าเดียวกันนี้แทน
+// ไม่มีการเปิด/ปิดหน้าต่างอีกต่อไป ปัญหาเรื่องปิดหน้าต่างไม่ได้บน iOS จึงหมดไปเองในตัว
 function openSlipUploadPage(){
-  if (!pendingSlipUploadUrl) return;
-  window.open(pendingSlipUploadUrl, '_blank');
-  setStepper(2); // ขั้นตอน "แนบสลิป"
+  if (!pendingSlipOrderId) return;
+  openSlipUploadModal(pendingSlipOrderId, 'orderDone');
 
   // ถือว่าขั้นตอนแก้ไขออเดอร์นี้จบแล้วตั้งแต่ตรงนี้ (ลูกค้าไปแนบสลิปต่อแล้ว) เคลียร์เลขที่ออเดอร์ที่แก้ไข
   // ค้างไว้ทิ้ง กันพลาดไปทับออเดอร์นี้ซ้ำถ้าบังเอิญมีการยิง submitOrder() อีกครั้งในอนาคตโดยไม่ตั้งใจ
   currentOrderId = '';
-
-  // รอ 4 วินาทีให้ iOS สลับแอปไปเปิดหน้าต่างใหม่เสร็จสมบูรณ์ก่อน แล้วค่อยปิดหน้าร้านนี้ (ไม่ใช่ 300ms
-  // แบบเดิมที่เร็วเกินไปจนขัดจังหวะการเปิดหน้าใหม่ และไม่ใช่รอ postMessage เฉยๆ แบบไม่มีเพดานเวลา)
-  setTimeout(function(){
-    if (shopWindowClosed_) return; // ปิดไปแล้วจาก postMessage ที่มาถึงเร็วกว่า ไม่ต้องทำซ้ำ
-    shopWindowClosed_ = true;
-    closeThisShopWindow_();
-  }, 4000);
 }
 
+function openSlipUploadModal(orderId, source){
+  slipTargetOrderId = orderId;
+  slipUploadSource_ = source || 'orderDone';
+  slipUploadData = null;
+  shopWindowClosed_ = false; // เผื่อเปิด popup ซ้ำอีกครั้งหลังจากรอบก่อนหน้าปิดหน้าไม่สำเร็จ (fallback path)
+  document.getElementById('slipOrderIdDisplay').textContent = orderId;
+  document.getElementById('slipErrBox').classList.remove('show');
+  document.getElementById('slipPreviewWrap').innerHTML =
+    '<p style="font-size:13px;color:var(--g6);margin-bottom:10px">ยังไม่ได้เลือกรูป</p>' +
+    '<button type="button" class="sbu" onclick="document.getElementById(\'slipFileInput\').click()">📷 เลือกรูปสลิป</button>';
+  document.getElementById('slipSubmitBtn').disabled = true;
+  document.getElementById('slipSubmitBtn').textContent = '✅ ยืนยันแนบสลิป';
+  document.getElementById('slipFormState').classList.remove('sh');
+  document.getElementById('slipSuccessState').classList.add('sh');
+  document.getElementById('slipUploadModal').classList.add('show');
+  if (slipUploadSource_ === 'orderDone') setStepper(2); // ขั้นตอน "แนบสลิป"
+}
+
+function closeSlipUploadModal(){
+  document.getElementById('slipUploadModal').classList.remove('show');
+}
+
+// ปิดหน้าร้านทั้งหมดกลับไปแชท LINE — เรียกหลังแนบสลิปสำเร็จ (ดู submitSlipInline ด้านล่าง) เหมือน
+// พฤติกรรมเดิมตอนที่หน้าแนบสลิปยังเป็นหน้าต่างแยก เพียงแต่ตอนนี้ไม่มีหน้าต่างแยกให้ปิดแล้ว จึงปิดหน้าร้าน
+// หลักนี้เองไปเลยแทน ลองปิดซ้ำสูงสุด 3 ครั้ง (เผื่อครั้งแรกไม่ติด) ถ้าปิดไม่ได้เลยจริงๆ (เช่น เปิดผ่าน
+// เบราว์เซอร์ปกตินอกแอป LINE) ก็โชว์ข้อความให้ลูกค้าปิดเองแทน กันจอค้างเงียบๆ ไม่บอกอะไรเลย
+var shopWindowClosed_ = false; // กันเรียกปิดซ้ำจากทั้งตัวจับเวลาอัตโนมัติ และปุ่ม "ปิดตอนนี้เลย" ที่กดเอง
 function closeThisShopWindow_(){
+  if (shopWindowClosed_) return;
+  shopWindowClosed_ = true;
   var closeAttempts = 0;
   function tryClose(){
     closeAttempts++;
@@ -287,30 +359,108 @@ function closeThisShopWindow_(){
       } else {
         window.close();
       }
-    } catch (e) { /* ปิดไม่ได้ (เช่น เปิดผ่านเบราว์เซอร์ปกตินอกแอป LINE) — ข้อความสำรองบนหน้าโชว์ไว้ให้แล้ว */ }
-    if (closeAttempts < 3) setTimeout(tryClose, 500);
+    } catch (e) { /* ปิดไม่ได้ (เช่น เปิดผ่านเบราว์เซอร์ปกตินอกแอป LINE) — โชว์ข้อความสำรองด้านล่างแทน */ }
+    if (closeAttempts < 3) {
+      setTimeout(tryClose, 500);
+    } else {
+      var notice = document.getElementById('slipCloseNotice');
+      if (notice) notice.textContent = 'ปิดหน้านี้ได้เลยค่ะ 🙏';
+    }
   }
   tryClose();
 }
 
-// เส้นทางสำรอง: ปิดได้เร็วขึ้นทันทีถ้าหน้าแนบสลิปส่งสัญญาณ 'emocha-slip-uploaded' มาถึงจริงๆ (ในบาง
-// เบราว์เซอร์/บางกรณีที่ window.opener ยังเชื่อมกันอยู่) — ไม่ต้องรอครบ 4 วินาทีของดีเลย์หลักด้านบน
-// ถ้าไม่มีสัญญาณมาเลย (เช่น iOS LINE) ดีเลย์หลักด้านบนจะเป็นตัวปิดแทนอยู่ดี ไม่ค้างแบบก่อนหน้านี้
-window.addEventListener('message', function(evt){
-  if (!evt || !evt.data || evt.data.type !== 'emocha-slip-uploaded') return;
-  var notice = document.getElementById('slipDoneNotice');
-  if (notice) notice.classList.remove('sh');
-  setStepper(3); // ขั้นตอน "เสร็จสิ้น" — อัปเดตก่อนหน้าปิดตัวเอง (ถ้าปิดไม่ทัน ผู้ใช้ยังเห็น step ล่าสุดถูกต้อง)
-  if (shopWindowClosed_) return;
-  shopWindowClosed_ = true;
-  closeThisShopWindow_();
-});
+// ย่อ/บีบอัดรูปก่อนอัปโหลด (ลอจิกเดิมจาก slipUpload.html)
+function handleSlipFile(inp){
+  var file = inp.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var img = new Image();
+    img.onload = function(){
+      var maxW = 1000, maxH = 1000;
+      var w = img.width, h = img.height;
+      if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+      if (h > maxH) { w = Math.round(w * maxH / h); h = maxH; }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      var compressed = canvas.toDataURL('image/jpeg', 0.75);
+      var parts = compressed.split(',');
+      slipUploadData = { base64: parts[1], fileName: 'slip.jpg', mimeType: 'image/jpeg' };
+      document.getElementById('slipPreviewWrap').innerHTML =
+        '<img src="' + compressed + '"><br>' +
+        '<button type="button" class="sbu" onclick="document.getElementById(\'slipFileInput\').click()">🔄 เปลี่ยนรูป</button>';
+      document.getElementById('slipSubmitBtn').disabled = false;
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ยิงผ่าน fetch() POST ไปที่ doPost() ของ Apps Script ตรงๆ (Content-Type: text/plain กัน CORS preflight
+// เหมือนเดิมจาก slipUpload.html) พร้อมลองใหม่อัตโนมัติสูงสุด 3 ครั้งเฉพาะตอนเน็ตสะดุดระดับเครือข่าย
+function uploadSlipAttempt_(attempt){
+  return fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ action: 'uploadShopSlip', orderId: slipTargetOrderId, base64: slipUploadData.base64, fileName: slipUploadData.fileName, mimeType: slipUploadData.mimeType })
+  })
+    .then(function(res){ return res.text(); })
+    .then(function(text){
+      try { return JSON.parse(text); } catch (parseErr) { throw new Error('ระบบตอบกลับไม่ถูกต้อง (ไม่ใช่ JSON) — ลองใหม่อีกครั้ง'); }
+    })
+    .catch(function(networkErr){
+      if (attempt < 3) {
+        return new Promise(function(resolve){
+          setTimeout(function(){ resolve(uploadSlipAttempt_(attempt + 1)); }, attempt * 700);
+        });
+      }
+      throw networkErr;
+    });
+}
+
+function submitSlipInline(){
+  if (!slipUploadData) return;
+  var btn = document.getElementById('slipSubmitBtn');
+  var errBox = document.getElementById('slipErrBox');
+  errBox.classList.remove('show');
+  btn.disabled = true; btn.textContent = '⏳ กำลังอัปโหลด...';
+
+  uploadSlipAttempt_(1)
+    .then(function(r){
+      btn.disabled = false; btn.textContent = '✅ ยืนยันแนบสลิป';
+      if (r && r.success) {
+        document.getElementById('slipFormState').classList.add('sh');
+        document.getElementById('slipSuccessState').classList.remove('sh');
+        if (slipUploadSource_ === 'orderDone') {
+          setStepper(3); // ขั้นตอน "เสร็จสิ้น"
+          var notice = document.getElementById('slipDoneNotice');
+          if (notice) notice.classList.remove('sh');
+        } else if (slipUploadSource_ === 'history') {
+          loadOrderHistory(); // รีเฟรชรายการ ตัดออเดอร์นี้ออกไปเพราะแนบสลิปครบแล้ว (เผื่อปิดหน้าไม่สำเร็จ)
+        }
+        // รอสักครู่ให้ลูกค้าเห็นข้อความขอบคุณ แล้วปิดหน้าร้านอัตโนมัติกลับไปแชท LINE (เหมือนพฤติกรรมเดิม)
+        setTimeout(closeThisShopWindow_, 2000);
+      } else {
+        errBox.textContent = r ? r.error : 'เกิดข้อผิดพลาด';
+        errBox.classList.add('show');
+      }
+    })
+    .catch(function(e){
+      btn.disabled = false; btn.textContent = '✅ ยืนยันแนบสลิป';
+      errBox.textContent = 'Error: ' + e.message;
+      errBox.classList.add('show');
+    });
+}
 
 function showState(id){
   ['loadingState','catalogState','historyState','checkoutState','orderDoneState','errorState'].forEach(function(s){
     document.getElementById(s).classList.toggle('sh', s !== id);
   });
   document.getElementById('cartBar').classList.toggle('sh', id !== 'catalogState');
+  document.getElementById('checkoutBar').classList.toggle('sh', id !== 'checkoutState');
+  document.getElementById('orderDoneBar').classList.toggle('sh', id !== 'orderDoneState');
   setStepper(STEP_MAP_.hasOwnProperty(id) ? STEP_MAP_[id] : null);
 }
 function showErrorState(msg){
@@ -558,7 +708,7 @@ function renderOrderHistory(list){
 }
 
 function continueToSlipUpload(orderId){
-  window.open('https://toinatadee.github.io/Order/slipUpload.html?orderId=' + encodeURIComponent(orderId), '_blank');
+  openSlipUploadModal(orderId, 'history');
 }
 
 // ครอบ Promise ด้วยเวลาจำกัด — ถ้าไม่เสร็จภายในเวลาที่กำหนด จะ reject ออกมาเองพร้อมข้อความ กันปัญหา
@@ -757,6 +907,7 @@ function renderDiscountSummary(){
   h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดสุทธิ</b></span><span><b>฿' + getFinalTotal().toLocaleString('th-TH') + '</b></span></div>';
   h += '</div>';
   wrap.innerHTML = h;
+  document.getElementById('checkoutBarTotal').textContent = '฿' + getFinalTotal().toLocaleString('th-TH');
 }
 
 function selectPayment(method){
@@ -918,13 +1069,8 @@ function confirmSubmitOrder(){
         + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : 'โอนธนาคาร') + '</span></div>';
       document.getElementById('orderSummary').innerHTML = summaryHtml;
 
-      // เก็บ URL หน้าแนบสลิปไว้เรียกผ่าน window.open() ตอนกดปุ่ม (แทนการตั้ง href ของ <a> ตรงๆ)
-      // เพราะเปิดผ่าน window.open() แล้วหน้าใหม่จะปิดตัวเองด้วย window.close() ได้จริง ต่างจากเปิดผ่าน
-      // การคลิกลิงก์ธรรมดาที่เบราว์เซอร์ส่วนใหญ่จะไม่ยอมให้สคริปต์สั่งปิดแท็บที่ตัวเองไม่ได้เปิดเอง
-      // หน้านี้ย้ายไปโฮสต์บน GitHub Pages แล้ว (เดิมเป็นหน้าที่ Apps Script เสิร์ฟเอง ?page=uploadSlip)
-      // เพื่อไม่ให้ขึ้นหัว URL เป็น script.google.com ตอนเปิด ดูเป็นมืออาชีพกว่า — ต้องอัปโหลดไฟล์
-      // slipUpload.html ไปไว้ที่ repo toinatadee/Order (โฟลเดอร์เดียวกับ index.html นี้) ด้วย
-      pendingSlipUploadUrl = 'https://toinatadee.github.io/Order/slipUpload.html?orderId=' + encodeURIComponent(r.orderId);
+      // เก็บเลขที่ออเดอร์ไว้เปิด popup แนบสลิปตอนกดปุ่ม "📎 แนบสลิปการโอนเงิน" (ดู openSlipUploadPage)
+      pendingSlipOrderId = r.orderId;
 
       // จำเลขที่ออเดอร์นี้ไว้ — ถ้าลูกค้ากดกลับไปหน้าชำระเงินเพื่อแก้ไข (เช่น แก้ที่อยู่/จำนวนสินค้า) แล้ว
       // กดยืนยันซ้ำ จะได้บันทึกทับออเดอร์เดิมแทนที่จะสร้างใหม่ซ้อนขึ้นมา — เจตนา "ไม่เคลียร์" ตะกร้า/โค้ด/
