@@ -66,6 +66,37 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 
 .order-box{background:var(--gp);border-radius:12px;padding:18px;text-align:left;margin-top:10px;}
 .order-box .row{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;}
+
+/* ==================== Stepper ==================== */
+.stepper{display:flex;align-items:flex-start;padding:14px 16px 4px;gap:0;}
+.stepper.sh{display:none;}
+.stepper .step{display:flex;flex-direction:column;align-items:center;flex:0 0 auto;width:64px;}
+.stepper .step-dot{width:26px;height:26px;border-radius:50%;background:#eee;color:#9e9e9e;
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;
+  border:2px solid #eee;transition:all .2s;}
+.stepper .step-label{font-size:10.5px;color:#9e9e9e;margin-top:5px;text-align:center;line-height:1.2;transition:color .2s;}
+.stepper .step.active .step-dot{background:var(--gm);border-color:var(--gm);color:#fff;}
+.stepper .step.active .step-label{color:var(--gd);font-weight:600;}
+.stepper .step.done .step-dot{background:var(--gp);border-color:var(--gm);color:var(--gm);}
+.stepper .step.done .step-label{color:var(--gm);}
+.stepper .step-line{flex:1 1 auto;height:2px;background:#eee;margin-top:12px;}
+.stepper .step-line.done{background:var(--gm);}
+
+/* ==================== Address confirm popup ==================== */
+.mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:center;justify-content:center;padding:16px;}
+.mo.show{display:flex;}
+.mo-card{background:#fff;border-radius:16px;max-width:380px;width:100%;overflow:hidden;max-height:92vh;overflow-y:auto;}
+.mo-hd{background:linear-gradient(135deg,var(--gd),#66bb6a);padding:18px 20px;color:#fff;}
+.mo-hd h2{font-size:16px;font-weight:600;}
+.mo-bd{padding:20px;}
+
+/* ==================== Order history ==================== */
+.history-link{text-align:right;margin-bottom:10px;}
+.history-link button{background:none;border:none;color:var(--gm);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline;font-family:'Sarabun',sans-serif;}
+.history-item{background:var(--gp);border-radius:12px;padding:16px;text-align:left;margin-bottom:12px;}
+.history-item .row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;}
+.badge-pending{font-size:11px;color:#e65100;background:#fff3e0;padding:3px 10px;border-radius:20px;font-weight:600;}
+.badge-done{font-size:11px;color:var(--gd);background:#fff;padding:3px 10px;border-radius:20px;font-weight:600;}
 </style>
 </head>
 <body>
@@ -76,6 +107,17 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
     <h1>🛒 สั่งซื้อสินค้า</h1>
     <p>คนรักเอมโอชา คลับ</p>
   </div>
+
+  <div class="stepper sh" id="orderStepper">
+    <div class="step" data-step="0"><div class="step-dot">1</div><div class="step-label">เลือกสินค้า</div></div>
+    <div class="step-line" data-line="0"></div>
+    <div class="step" data-step="1"><div class="step-dot">2</div><div class="step-label">ชำระเงิน</div></div>
+    <div class="step-line" data-line="1"></div>
+    <div class="step" data-step="2"><div class="step-dot">3</div><div class="step-label">แนบสลิป</div></div>
+    <div class="step-line" data-line="2"></div>
+    <div class="step" data-step="3"><div class="step-dot">4</div><div class="step-label">เสร็จสิ้น</div></div>
+  </div>
+
   <div class="bd">
 
     <div id="loadingState" class="state">
@@ -84,8 +126,14 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
     </div>
 
     <div id="catalogState" class="sh">
+      <div class="history-link"><button type="button" onclick="showHistory()">🧾 ประวัติคำสั่งซื้อ</button></div>
       <div id="myPrivileges" class="sh"></div>
       <div id="prodList"></div>
+    </div>
+
+    <div id="historyState" class="sh">
+      <button class="btn btn-outline btn-block" style="margin-bottom:16px" onclick="showState('catalogState')">← กลับไปเลือกสินค้า</button>
+      <div id="historyList"></div>
     </div>
 
     <div id="checkoutState" class="sh">
@@ -116,7 +164,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
       </label>
       <div id="paymentDetail"></div>
       <div id="checkoutErrBox" class="sh" style="background:#fff3e0;color:#e65100;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px"></div>
-      <button class="btn btn-block" style="margin-top:18px" onclick="submitOrder()" id="confirmOrderBtn">✅ ยืนยันสั่งซื้อ</button>
+      <button class="btn btn-block" style="margin-top:18px" onclick="openAddressConfirmPopup()" id="confirmOrderBtn">✅ ยืนยันสั่งซื้อ</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px" onclick="backToCatalog()">← กลับไปเลือกสินค้าต่อ</button>
     </div>
 
@@ -140,6 +188,22 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
   <div class="cart-bar sh" id="cartBar">
     <div class="cart-total">รวม <span id="cartCount">0</span> ชิ้น<b id="cartTotal">฿0</b></div>
     <button class="btn btn-outline" onclick="goToCheckout()" id="checkoutBtn" disabled>ไปหน้าชำระเงิน</button>
+  </div>
+</div>
+
+<!-- ==================== Popup ยืนยันที่อยู่จัดส่ง (ก่อนสั่งซื้อสำเร็จ) ==================== -->
+<div class="mo" id="addressConfirmModal">
+  <div class="mo-card">
+    <div class="mo-hd"><h2>📍 ยืนยันที่อยู่จัดส่ง</h2></div>
+    <div class="mo-bd">
+      <p style="font-size:13px;color:var(--g6);margin-bottom:10px">กรุณาตรวจสอบที่อยู่ให้ถูกต้องก่อนยืนยันสั่งซื้อ แก้ไขได้ตรงนี้เลย</p>
+      <textarea id="confirmAddressInput" rows="3" style="width:100%;padding:10px 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;resize:vertical;margin-bottom:8px"></textarea>
+      <select id="confirmProvinceSelect" style="width:100%;height:44px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;background:#fff;margin-bottom:18px">
+        <option value="">— เลือกจังหวัด —</option>
+      </select>
+      <button class="btn btn-block" onclick="confirmSubmitOrder()" id="confirmAddressBtn">✅ ยืนยันที่อยู่และสั่งซื้อ</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px" onclick="closeAddressConfirmModal()">← แก้ไขที่อยู่</button>
+    </div>
   </div>
 </div>
 
@@ -174,6 +238,25 @@ var pendingSlipUploadUrl = ''; // URL หน้าแนบสลิปที่
 // จะสร้างออเดอร์ใหม่ซ้อนขึ้นมา — เคลียร์กลับเป็นค่าว่างตอนเปิดหน้าแนบสลิป (ถือว่าจบขั้นตอนแก้ไขแล้ว)
 var currentOrderId = '';
 
+// ==================== Stepper (14/8/69) ====================
+// แสดงขั้นตอนปัจจุบันของการสั่งซื้อไว้ใต้ header เสมอ ระหว่างขั้นตอนเลือกสินค้า/ชำระเงิน/สั่งซื้อสำเร็จ
+// ซ่อนไปเลยตอนอยู่หน้าประวัติ/error/loading เพราะไม่ใช่ส่วนหนึ่งของ flow การสั่งซื้อรอบนี้โดยตรง
+var STEP_MAP_ = { catalogState: 0, checkoutState: 1, orderDoneState: 2 };
+function setStepper(stepIdx){
+  var wrap = document.getElementById('orderStepper');
+  if (stepIdx === null || stepIdx === undefined) { wrap.classList.add('sh'); return; }
+  wrap.classList.remove('sh');
+  wrap.querySelectorAll('.step').forEach(function(el){
+    var idx = parseInt(el.getAttribute('data-step'), 10);
+    el.classList.toggle('done', idx < stepIdx);
+    el.classList.toggle('active', idx === stepIdx);
+  });
+  wrap.querySelectorAll('.step-line').forEach(function(el){
+    var idx = parseInt(el.getAttribute('data-line'), 10);
+    el.classList.toggle('done', idx < stepIdx);
+  });
+}
+
 // เปิดหน้าแนบสลิปด้วย window.open() แทนการคลิกลิงก์ <a target="_blank"> ธรรมดา — สำคัญ: ต้อง window.open()
 // เท่านั้นถึงจะทำให้หน้าใหม่ "รู้ว่าตัวเองถูกเปิดโดยสคริปต์" และสั่ง window.close() ปิดตัวเองได้จริงตอนแนบ
 // สลิปเสร็จ ถ้าเปิดผ่านคลิกลิงก์ปกติ เบราว์เซอร์ส่วนใหญ่จะบล็อกไม่ให้สคริปต์สั่งปิดแท็บนั้น (ค้างปิดไม่ได้)
@@ -190,6 +273,7 @@ var shopWindowClosed_ = false; // กันปิดซ้ำ 2 ครั้ง�
 function openSlipUploadPage(){
   if (!pendingSlipUploadUrl) return;
   window.open(pendingSlipUploadUrl, '_blank');
+  setStepper(2); // ขั้นตอน "แนบสลิป"
 
   // ถือว่าขั้นตอนแก้ไขออเดอร์นี้จบแล้วตั้งแต่ตรงนี้ (ลูกค้าไปแนบสลิปต่อแล้ว) เคลียร์เลขที่ออเดอร์ที่แก้ไข
   // ค้างไว้ทิ้ง กันพลาดไปทับออเดอร์นี้ซ้ำถ้าบังเอิญมีการยิง submitOrder() อีกครั้งในอนาคตโดยไม่ตั้งใจ
@@ -227,16 +311,18 @@ window.addEventListener('message', function(evt){
   if (!evt || !evt.data || evt.data.type !== 'emocha-slip-uploaded') return;
   var notice = document.getElementById('slipDoneNotice');
   if (notice) notice.classList.remove('sh');
+  setStepper(3); // ขั้นตอน "เสร็จสิ้น" — อัปเดตก่อนหน้าปิดตัวเอง (ถ้าปิดไม่ทัน ผู้ใช้ยังเห็น step ล่าสุดถูกต้อง)
   if (shopWindowClosed_) return;
   shopWindowClosed_ = true;
   closeThisShopWindow_();
 });
 
 function showState(id){
-  ['loadingState','catalogState','checkoutState','orderDoneState','errorState'].forEach(function(s){
+  ['loadingState','catalogState','historyState','checkoutState','orderDoneState','errorState'].forEach(function(s){
     document.getElementById(s).classList.toggle('sh', s !== id);
   });
   document.getElementById('cartBar').classList.toggle('sh', id !== 'catalogState');
+  setStepper(STEP_MAP_.hasOwnProperty(id) ? STEP_MAP_[id] : null);
 }
 function showErrorState(msg){
   document.getElementById('errorState').innerHTML = '<div class="ico">⚠️</div><div id="errorMsg">' + msg.replace(/</g,'&lt;') + '</div>';
@@ -438,6 +524,56 @@ function updateCartBar(){
 
 function backToCatalog(){ excludedPrivilegeRowIndexes = []; showState('catalogState'); }
 
+// ==================== ประวัติคำสั่งซื้อ (14/8/69) ====================
+// แสดงรายการคำสั่งซื้อของลูกค้าคนนี้ (จาก getMyOrderHistory) — ออเดอร์ไหนยังไม่แนบสลิป (hasSlip=false)
+// จะมีปุ่ม "ดำเนินการต่อ" ให้กดไปหน้าแนบสลิปของออเดอร์นั้นได้ตรงๆ โดยไม่ต้องสั่งซื้อใหม่
+function showHistory(){
+  showState('historyState');
+  loadOrderHistory();
+}
+
+function loadOrderHistory(){
+  document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:var(--g6);padding:20px 0">⏳ กำลังโหลด...</p>';
+  getFreshIdToken().then(function(idToken){
+    return callApi('getMyOrderHistory', { idToken: idToken });
+  }).then(function(r){
+    if (!r || !r.success) {
+      document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:#c62828">โหลดประวัติไม่สำเร็จ: ' + escHtml(r ? r.error : '') + '</p>';
+      return;
+    }
+    renderOrderHistory(r.results || []);
+  }).catch(function(e){
+    if (e && e.alreadyShown) return;
+    document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:#c62828">โหลดประวัติไม่สำเร็จ: ' + escHtml(e.message) + '</p>';
+  });
+}
+
+function renderOrderHistory(list){
+  if (!list.length) {
+    document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:var(--g6);padding:20px 0">ยังไม่มีประวัติการสั่งซื้อ</p>';
+    return;
+  }
+  var h = list.map(function(o){
+    var badge = o.hasSlip
+      ? '<span class="badge-done">✅ แนบสลิปแล้ว</span>'
+      : '<span class="badge-pending">⏳ รอแนบสลิป</span>';
+    var continueBtn = o.hasSlip ? '' :
+      '<button class="btn btn-block" style="margin-top:10px" onclick="continueToSlipUpload(\'' + escHtml(o.orderId) + '\')">📎 ดำเนินการต่อ — แนบสลิป</button>';
+    return '<div class="history-item">'
+      + '<div class="row"><span><b>#' + escHtml(o.orderId) + '</b></span>' + badge + '</div>'
+      + '<div class="row"><span>วันที่</span><span>' + escHtml(o.date) + '</span></div>'
+      + '<div class="row"><span>สินค้า</span><span>' + escHtml(o.firstItemName) + '</span></div>'
+      + '<div class="row"><span>ยอดชำระ</span><span>฿' + Math.round(o.totalAmount).toLocaleString('th-TH') + '</span></div>'
+      + continueBtn
+      + '</div>';
+  }).join('');
+  document.getElementById('historyList').innerHTML = h;
+}
+
+function continueToSlipUpload(orderId){
+  window.open('https://toinatadee.github.io/Order/slipUpload.html?orderId=' + encodeURIComponent(orderId), '_blank');
+}
+
 // ครอบ Promise ด้วยเวลาจำกัด — ถ้าไม่เสร็จภายในเวลาที่กำหนด จะ reject ออกมาเองพร้อมข้อความ กันปัญหา
 // "กดแล้วไม่เกิดอะไรขึ้นเลย ค้างอยู่แบบนั้นตลอดไป" ซึ่งเกิดได้ถ้า fetch() ค้างรอ response ไม่มีวันจบ
 // (เช่น ปัญหาเครือข่าย/DNS บางกรณีที่เบราว์เซอร์ไม่แจ้ง error ทันที) — อย่างน้อยผู้ใช้จะได้เห็นข้อความ
@@ -555,15 +691,18 @@ var savedAddressLoaded = false; // กันโหลดซ้ำทุกคร
 // รายชื่อ 77 จังหวัดของไทย — ให้ลูกค้าเลือกจาก dropdown ตรงๆ แทนการพิมพ์เอง กันสะกดผิด/ตัดคำเดายาก
 var THAI_PROVINCES = ['กรุงเทพมหานคร','กระบี่','กาญจนบุรี','กาฬสินธุ์','กำแพงเพชร','ขอนแก่น','จันทบุรี','ฉะเชิงเทรา','ชลบุรี','ชัยนาท','ชัยภูมิ','ชุมพร','เชียงราย','เชียงใหม่','ตรัง','ตราด','ตาก','นครนายก','นครปฐม','นครพนม','นครราชสีมา','นครศรีธรรมราช','นครสวรรค์','นนทบุรี','นราธิวาส','น่าน','บึงกาฬ','บุรีรัมย์','ปทุมธานี','ประจวบคีรีขันธ์','ปราจีนบุรี','ปัตตานี','พระนครศรีอยุธยา','พะเยา','พังงา','พัทลุง','พิจิตร','พิษณุโลก','เพชรบุรี','เพชรบูรณ์','แพร่','ภูเก็ต','มหาสารคาม','มุกดาหาร','แม่ฮ่องสอน','ยโสธร','ยะลา','ร้อยเอ็ด','ระนอง','ระยอง','ราชบุรี','ลพบุรี','ลำปาง','ลำพูน','เลย','ศรีสะเกษ','สกลนคร','สงขลา','สตูล','สมุทรปราการ','สมุทรสงคราม','สมุทรสาคร','สระแก้ว','สระบุรี','สิงห์บุรี','สุโขทัย','สุพรรณบุรี','สุราษฎร์ธานี','สุรินทร์','หนองคาย','หนองบัวลำภู','อ่างทอง','อำนาจเจริญ','อุดรธานี','อุตรดิตถ์','อุทัยธานี','อุบลราชธานี'];
 
-function populateProvinceDropdown(){
-  var sel = document.getElementById('provinceSelect');
+// เติมตัวเลือกจังหวัดให้ <select> — เดิมมีแค่ช่องเดียว (provinceSelect) ตอนนี้มี 2 ช่อง (เพิ่ม
+// confirmProvinceSelect ใน popup ยืนยันที่อยู่) จึงรับ selectId เป็นพารามิเตอร์แทนที่จะ hardcode ไว้
+function populateProvinceDropdown(selectId){
+  var sel = document.getElementById(selectId);
   THAI_PROVINCES.forEach(function(p){
     var opt = document.createElement('option');
     opt.value = p; opt.textContent = p;
     sel.appendChild(opt);
   });
 }
-populateProvinceDropdown();
+populateProvinceDropdown('provinceSelect');
+populateProvinceDropdown('confirmProvinceSelect');
 
 // ดึงที่อยู่จัดส่งล่าสุดของสมาชิกคนนี้ (ถ้าเคยสั่งซื้อมาก่อน) มาเสนอให้ติ๊กเลือก "ใช้ที่อยู่เดิม"
 // แทนต้องพิมพ์ใหม่ทุกครั้ง — ถ้าไม่เคยมีที่อยู่บันทึกไว้เลย จะซ่อนกล่องติ๊กเลือกไปเลย เหลือแค่ช่องกรอกใหม่
@@ -751,21 +890,52 @@ function buildPromptPayPayload(promptPayId, amount){
   return payload + crc16_(payload);
 }
 
+// ==================== Popup ยืนยันที่อยู่จัดส่ง (14/8/69) ====================
+// เดิมกดปุ่ม "ยืนยันสั่งซื้อ" แล้วยิง API ทันที — ตอนนี้แทรก popup ให้ตรวจสอบ/แก้ไขที่อยู่อีกครั้งก่อน
+// เสมอ (ดึงค่าปัจจุบันจากหน้าชำระเงินมาเติมล่วงหน้าให้) กด "ยืนยันที่อยู่และสั่งซื้อ" ใน popup ถึงจะยิง
+// API จริง — ถ้ากด "แก้ไขที่อยู่" จะปิด popup กลับไปแก้ในหน้าชำระเงินตามปกติ ไม่มีการสั่งซื้อเกิดขึ้น
+function openAddressConfirmPopup(){
+  var errBox = document.getElementById('checkoutErrBox');
+  errBox.classList.add('sh');
+
+  var items = Object.keys(cart).map(function(name){ return { name: name, qty: cart[name] }; });
+  if (!items.length) { showInlineCheckoutError_('ไม่มีสินค้าในตะกร้า'); return; }
+  var shippingAddress = getShippingAddressValue();
+  if (!shippingAddress) { showInlineCheckoutError_('กรุณากรอกที่อยู่จัดส่ง'); return; }
+  var province = getProvinceValue();
+  if (!province) { showInlineCheckoutError_('กรุณาเลือกจังหวัด'); return; }
+
+  document.getElementById('confirmAddressInput').value = shippingAddress;
+  document.getElementById('confirmProvinceSelect').value = province;
+  document.getElementById('addressConfirmModal').classList.add('show');
+}
+
+function closeAddressConfirmModal(){
+  document.getElementById('addressConfirmModal').classList.remove('show');
+}
+
 function submitOrder(){
+  // ชื่อนี้คงไว้เผื่อมีการอ้างอิงจากที่อื่น (ปุ่มหลักเปลี่ยนไปเรียก openAddressConfirmPopup() แล้ว)
+  openAddressConfirmPopup();
+}
+
+// การส่งคำสั่งซื้อจริง — เรียกจากปุ่มใน popup ยืนยันที่อยู่เท่านั้น (ไม่ใช่ปุ่ม "ยืนยันสั่งซื้อ" ในหน้า
+// ชำระเงินโดยตรงอีกต่อไป) ใช้ค่าที่อยู่/จังหวัดจากช่องกรอกใน popup เสมอ (เผื่อลูกค้าแก้ไขใน popup ก่อนกด)
+function confirmSubmitOrder(){
   var errBox = document.getElementById('checkoutErrBox');
   errBox.classList.add('sh');
 
   var items = Object.keys(cart).map(function(name){
     return { name: name, qty: cart[name] }; // ไม่ต้องส่งราคามา เซิร์ฟเวอร์ดึงราคาจริงเองเสมอ
   });
-  if (!items.length) { showInlineCheckoutError_('ไม่มีสินค้าในตะกร้า'); return; }
+  if (!items.length) { closeAddressConfirmModal(); showInlineCheckoutError_('ไม่มีสินค้าในตะกร้า'); return; }
 
-  var shippingAddress = getShippingAddressValue();
-  if (!shippingAddress) { showInlineCheckoutError_('กรุณากรอกที่อยู่จัดส่ง'); return; }
-  var province = getProvinceValue();
-  if (!province) { showInlineCheckoutError_('กรุณาเลือกจังหวัด'); return; }
+  var shippingAddress = document.getElementById('confirmAddressInput').value.trim();
+  if (!shippingAddress) { document.getElementById('confirmAddressInput').focus(); return; }
+  var province = document.getElementById('confirmProvinceSelect').value;
+  if (!province) { document.getElementById('confirmProvinceSelect').focus(); return; }
 
-  var btn = document.getElementById('confirmOrderBtn');
+  var btn = document.getElementById('confirmAddressBtn');
   btn.disabled = true; btn.textContent = '⏳ กำลังบันทึกคำสั่งซื้อ...';
 
   // เข้ารหัสรายการสินค้าเป็น Base64 ก่อนส่ง (แทนการส่งข้อความไทยตรงๆ ผ่าน URL) เพราะภาษาไทยกิน URL
@@ -777,15 +947,18 @@ function submitOrder(){
     return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId });
   })
     .then(function(r){
-      btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
+      btn.disabled = false; btn.textContent = '✅ ยืนยันที่อยู่และสั่งซื้อ';
       if (!r || !r.success) {
         // แนบข้อมูลวินิจฉัย idToken ไปกับ error เสมอ (ความยาว + จำนวนจุดคั่น — JWT ที่ถูกต้องต้องมี
         // 3 ส่วนคั่นด้วยจุด 2 จุดพอดี ถ้าจำนวนจุดไม่ใช่ 2 แปลว่า token เพี้ยน/ถูกตัดขาดระหว่างทางแน่นอน)
         var dotCount = currentIdToken ? (currentIdToken.match(/\./g) || []).length : 0;
         var tokenInfo = 'idToken ยาว ' + (currentIdToken ? currentIdToken.length : 0) + ' ตัวอักษร, มี ' + dotCount + ' จุด (ต้องมี 2 จุดพอดีถึงจะถูกต้อง)';
+        closeAddressConfirmModal();
         showInlineCheckoutError_('สั่งซื้อไม่สำเร็จ: ' + (r ? r.error : '') + ' (' + tokenInfo + ')');
         return;
       }
+
+      closeAddressConfirmModal();
 
       var summaryHtml =
         '<div class="row"><span>เลขที่ออเดอร์</span><span><b>' + escHtml(r.orderId) + '</b></span></div>'
@@ -816,8 +989,9 @@ function submitOrder(){
       showState('orderDoneState');
     })
     .catch(function(e){
-      btn.disabled = false; btn.textContent = '✅ ยืนยันสั่งซื้อ';
-      if (e && e.alreadyShown) return; // ข้อความที่มีประโยชน์กว่าแสดงไปแล้ว ไม่ต้องทับ
+      btn.disabled = false; btn.textContent = '✅ ยืนยันที่อยู่และสั่งซื้อ';
+      if (e && e.alreadyShown) { closeAddressConfirmModal(); return; } // ข้อความที่มีประโยชน์กว่าแสดงไปแล้ว ไม่ต้องทับ
+      closeAddressConfirmModal();
       showInlineCheckoutError_('เรียก API ไม่สำเร็จ: ' + e.message);
     });
 }
