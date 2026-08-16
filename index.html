@@ -951,7 +951,18 @@ function renderPaymentDetail(){
     document.getElementById('qrCanvas').innerHTML = '';
     new QRCode(document.getElementById('qrCanvas'), { text: payload, width: 200, height: 200 });
   } else {
+    // ⚡ เพิ่มโลโก้ธนาคารไว้บนกล่องรายละเอียดบัญชี (16/8/69) — ให้ลูกค้าเห็นปุ๊บรู้ทันทีว่าเป็นธนาคารไหน
+    // ไม่ต้องอ่านชื่อธนาคารเป็นตัวหนังสือเทียบเอง แสดงเฉพาะตอนเลือก "โอนเข้าบัญชีธนาคาร" เท่านั้น
+    // แสดงเฉพาะกรณีเป็น SCB (ไทยพาณิชย์) ตามที่ตั้งค่าไว้ใน SHOP_BANK_NAME ฝั่ง Code.gs — ถ้าเปลี่ยนไปใช้
+    // ธนาคารอื่นในอนาคต โลโก้นี้จะไม่ขึ้น (ไม่ผูกกับธนาคารอื่นแบบเผื่อไว้ เพราะยังไม่มีโลโก้ของธนาคารอื่น)
+    // ไฟล์ scb-logo.png ต้องอัปโหลดไว้ที่โฮสต์เดียวกับ logo-em-o-cha.png (บน GitHub Pages) — ใช้ path
+    // สัมพัทธ์แบบเดียวกัน ถ้าไม่มีไฟล์นี้จริงๆ รูปจะแค่ไม่โชว์ (onerror ซ่อนตัวเองไป) ไม่กระทบส่วนอื่น
+    var bankLogoHtml = '';
+    if (/ไทยพาณิชย์|SCB/i.test(paymentInfo.bankName || '')) {
+      bankLogoHtml = '<div style="text-align:center;margin-bottom:10px"><img src="scb-logo.png" alt="SCB" style="height:36px;object-fit:contain" onerror="this.style.display=\'none\'"></div>';
+    }
     wrap.innerHTML = '<div class="bank-box">'
+      + bankLogoHtml
       + '<div class="row"><span>ธนาคาร</span><span>' + escHtml(paymentInfo.bankName) + '</span></div>'
       + '<div class="row"><span>เลขบัญชี</span><span>' + escHtml(paymentInfo.bankAccount) + '</span></div>'
       + '<div class="row"><span>ชื่อบัญชี</span><span>' + escHtml(paymentInfo.accountName) + '</span></div>'
