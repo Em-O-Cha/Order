@@ -802,7 +802,8 @@ function renderDiscountSummary(){
   allPrivileges.forEach(function(p){
     var isExcluded = excludedPrivilegeRowIndexes.indexOf(p.rowIndex) !== -1;
     var isRedeemable = p.givenBy === 'แลกด้วยแต้ม';
-    var labelSuffix = p.type === 'bogo' ? (' (แถม ' + escHtml(p.freeProduct || '') + (p.freeQtyGranted ? ' x' + p.freeQtyGranted : '') + ')') : '';
+    var isBogo = p.type === 'bogo';
+    var labelSuffix = isBogo ? (' (แถม ' + escHtml(p.freeProduct || '') + (p.freeQtyGranted ? ' x' + p.freeQtyGranted : '') + ')') : '';
     if (isExcluded) {
       h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>✅ ไม่ใช้สิทธิ์ "' + escHtml(p.name) + '" ในออเดอร์นี้ (ยังใช้ได้ครั้งถัดไป)</span>'
         + '<span><button type="button" onclick="undoRemovePrivilege(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ยกเลิก</button></span></div>';
@@ -811,16 +812,28 @@ function renderDiscountSummary(){
     var removeBtnHtml = isRedeemable
       ? ' <button type="button" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
       : '';
-    if (p.discount <= 0) return; // ⚡ (17/8/69) เช่น bogo ที่ยังซื้อไม่ครบจำนวน X ยังไม่เกิดส่วนลดจริง ไม่ต้องโชว์ให้สับสน
+    if (p.discount <= 0 && !(isBogo && p.freeQtyGranted > 0)) return; // ⚡ (17/8/69) เช่น bogo ที่ยังซื้อไม่ครบจำนวน X ยังไม่เกิดของแถมจริง ไม่ต้องโชว์ให้สับสน
+    // ⚡ แก้ (19/8/69) — bogo (ซื้อครบแถม) ไม่ต้องแปลงเป็นตัวเลข "-฿X" ให้ลูกค้าเห็น เพราะเป็นของแถมล้วนๆ
+    // ไม่ใช่ส่วนลดเงินสด แสดงแค่ข้อความ "แถม" เฉยๆ พอ (มูลค่ายังคงถูกหักออกจากยอดสุทธิจริงเบื้องหลังตามปกติ
+    // ผ่าน getDiscountAmount() แค่ไม่โชว์ตัวเลขให้เห็นตรงนี้)
+    var amountHtml = isBogo ? '<span style="color:var(--gd);font-weight:600;font-size:12px">🎁 ได้รับฟรี</span>' : ('-฿' + Math.round(p.discount).toLocaleString('th-TH'));
     h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(p.name) + labelSuffix + '</span>'
-      + '<span style="display:flex;align-items:center;gap:8px">-฿' + Math.round(p.discount).toLocaleString('th-TH') + removeBtnHtml + '</span></div>';
+      + '<span style="display:flex;align-items:center;gap:8px">' + amountHtml + removeBtnHtml + '</span></div>';
   });
   if (lastDiscountInfo && lastDiscountInfo.coupon) {
-    var cLabel = lastDiscountInfo.coupon.type === 'bogo' ? (' (แถม ' + escHtml(lastDiscountInfo.coupon.freeProduct || '') + (lastDiscountInfo.coupon.freeQtyGranted ? ' x' + lastDiscountInfo.coupon.freeQtyGranted : '') + ')') : '';
-    h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + cLabel + '</span><span>-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
+    var cIsBogo = lastDiscountInfo.coupon.type === 'bogo';
+    var cLabel = cIsBogo ? (' (แถม ' + escHtml(lastDiscountInfo.coupon.freeProduct || '') + (lastDiscountInfo.coupon.freeQtyGranted ? ' x' + lastDiscountInfo.coupon.freeQtyGranted : '') + ')') : '';
+    if (!cIsBogo || lastDiscountInfo.coupon.freeQtyGranted > 0) {
+      var cAmountHtml = cIsBogo ? '<span style="color:var(--gd);font-weight:600;font-size:12px">🎁 ได้รับฟรี</span>' : ('-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH'));
+      h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + cLabel + '</span><span>' + cAmountHtml + '</span></div>';
+    }
   } else if (lastDiscountInfo && lastDiscountInfo.autoCoupon) {
-    var acLabel = lastDiscountInfo.autoCoupon.type === 'bogo' ? (' (แถม ' + escHtml(lastDiscountInfo.autoCoupon.freeProduct || '') + (lastDiscountInfo.autoCoupon.freeQtyGranted ? ' x' + lastDiscountInfo.autoCoupon.freeQtyGranted : '') + ')') : '';
-    h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(lastDiscountInfo.autoCoupon.code) + acLabel + '</span><span>-฿' + Math.round(lastDiscountInfo.autoCoupon.discount).toLocaleString('th-TH') + '</span></div>';
+    var acIsBogo = lastDiscountInfo.autoCoupon.type === 'bogo';
+    var acLabel = acIsBogo ? (' (แถม ' + escHtml(lastDiscountInfo.autoCoupon.freeProduct || '') + (lastDiscountInfo.autoCoupon.freeQtyGranted ? ' x' + lastDiscountInfo.autoCoupon.freeQtyGranted : '') + ')') : '';
+    if (!acIsBogo || lastDiscountInfo.autoCoupon.freeQtyGranted > 0) {
+      var acAmountHtml = acIsBogo ? '<span style="color:var(--gd);font-weight:600;font-size:12px">🎁 ได้รับฟรี</span>' : ('-฿' + Math.round(lastDiscountInfo.autoCoupon.discount).toLocaleString('th-TH'));
+      h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(lastDiscountInfo.autoCoupon.code) + acLabel + '</span><span>' + acAmountHtml + '</span></div>';
+    }
   }
   if (lastDiscountInfo && lastDiscountInfo.couponError) {
     h += '<div class="row" style="color:#c62828"><span colspan="2">⚠️ ' + escHtml(lastDiscountInfo.couponError) + '</span></div>';
@@ -988,8 +1001,11 @@ function confirmSubmitOrder(){
       var summaryHtml =
         '<div class="row"><span>เลขที่ออเดอร์</span><span><b>' + escHtml(r.orderId) + '</b></span></div>'
         + '<div class="row"><span>ยอดสินค้า</span><span>฿' + r.subtotal.toLocaleString('th-TH') + '</span></div>';
-      if (r.discount > 0) {
-        summaryHtml += '<div class="row"><span>ส่วนลดรวม</span><span>-฿' + Math.round(r.discount).toLocaleString('th-TH') + '</span></div>';
+      // ⚡ แก้ (19/8/69) — ใช้ r.cashDiscount (ส่วนลดเงินสดล้วนๆ ไม่รวมมูลค่าของแถม/bogo) แทน r.discount
+      // (ยอดรวมทั้งหมดที่ใช้คำนวณยอดชำระจริงเบื้องหลัง) เพราะของแถมไม่ใช่ส่วนลดเงิน ไม่ควรโชว์เป็นตัวเลขลด
+      // ราคาให้ลูกค้าเห็นตรงนี้ — ของแถมแสดงแยกในกล่อง "🎁 ของแถมที่คุณได้รับ" ด้านล่างอยู่แล้ว
+      if (r.cashDiscount > 0) {
+        summaryHtml += '<div class="row"><span>ส่วนลดรวม</span><span>-฿' + Math.round(r.cashDiscount).toLocaleString('th-TH') + '</span></div>';
       }
       // ⚡ เพิ่ม (19/8/69) — แสดงรายการ "ของแถม" (จากโปรซื้อครบแถม/bogo) ในหน้าคำสั่งซื้อสำเร็จด้วย
       // ข้อมูลนี้มาจาก r.freebieItems ที่ createShopOrder ฝั่ง Code.gs ส่งกลับมาให้แล้ว (เพิ่มเข้าไปในค่า
