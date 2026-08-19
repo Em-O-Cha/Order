@@ -757,6 +757,14 @@ function goToCheckout(){
 
 var excludedPrivilegeRowIndexes = [];
 
+// ⚡ แก้ (19/8/69) — เดิมถ้า checkShopDiscounts ล้มเหลว (ทั้งกรณี success:false และกรณี callApi() reject
+// ไปเลยหลัง retry ครบโควตา) ฟังก์ชันนี้จะ "เงียบ" ไม่แจ้งผู้ใช้เลย (แค่ console.warn ที่ผู้ใช้ทั่วไปมองไม่เห็น)
+// แล้วปล่อยให้ renderDiscountSummary()/renderPaymentDetail() แสดงผลต่อไปตามข้อมูลเก่า/ว่างเปล่า — ที่ร้ายแรง
+// คือ getCartTotal()/getFinalTotal() คำนวณยอดสินค้า/ยอดสุทธิจากฝั่ง client ล้วนๆ (ไม่พึ่ง lastDiscountInfo
+// เลยถ้าไม่มีสิทธิ์/คูปอง) ทำให้หน้าชำระเงินยัง"ดูปกติ"เหมือนไม่มีอะไรผิด (ยอดสินค้า/ค่าส่ง/ยอดสุทธิขึ้นเลข
+// ถูกต้องหมด) ทั้งที่จริงๆ แล้ว "ของแถม/สิทธิ์พิเศษ/คูปองอัตโนมัติ" ไม่ได้ถูกดึงมาแสดงเลยเพราะคำขอเบื้องหลัง
+// ล้มเหลว ลูกค้าจึงไม่เห็นของแถมที่ควรได้รับ โดยไม่รู้ตัวว่าเกิดอะไรขึ้น — ตอนนี้แก้ให้แสดงคำเตือนชัดเจนพร้อม
+// ปุ่มลองใหม่ และดักจับกรณี callApi() reject ที่ไม่เคยมี .catch() มาก่อนด้วย
 function refreshDiscounts(idTokenParam){
   var subtotal = getCartTotal();
   var items = Object.keys(cart).map(function(name){ return { name: name, qty: cart[name] }; });
@@ -765,12 +773,23 @@ function refreshDiscounts(idTokenParam){
   return tokenPromise.then(function(idToken){
     return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|') });
   }).then(function(r){
-    if (r && r.success) { lastDiscountInfo = r; }
-    else { console.warn('checkShopDiscounts ล้มเหลว:', r && r.error); }
+    if (r && r.success) {
+      lastDiscountInfo = r;
+      discountLoadError_ = null;
+    } else {
+      discountLoadError_ = (r && r.error) ? r.error : 'ไม่ทราบสาเหตุ';
+      console.warn('checkShopDiscounts ล้มเหลว:', discountLoadError_);
+    }
+    renderDiscountSummary();
+    renderPaymentDetail();
+  }).catch(function(e){
+    discountLoadError_ = e && e.message ? e.message : 'เรียก API ไม่สำเร็จ';
+    console.warn('checkShopDiscounts ล้มเหลว (network):', discountLoadError_);
     renderDiscountSummary();
     renderPaymentDetail();
   });
 }
+var discountLoadError_ = null; // ⚡ เพิ่ม (19/8/69) เก็บ error ล่าสุดของ checkShopDiscounts ไว้แสดงในหน้าชำระเงิน
 
 function removePrivilegeFromOrder(rowIndex){
   if (excludedPrivilegeRowIndexes.indexOf(rowIndex) === -1) excludedPrivilegeRowIndexes.push(rowIndex);
@@ -864,7 +883,19 @@ function getFinalShippingCost(){
 function renderDiscountSummary(){
   var wrap = document.getElementById('discountSummary');
   var subtotal = getCartTotal();
-  var h = '<div class="bank-box"><div class="row"><span>ยอดสินค้า</span><span>฿' + subtotal.toLocaleString('th-TH') + '</span></div>';
+  var h = '';
+
+  // ⚡ เพิ่ม (19/8/69) — ถ้าดึงข้อมูลสิทธิ์พิเศษ/คูปอง/ของแถมไม่สำเร็จ ต้องแจ้งให้ลูกค้าเห็นชัดๆ ตรงนี้เลย
+  // (แทนที่จะเงียบแล้วปล่อยให้หน้าดูเหมือนไม่มีปัญหาอะไร ทั้งที่จริงๆ สิทธิ์/ของแถมที่ควรได้อาจไม่ถูกนำมาคิด
+  // เพราะดึงข้อมูลไม่สำเร็จ) มีปุ่มลองโหลดใหม่ให้กดเองได้เลย
+  if (discountLoadError_) {
+    h += '<div style="background:#fff3e0;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:#e65100">'
+      + '⚠️ ดึงข้อมูลสิทธิ์พิเศษ/คูปอง/ของแถมไม่สำเร็จ (' + escHtml(discountLoadError_) + ') — ยอดที่แสดงอาจยังไม่รวมส่วนลด/ของแถมที่คุณควรได้รับ'
+      + '<br><button type="button" class="btn" style="margin-top:8px;padding:6px 14px;font-size:12px" onclick="refreshDiscounts()">🔄 ลองโหลดใหม่</button>'
+      + '</div>';
+  }
+
+  h += '<div class="bank-box"><div class="row"><span>ยอดสินค้า</span><span>฿' + subtotal.toLocaleString('th-TH') + '</span></div>';
 
   var allPrivileges = (lastDiscountInfo && lastDiscountInfo.allPrivileges) || [];
   allPrivileges.forEach(function(p){
