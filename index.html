@@ -382,7 +382,13 @@ function handleSlipFile(inp){
   reader.readAsDataURL(file);
 }
 
-function uploadSlipAttempt_(attempt){
+// ⚡ แก้ (19/8/69) — ห้าม auto-retry เด็ดขาดสำหรับ uploadShopSlip เพราะเป็น action ที่ "เขียนข้อมูล" (สร้างไฟล์
+// สลิปใน Drive, ให้คะแนนสะสม, ส่งข้อความ LINE ยืนยัน) ถ้าเซิร์ฟเวอร์ประมวลผลสำเร็จไปแล้วจริง (แค่ตอบกลับช้า/
+// การเชื่อมต่อขาดตอนส่งผลกลับมาหาเครื่อง) การยิงคำขอเดิมซ้ำอัตโนมัติจะสร้างสลิปซ้ำ/ส่งข้อความซ้ำ — ยืนยันแล้ว
+// จาก Executions log จริงว่า uploadShopSlip ถูกยิงซ้ำสำหรับออเดอร์เดียวกันห่างกัน 43 วินาที เพราะโค้ดเดิม retry
+// อัตโนมัติตอนเจอปัญหาเครือข่ายชั่วคราว (แพทเทิร์นเดียวกับที่ทำให้ createShopOrder สร้างออเดอร์ซ้ำ) ตอนนี้ถ้า
+// เจอปัญหาจะแจ้งผู้ใช้ตรงๆ ให้ไปเช็คประวัติคำสั่งซื้อก่อน แทนที่จะยิงซ้ำเอง
+function uploadSlipAttempt_(){
   return fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
@@ -390,15 +396,13 @@ function uploadSlipAttempt_(attempt){
   })
     .then(function(res){ return res.text(); })
     .then(function(text){
-      try { return JSON.parse(text); } catch (parseErr) { throw new Error('ระบบตอบกลับไม่ถูกต้อง (ไม่ใช่ JSON) — ลองใหม่อีกครั้ง'); }
-    })
-    .catch(function(networkErr){
-      if (attempt < 3) {
-        return new Promise(function(resolve){
-          setTimeout(function(){ resolve(uploadSlipAttempt_(attempt + 1)); }, attempt * 700);
-        });
+      try { return JSON.parse(text); } catch (parseErr) {
+        throw new Error('ระบบตอบกลับไม่ถูกต้อง คำสั่งนี้อาจสำเร็จไปแล้วฝั่งเซิร์ฟเวอร์ กรุณาเช็คประวัติคำสั่งซื้อก่อนลองแนบสลิปซ้ำ (อย่ากดซ้ำทันที)');
       }
-      throw networkErr;
+    })
+    .catch(function(err){
+      if (err.message && err.message.indexOf('อาจสำเร็จไปแล้ว') !== -1) throw err;
+      throw new Error('เชื่อมต่อไม่สำเร็จ — คำสั่งนี้อาจสำเร็จไปแล้วฝั่งเซิร์ฟเวอร์เพียงแต่ตอบกลับไม่ถึง กรุณาปิดหน้าต่างนี้แล้วเช็ค "ประวัติคำสั่งซื้อ" ก่อนลองแนบสลิปใหม่ (อย่ากดซ้ำทันที): ' + err.message);
     });
 }
 
@@ -409,7 +413,7 @@ function submitSlipInline(){
   errBox.classList.remove('show');
   btn.disabled = true; btn.textContent = '⏳ กำลังอัปโหลด...';
 
-  uploadSlipAttempt_(1)
+  uploadSlipAttempt_()
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันแนบสลิป';
       if (r && r.success) {
@@ -449,11 +453,19 @@ function showErrorState(msg){
   showState('errorState');
 }
 
+// ⚡ แก้ (19/8/69) — action ในรายการนี้ "เขียน/แก้ไขข้อมูล" (ไม่ idempotent) ห้าม retry อัตโนมัติเด็ดขาด
+// เพราะถ้าเซิร์ฟเวอร์ประมวลผลสำเร็จไปแล้วจริง (แค่ตอบกลับช้า/การเชื่อมต่อขาดตอนส่งผลกลับมา) การยิงคำขอเดิม
+// ซ้ำจะสร้างรายการซ้ำ — ยืนยันแล้วจาก Executions log จริงว่า createShopOrder ถูกยิงซ้ำจนเกิดออเดอร์ซ้ำ 2 ใบ
+// ห่างกันแค่ 13 วินาที เพราะโค้ดเดิม retry อัตโนมัติตอนเจอปัญหาเครือข่ายชั่วคราว การอ่านข้อมูล (checkMemberStatus,
+// checkShopDiscounts ฯลฯ) ยัง retry ได้ตามปกติเพราะอ่านซ้ำไม่มีผลข้างเคียงอะไร
+var NON_IDEMPOTENT_ACTIONS_ = ['registerMember', 'createShopOrder', 'redeemReward', 'updateMemberProfile'];
+
 function callApi(action, payload, _attempt){
   payload = payload || {};
   payload.action = action;
   var attempt = _attempt || 1;
   var MAX_ATTEMPTS = 3;
+  var isMutating = NON_IDEMPOTENT_ACTIONS_.indexOf(action) !== -1;
   var qs = Object.keys(payload).map(function(k){
     return encodeURIComponent(k) + '=' + encodeURIComponent(payload[k]);
   }).join('&');
@@ -463,19 +475,24 @@ function callApi(action, payload, _attempt){
       try {
         return JSON.parse(text);
       } catch (parseErr) {
-        if (attempt < MAX_ATTEMPTS) {
+        if (!isMutating && attempt < MAX_ATTEMPTS) {
           return new Promise(function(resolve){
             setTimeout(function(){ resolve(callApi(action, payload, attempt + 1)); }, attempt * 800);
           });
         }
-        throw new Error('ระบบไม่ตอบสนองชั่วคราว กรุณาลองใหม่อีกครั้งในสักครู่');
+        throw new Error(isMutating
+          ? 'ระบบตอบกลับไม่ถูกต้อง คำสั่งนี้อาจสำเร็จไปแล้วฝั่งเซิร์ฟเวอร์ กรุณาตรวจสอบก่อนลองใหม่ (อย่ากดซ้ำทันที)'
+          : 'ระบบไม่ตอบสนองชั่วคราว กรุณาลองใหม่อีกครั้งในสักครู่');
       }
     });
   }).catch(function(networkErr){
-    if (attempt < MAX_ATTEMPTS && networkErr.message.indexOf('ระบบไม่ตอบสนอง') === -1) {
+    if (!isMutating && attempt < MAX_ATTEMPTS && networkErr.message.indexOf('ระบบไม่ตอบสนอง') === -1) {
       return new Promise(function(resolve){
         setTimeout(function(){ resolve(callApi(action, payload, attempt + 1)); }, attempt * 800);
       });
+    }
+    if (isMutating && networkErr.message.indexOf('อาจสำเร็จไปแล้ว') === -1) {
+      throw new Error('เชื่อมต่อไม่สำเร็จ — คำสั่งนี้อาจสำเร็จไปแล้วฝั่งเซิร์ฟเวอร์เพียงแต่ตอบกลับไม่ถึง กรุณาตรวจสอบสถานะก่อนลองใหม่ (อย่ากดซ้ำทันที): ' + networkErr.message);
     }
     throw networkErr;
   });
