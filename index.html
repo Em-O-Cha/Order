@@ -251,8 +251,12 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 var LIFF_ID = '2010892131-3XYQXNzq';
 var API_URL = 'https://script.google.com/macros/s/AKfycbzfhB83ccV-gnji-A_-rNnGmM7K1O4XnV9w6NBcTRm_d_fN_raU6BjBwyOIWz-SIeL7Bw/exec';
 
-// ⚡ (21/8/69) โลโก้ธนาคาร SCB — เก็บไว้ที่ Google Drive แปลงลิงก์แชร์ปกติเป็นลิงก์ thumbnail เข้าถึงตรงได้เลย
+// ⚡ เพิ่ม (21/8/69) — โลโก้ธนาคาร SCB และรูป QR พร้อมเพย์คงที่ เก็บไว้ที่ Google Drive แปลงลิงก์แชร์ปกติ
+// (drive.google.com/file/d/FILE_ID/view) เป็นลิงก์ thumbnail แบบเข้าถึงตรงได้เลย (ใช้แพทเทิร์นเดียวกับ
+// toDirectImageUrl_() ฝั่ง Code.gs) เพราะลิงก์ /view ปกติเปิดเป็นหน้า Google Drive Viewer ไม่ใช่ไฟล์ภาพตรงๆ
+// ใส่ไว้เป็นตัวแปรกลางตรงนี้ ไม่ต้องไปหาแก้กระจายหลายจุดถ้าต้องเปลี่ยนรูปในอนาคต
 var SCB_LOGO_URL_ = 'https://drive.google.com/thumbnail?id=1qxe-7GiSoRAWBOA7LwFwbaarBOsgg0mv&sz=w300';
+var PROMPTPAY_QR_IMAGE_URL_ = 'https://drive.google.com/thumbnail?id=1i4WjeOU5Cq9pdK7YEWaartlpq4NGamJL&sz=w400';
 
 var currentIdToken = null;
 var categories = [];
@@ -899,10 +903,14 @@ function getFinalTotal(){
   return Math.max(0, getCartTotal() - getDiscountAmount()) + getFinalShippingCost();
 }
 
-// ⚡ แก้ (21/8/69) — ตามคำขอ: QR พร้อมเพย์ต้องมี "ยอดเงินขึ้นเลยเมื่อสแกน" เหมือนเดิม จึงเปลี่ยนกลับมาสร้าง
-// QR ด้วยโค้ด (buildPromptPayPayload — เข้ารหัสยอดเงินฝังในตัว QR ตามมาตรฐาน EMV QR) แทนการใช้รูปภาพ QR
-// คงที่จาก Google Drive (ซึ่งไม่มียอดเงินฝังอยู่ ต้องพิมพ์ยอดเอง) — ส่วนโลโก้ธนาคาร SCB ยังคงใช้รูปจาก
-// Google Drive ตามที่แก้ไปก่อนหน้านี้ (SCB_LOGO_URL_) ไม่เปลี่ยนแปลง
+// ⚡ แก้ (21/8/69) — เปลี่ยนวิธีแสดงผลการชำระเงินทั้ง 2 ช่องทาง ตามที่ขอ:
+//   1) โลโก้ธนาคาร SCB — เดิมเป็น <img src=""> ว่างเปล่า (รอแปะ base64 เอง) เปลี่ยนเป็นลิงก์รูปจริงจาก
+//      Google Drive (SCB_LOGO_URL_ ประกาศไว้ต้นไฟล์) ผ่านลิงก์ thumbnail แบบเข้าถึงตรง
+//   2) QR พร้อมเพย์ — เดิมสร้าง QR ด้วยไลบรารี QRCode.js ฝั่ง client (เข้ารหัสยอดเงินไว้ในตัว QR อัตโนมัติ)
+//      เปลี่ยนเป็นแสดงรูป QR คงที่จาก Google Drive แทน (PROMPTPAY_QR_IMAGE_URL_) — ⚠️ ข้อควรระวัง: QR แบบ
+//      รูปภาพคงที่นี้ไม่มียอดเงินฝังอยู่ในตัว QR เหมือนแบบเดิม ลูกค้าต้องพิมพ์ยอดโอนเองตอนสแกน (ยอดชำระยัง
+//      แสดงเป็นตัวหนังสือกำกับไว้ใต้ QR เหมือนเดิมเพื่อให้ลูกค้าดูตัวเลขได้) — ฟังก์ชัน buildPromptPayPayload/
+//      tlv/crc16_ ที่เคยใช้สร้าง QR แบบเดิมยังคงเก็บไว้ในไฟล์เฉยๆ ไม่ได้ลบทิ้ง เผื่อต้องการสลับกลับมาใช้ภายหลัง
 function renderPaymentDetail(){
   var wrap = document.getElementById('paymentDetail');
   var total = getFinalTotal();
@@ -912,10 +920,10 @@ function renderPaymentDetail(){
     return;
   }
   if (selectedPayment === 'promptpay') {
-    wrap.innerHTML = '<div class="qr-box"><div id="qrCanvas"></div><p style="margin-top:10px;font-size:13px;color:var(--g6)">ยอดชำระ ฿' + total.toLocaleString('th-TH') + '</p></div>';
-    var payload = buildPromptPayPayload(paymentInfo.promptPayId, total);
-    document.getElementById('qrCanvas').innerHTML = '';
-    new QRCode(document.getElementById('qrCanvas'), { text: payload, width: 200, height: 200 });
+    wrap.innerHTML = '<div class="qr-box">'
+      + '<img src="' + PROMPTPAY_QR_IMAGE_URL_ + '" alt="QR พร้อมเพย์" style="max-width:200px;width:100%;height:auto;border-radius:8px;background:#fff" onerror="this.style.display=\'none\'">'
+      + '<p style="margin-top:10px;font-size:13px;color:var(--g6)">ยอดชำระ ฿' + total.toLocaleString('th-TH') + '</p>'
+      + '</div>';
   } else {
     var bankLogoHtml = '';
     if (/ไทยพาณิชย์|SCB/i.test(paymentInfo.bankName || '')) {
@@ -931,7 +939,7 @@ function renderPaymentDetail(){
   }
 }
 
-// ==================== PromptPay QR (EMV QR Code) ====================
+// ==================== PromptPay QR (EMV QR Code) — เก็บไว้เผื่อสลับกลับมาใช้ภายหลัง ไม่ได้เรียกใช้แล้ว ====================
 function tlv(id, value){
   var length = String(value.length).padStart(2, '0');
   return id + length + value;
