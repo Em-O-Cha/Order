@@ -42,18 +42,11 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 .cat-name{font-size:15px;font-weight:600;padding:12px 14px 4px;}
 .cat-card .prod-item{padding:10px 14px;}
 
-/* ⚡ แถบปุ่มด้านล่าง (15/8/69) — เดิมใช้ position:sticky แต่ .card ตั้ง overflow:hidden ไว้ (กันรูปภาพ/
-   การ์ดมุมโค้งล้นขอบ) ซึ่งดันทำให้ .card กลายเป็น "กรอบอ้างอิง" ของ sticky แทนที่จะเป็นทั้งหน้าจอ — ผลคือ
-   แถบนี้เลื่อนหายไปพร้อมเนื้อหาจริงๆ ไม่ได้ค้างอยู่กับที่ตามที่ตั้งใจไว้เลย เปลี่ยนมาใช้ position:fixed
-   ยึดกับหน้าจอโดยตรงแทน ไม่ผูกกับ .card อีกต่อไป จึงค้างอยู่กับที่แน่นอนไม่ว่าจะเลื่อนดูตรงไหนก็ตาม
-   ถือโอกาสปรับเป็นทรงแคปซูลลอย (โค้งมน มีระยะห่างขอบจอ มีเงา) ให้ดูทันสมัยขึ้นด้วยในตัว แทนแถบเหลี่ยม
-   ที่ชิดขอบจอเดิม — env(safe-area-inset-bottom) กันแถบไปชนแถบ home indicator ของ iPhone รุ่นใหม่ */
 .cart-bar{position:fixed;left:50%;transform:translateX(-50%);
   bottom:calc(16px + env(safe-area-inset-bottom));
   width:min(420px,calc(100% - 32px));
   background:#fff;border-radius:20px;box-shadow:0 10px 28px rgba(0,0,0,.16);
   padding:14px 20px;display:flex;justify-content:space-between;align-items:center;z-index:80;}
-/* กันเนื้อหาบรรทัดสุดท้ายโดนแถบลอยด้านล่างบัง เผื่อพื้นที่ไว้เท่ากับความสูงแถบ + ระยะห่างขอบจอ */
 .bd{padding-bottom:96px;}
 .cart-total{font-size:13px;color:var(--g6);}
 .cart-total b{font-size:17px;color:var(--gd);display:block;}
@@ -163,8 +156,6 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
         <input type="text" id="couponInput" placeholder="มีโค้ดพิเศษอื่น? กรอกตรงนี้" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif">
         <button class="btn" onclick="applyCoupon()" style="white-space:nowrap">ใช้โค้ด</button>
       </div>
-      <!-- ⚡ เอาช่องที่อยู่จัดส่งออกจากหน้านี้แล้ว (14/8/69) — ย้ายไปกรอก/ยืนยันที่ popup ก่อนสั่งซื้อ
-           แทน (ดู addressConfirmModal) กันมีช่องที่อยู่ซ้ำกันถึง 2 จุดในขั้นตอนเดียวกัน -->
       <p style="font-weight:600;margin-bottom:12px">เลือกวิธีชำระเงิน</p>
       <label class="pay-opt active" id="optPromptpay">
         <input type="radio" name="pay" value="promptpay" checked onchange="selectPayment('promptpay')"> 📱 สแกน QR พร้อมเพย์
@@ -182,9 +173,6 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
       <p style="font-weight:600">สั่งซื้อสำเร็จ!</p>
       <div class="order-box" id="orderSummary"></div>
       <p style="font-size:12px;color:var(--g6);margin-top:10px" id="orderDoneHint">กดปุ่มด้านล่างเพื่อแนบสลิป — ทีมงานจะตรวจสอบและจัดส่งให้เร็วที่สุด</p>
-      <!-- ⚡ ข้อความสำรอง โชว์เฉพาะตอนแนบสลิปสำเร็จแล้วแต่หน้านี้ปิดตัวเองไม่สำเร็จ (liff.closeWindow()/
-           window.close() ใช้ไม่ได้ในบางกรณีของแอป LINE — ข้อจำกัดของแพลตฟอร์ม ไม่ใช่บั๊กโค้ด) เดิมถ้าปิด
-           ไม่สำเร็จ ผู้ใช้จะไม่เห็นอะไรเลย ค้างอยู่หน้าเดิมแบบไม่มีข้อความบอกอะไรทั้งสิ้น -->
       <div id="slipDoneNotice" class="sh" style="margin-top:14px;padding:12px 14px;background:#e8f5e9;border-radius:12px;font-size:13.5px;color:#1b5e20;text-align:center">
         ✅ แนบสลิปเรียบร้อยแล้ว ขอบคุณค่ะ 🙏<br>ปิดหน้านี้ได้เลย
       </div>
@@ -197,9 +185,6 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
     <div class="cart-total">รวม <span id="cartCount">0</span> ชิ้น<b id="cartTotal">฿0</b></div>
     <button class="btn btn-outline" onclick="goToCheckout()" id="checkoutBtn" disabled>ไปหน้าชำระเงิน</button>
   </div>
-  <!-- ⚡ แถบปุ่ม "Step ถัดไป" ด้านล่าง ต้องอยู่กับที่เสมอทุกหน้าในขั้นตอนสั่งซื้อ (15/8/69) — เดิมปุ่มหลัก
-       ของหน้าชำระเงิน/หน้าสั่งซื้อสำเร็จ อยู่ปะปนในเนื้อหาที่เลื่อนได้ ต้องเลื่อนจอลงไปหาถึงจะกดได้ ย้ายมา
-       ไว้เป็นแถบ sticky ด้านล่างเหมือนแถบตะกร้าสินค้า (#cartBar) ด้านบน ให้เห็น/กดได้เสมอไม่ว่าจะเลื่อนแค่ไหน -->
   <div class="cart-bar sh" id="checkoutBar">
     <div class="cart-total">ยอดสุทธิ<b id="checkoutBarTotal">฿0</b></div>
     <button class="btn" onclick="openAddressConfirmPopup()" id="confirmOrderBtn">✅ ยืนยันสั่งซื้อ</button>
@@ -225,11 +210,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
   </div>
 </div>
 
-<!-- ==================== Popup แนบสลิปการโอนเงิน (15/8/69) ====================
-     ⚡ เดิมเปิดเป็นหน้าใหม่ (slipUpload.html บน GitHub Pages) ผ่าน window.open() — ทำให้รู้สึกหลุดออกจาก
-     ขั้นตอนการสั่งซื้อ แถมยังมีปัญหาการปิดหน้าต่างบน iOS/แอป LINE ตามคอมเมนต์เดิม เปลี่ยนมาเป็น popup ในหน้า
-     เดียวกันนี้แทน (โครงหน้าตา/ลอจิกอัปโหลดพอร์ตมาจาก slipUpload.html) ไม่ต้องเปิด/ปิดหน้าต่างอีกต่อไป จึง
-     ตัดปัญหาเรื่อง window.close()/liff.closeWindow() บน iOS ที่เคยแก้กันไปหลายรอบออกไปได้เลยในตัว -->
+<!-- ==================== Popup แนบสลิปการโอนเงิน ==================== -->
 <div class="mo" id="slipUploadModal">
   <div class="mo-card">
     <div class="mo-hd">
@@ -269,6 +250,9 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 <script>
 var LIFF_ID = '2010892131-3XYQXNzq';
 var API_URL = 'https://script.google.com/macros/s/AKfycbzfhB83ccV-gnji-A_-rNnGmM7K1O4XnV9w6NBcTRm_d_fN_raU6BjBwyOIWz-SIeL7Bw/exec';
+
+// ⚡ (21/8/69) โลโก้ธนาคาร SCB — เก็บไว้ที่ Google Drive แปลงลิงก์แชร์ปกติเป็นลิงก์ thumbnail เข้าถึงตรงได้เลย
+var SCB_LOGO_URL_ = 'https://drive.google.com/thumbnail?id=1qxe-7GiSoRAWBOA7LwFwbaarBOsgg0mv&sz=w300';
 
 var currentIdToken = null;
 var categories = [];
@@ -382,15 +366,6 @@ function handleSlipFile(inp){
   reader.readAsDataURL(file);
 }
 
-// ⚡ แก้ (19/8/69) — ห้าม auto-retry เด็ดขาดสำหรับ uploadShopSlip เพราะเป็น action ที่ "เขียนข้อมูล" (สร้างไฟล์
-// สลิปใน Drive, ให้คะแนนสะสม, ส่งข้อความ LINE ยืนยัน) ถ้าเซิร์ฟเวอร์ประมวลผลสำเร็จไปแล้วจริง (แค่ตอบกลับช้า/
-// การเชื่อมต่อขาดตอนส่งผลกลับมาหาเครื่อง) การยิงคำขอเดิมซ้ำอัตโนมัติจะสร้างสลิปซ้ำ/ส่งข้อความซ้ำ — ยืนยันแล้ว
-// จาก Executions log จริงว่า uploadShopSlip ถูกยิงซ้ำสำหรับออเดอร์เดียวกันห่างกัน 43 วินาที เพราะโค้ดเดิม retry
-// อัตโนมัติตอนเจอปัญหาเครือข่ายชั่วคราว (แพทเทิร์นเดียวกับที่ทำให้ createShopOrder สร้างออเดอร์ซ้ำ) ตอนนี้ถ้า
-// เจอปัญหาจะแจ้งผู้ใช้ตรงๆ ให้ไปเช็คประวัติคำสั่งซื้อก่อน แทนที่จะยิงซ้ำเอง
-// ⚡ เพิ่ม (19/8/69) — ใส่ timeout (AbortController) กลับมาด้วย เพราะถ้าไม่มี timeout เลย พอเซิร์ฟเวอร์ค้าง
-// (ไม่ตอบกลับ) หน้าจอจะรอตลอดไปไม่มีวันจบ ไม่มี error ไม่มีทางออกให้ผู้ใช้เลย — ปลอดภัยเพราะแค่ "หยุดรอฟังผล"
-// ฝั่งเครื่อง ไม่ได้ retry คำขอซ้ำ (เซิร์ฟเวอร์ยังทำงานต่อจนจบตามปกติ ไม่ถูกยกเลิกจริง)
 function uploadSlipAttempt_(){
   var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
   var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, 40000) : null;
@@ -463,11 +438,6 @@ function showErrorState(msg){
   showState('errorState');
 }
 
-// ⚡ แก้ (19/8/69) — action ในรายการนี้ "เขียน/แก้ไขข้อมูล" (ไม่ idempotent) ห้าม retry อัตโนมัติเด็ดขาด
-// เพราะถ้าเซิร์ฟเวอร์ประมวลผลสำเร็จไปแล้วจริง (แค่ตอบกลับช้า/การเชื่อมต่อขาดตอนส่งผลกลับมา) การยิงคำขอเดิม
-// ซ้ำจะสร้างรายการซ้ำ — ยืนยันแล้วจาก Executions log จริงว่า createShopOrder ถูกยิงซ้ำจนเกิดออเดอร์ซ้ำ 2 ใบ
-// ห่างกันแค่ 13 วินาที เพราะโค้ดเดิม retry อัตโนมัติตอนเจอปัญหาเครือข่ายชั่วคราว การอ่านข้อมูล (checkMemberStatus,
-// checkShopDiscounts ฯลฯ) ยัง retry ได้ตามปกติเพราะอ่านซ้ำไม่มีผลข้างเคียงอะไร
 var NON_IDEMPOTENT_ACTIONS_ = ['registerMember', 'createShopOrder', 'redeemReward', 'updateMemberProfile'];
 
 function callApi(action, payload, _attempt){
@@ -480,14 +450,6 @@ function callApi(action, payload, _attempt){
     return encodeURIComponent(k) + '=' + encodeURIComponent(payload[k]);
   }).join('&');
 
-  // ⚡ แก้ (19/8/69) — เพิ่ม timeout กลับมาอีกครั้ง แต่คราวนี้แยกพฤติกรรมชัดเจนระหว่าง action ที่ "อ่านอย่างเดียว"
-  // (ปลอดภัยที่จะยกเลิก+ลองใหม่ เพราะไม่มีผลข้างเคียง) กับ action ที่ "เขียนข้อมูล" (ห้าม retry อัตโนมัติเด็ดขาด
-  // เพราะเซิร์ฟเวอร์อาจทำสำเร็จไปแล้วจริง — ดูปัญหาออเดอร์ซ้ำที่เจอมาก่อนหน้านี้) — ของเดิมที่เอา AbortController
-  // ออกไปทั้งหมด ทำให้ถ้าเซิร์ฟเวอร์ค้าง (ไม่ตอบกลับเลย) หน้าจอจะรอตลอดไปไม่มีวันจบ ไม่มี error ไม่มีทางออกให้
-  // ผู้ใช้เลย (ยืนยันจากภาพหน้าจอจริงที่ค้างที่ "กำลังโหลด..." ไม่จบสักที) ตอนนี้:
-  // - อ่านข้อมูล (isMutating=false): timeout 25 วิ/ครั้ง แล้วลองใหม่อัตโนมัติ (ในโควตา MAX_ATTEMPTS)
-  // - เขียนข้อมูล (isMutating=true): timeout 35 วิ/ครั้ง (ให้เวลามากกว่าเพราะมีงานจริงต้องทำ เช่น อัปโหลด
-  //   ไฟล์/ส่ง LINE) ถ้าครบเวลาแล้วยังไม่ตอบ จะไม่ลองใหม่เอง แต่แจ้งผู้ใช้ให้ตรวจสอบก่อน
   var timeoutMs = isMutating ? 35000 : 25000;
   var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
   var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, timeoutMs) : null;
@@ -516,7 +478,6 @@ function callApi(action, payload, _attempt){
       : networkErr;
 
     if (!isMutating && attempt < MAX_ATTEMPTS) {
-      // อ่านข้อมูลอย่างเดียว ปลอดภัยที่จะลองใหม่ ไม่ว่าจะเจอ timeout หรือปัญหาเครือข่ายอื่น
       return new Promise(function(resolve){
         setTimeout(function(){ resolve(callApi(action, payload, attempt + 1)); }, attempt * 800);
       });
@@ -545,14 +506,6 @@ function getIdTokenExpiryMs_(token){
 
 var activeAutoCoupons = [];
 
-// ⚡ แก้ (19/8/69) — เดิมโหลดหน้าร้านเป็น "2 คลื่น" คือรอ getShopProducts+getActiveCoupons เสร็จก่อน
-// (Promise.all แรก) แล้วค่อยยิง getMyPrivileges/getMyShippingAddress/getShopPaymentInfo ต่ออีกทีหลัง —
-// ทำให้เสียเวลาไปกับการรอ 2 รอบ ทั้งที่ทุกคำขอนี้ไม่ได้พึ่งพากันเลย (currentIdToken ถูกตั้งค่าไว้ก่อน
-// loadProducts() ถูกเรียกอยู่แล้วจาก initLiff()) ตอนนี้ยิงพร้อมกันทีเดียวทั้ง 5 คำขอ ลดเวลาโหลดหน้าแรกลง
-// ครึ่งหนึ่งโดยประมาณ และเป็นผลพลอยได้ทำให้ savedAddressLoaded/paymentInfo ถูกตั้งค่าไว้ตั้งแต่ตอนนี้เลย
-// (ก่อนที่ goToCheckout() จะถูกเรียก) ทำให้ตอนกดไปหน้าชำระเงินภายหลัง ไม่ต้องเรียกซ้ำ (ดู loadSavedAddress/
-// goToCheckout ที่มีเงื่อนไข if(savedAddressLoaded)/if(!paymentInfo) กันการยิงซ้ำอยู่แล้ว) เหลือแค่คำขอ
-// checkShopDiscounts เดียวที่จำเป็นต้องคำนวณใหม่ทุกครั้งจริงๆ (ขึ้นกับตะกร้าปัจจุบัน)
 function loadProducts(){
   Promise.all([
     callApi('getShopProducts'),
@@ -591,7 +544,7 @@ function loadProducts(){
 function getBestPromoPrice_(skuName, price){
   var best = null;
   activeAutoCoupons.forEach(function(c){
-    if (c.type === 'bogo' || c.type === 'ship_percent' || c.type === 'ship_fixed') return; // ⚡ (17/8/69) ไม่แสดงราคาขีดฆ่าต่อชิ้นสำหรับโปรที่ไม่ใช่ percent/fixed ต่อยอดสินค้า
+    if (c.type === 'bogo' || c.type === 'ship_percent' || c.type === 'ship_fixed') return;
     if (c.restriction) {
       var keywords = c.restriction.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
       var matches = keywords.some(function(kw){ return skuName.indexOf(kw) !== -1; });
@@ -603,9 +556,6 @@ function getBestPromoPrice_(skuName, price){
   return best;
 }
 
-// ⚡ แก้ (19/8/69) — แยกส่วน "แสดงผล" ออกจากส่วน "เรียก API" เพื่อให้ loadProducts() เอาผลลัพธ์ที่ยิง
-// พร้อมกันไปแล้วมาแสดงตรงนี้ได้เลย โดยไม่ต้องยิง callApi ซ้ำอีกรอบ (loadMyPrivileges() ด้านล่างยังเก็บไว้
-// เผื่อมีที่อื่นต้องการเรียกโหลด+แสดงสิทธิ์พิเศษใหม่แบบ standalone)
 function renderMyPrivileges_(r){
   if (!r || !r.success || !r.results || !r.results.length) return;
   var h = '<div class="bank-box" style="margin-bottom:16px;text-align:left">';
@@ -757,14 +707,6 @@ function goToCheckout(){
 
 var excludedPrivilegeRowIndexes = [];
 
-// ⚡ แก้ (19/8/69) — เดิมถ้า checkShopDiscounts ล้มเหลว (ทั้งกรณี success:false และกรณี callApi() reject
-// ไปเลยหลัง retry ครบโควตา) ฟังก์ชันนี้จะ "เงียบ" ไม่แจ้งผู้ใช้เลย (แค่ console.warn ที่ผู้ใช้ทั่วไปมองไม่เห็น)
-// แล้วปล่อยให้ renderDiscountSummary()/renderPaymentDetail() แสดงผลต่อไปตามข้อมูลเก่า/ว่างเปล่า — ที่ร้ายแรง
-// คือ getCartTotal()/getFinalTotal() คำนวณยอดสินค้า/ยอดสุทธิจากฝั่ง client ล้วนๆ (ไม่พึ่ง lastDiscountInfo
-// เลยถ้าไม่มีสิทธิ์/คูปอง) ทำให้หน้าชำระเงินยัง"ดูปกติ"เหมือนไม่มีอะไรผิด (ยอดสินค้า/ค่าส่ง/ยอดสุทธิขึ้นเลข
-// ถูกต้องหมด) ทั้งที่จริงๆ แล้ว "ของแถม/สิทธิ์พิเศษ/คูปองอัตโนมัติ" ไม่ได้ถูกดึงมาแสดงเลยเพราะคำขอเบื้องหลัง
-// ล้มเหลว ลูกค้าจึงไม่เห็นของแถมที่ควรได้รับ โดยไม่รู้ตัวว่าเกิดอะไรขึ้น — ตอนนี้แก้ให้แสดงคำเตือนชัดเจนพร้อม
-// ปุ่มลองใหม่ และดักจับกรณี callApi() reject ที่ไม่เคยมี .catch() มาก่อนด้วย
 function refreshDiscounts(idTokenParam){
   var subtotal = getCartTotal();
   var items = Object.keys(cart).map(function(name){ return { name: name, qty: cart[name] }; });
@@ -789,7 +731,7 @@ function refreshDiscounts(idTokenParam){
     renderPaymentDetail();
   });
 }
-var discountLoadError_ = null; // ⚡ เพิ่ม (19/8/69) เก็บ error ล่าสุดของ checkShopDiscounts ไว้แสดงในหน้าชำระเงิน
+var discountLoadError_ = null;
 
 function removePrivilegeFromOrder(rowIndex){
   if (excludedPrivilegeRowIndexes.indexOf(rowIndex) === -1) excludedPrivilegeRowIndexes.push(rowIndex);
@@ -812,8 +754,6 @@ function recomputeAppliedPrivilegesClientSide_(){
   });
   lastDiscountInfo.privileges = applied;
   lastDiscountInfo.privilegeDiscount = applied.reduce(function(sum, p){ return sum + p.discount; }, 0);
-  // ⚡ (17/8/69) ต้องคำนวณส่วนลด "ค่าจัดส่ง" ใหม่ฝั่ง client ด้วย เพราะตอนนี้สิทธิ์บางประเภท (ship_percent/
-  // ship_fixed) ลดที่ค่าส่งแยกจากยอดสินค้า ถ้าไม่คำนวณใหม่ตรงนี้ ตัวเลขค่าส่งจะไม่อัปเดตตอนกด ลบ/เอากลับมาใช้
   var shipDiscount = applied.reduce(function(sum, p){ return sum + (p.shippingDiscount || 0); }, 0);
   var couponShip = (lastDiscountInfo.coupon ? lastDiscountInfo.coupon.shippingDiscount : (lastDiscountInfo.autoCoupon ? lastDiscountInfo.autoCoupon.shippingDiscount : 0)) || 0;
   lastDiscountInfo.shippingDiscount = Math.min(lastDiscountInfo.shippingCost || 0, shipDiscount + couponShip);
@@ -866,15 +806,12 @@ function getDiscountAmount(){
   return Math.min(getCartTotal(), d);
 }
 
-// ⚡ (17/8/69) ค่าจัดส่งก่อนหักส่วนลด (ราคาเต็ม) — ใช้โชว์เป็นราคาขีดฆ่าถ้ามีส่วนลดค่าส่ง
 function getShippingCost(){
   return (lastDiscountInfo && lastDiscountInfo.shippingCost) ? lastDiscountInfo.shippingCost : 0;
 }
-// ⚡ (17/8/69) ส่วนลดค่าจัดส่งรวม (จากสิทธิ์ประเภท ship_percent/ship_fixed + คูปอง/โปรอัตโนมัติ)
 function getShippingDiscount(){
   return (lastDiscountInfo && lastDiscountInfo.shippingDiscount) ? lastDiscountInfo.shippingDiscount : 0;
 }
-// ⚡ (17/8/69) ค่าจัดส่งสุทธิหลังหักส่วนลด — ใช้คำนวณยอดสุทธิจริง (แทนที่ getShippingCost() เดิม)
 function getFinalShippingCost(){
   if (lastDiscountInfo && lastDiscountInfo.finalShippingCost != null) return lastDiscountInfo.finalShippingCost;
   return Math.max(0, getShippingCost() - getShippingDiscount());
@@ -885,9 +822,6 @@ function renderDiscountSummary(){
   var subtotal = getCartTotal();
   var h = '';
 
-  // ⚡ เพิ่ม (19/8/69) — ถ้าดึงข้อมูลสิทธิ์พิเศษ/คูปอง/ของแถมไม่สำเร็จ ต้องแจ้งให้ลูกค้าเห็นชัดๆ ตรงนี้เลย
-  // (แทนที่จะเงียบแล้วปล่อยให้หน้าดูเหมือนไม่มีปัญหาอะไร ทั้งที่จริงๆ สิทธิ์/ของแถมที่ควรได้อาจไม่ถูกนำมาคิด
-  // เพราะดึงข้อมูลไม่สำเร็จ) มีปุ่มลองโหลดใหม่ให้กดเองได้เลย
   if (discountLoadError_) {
     h += '<div style="background:#fff3e0;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:#e65100">'
       + '⚠️ ดึงข้อมูลสิทธิ์พิเศษ/คูปอง/ของแถมไม่สำเร็จ (' + escHtml(discountLoadError_) + ') — ยอดที่แสดงอาจยังไม่รวมส่วนลด/ของแถมที่คุณควรได้รับ'
@@ -911,10 +845,7 @@ function renderDiscountSummary(){
     var removeBtnHtml = isRedeemable
       ? ' <button type="button" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
       : '';
-    if (p.discount <= 0 && !(isBogo && p.freeQtyGranted > 0)) return; // ⚡ (17/8/69) เช่น bogo ที่ยังซื้อไม่ครบจำนวน X ยังไม่เกิดของแถมจริง ไม่ต้องโชว์ให้สับสน
-    // ⚡ แก้ (19/8/69) — bogo (ซื้อครบแถม) ไม่ต้องแปลงเป็นตัวเลข "-฿X" ให้ลูกค้าเห็น เพราะเป็นของแถมล้วนๆ
-    // ไม่ใช่ส่วนลดเงินสด แสดงแค่ข้อความ "แถม" เฉยๆ พอ (มูลค่ายังคงถูกหักออกจากยอดสุทธิจริงเบื้องหลังตามปกติ
-    // ผ่าน getDiscountAmount() แค่ไม่โชว์ตัวเลขให้เห็นตรงนี้)
+    if (p.discount <= 0 && !(isBogo && p.freeQtyGranted > 0)) return;
     var amountHtml = isBogo ? '<span style="color:var(--gd);font-weight:600;font-size:12px">🎁 ได้รับฟรี</span>' : ('-฿' + Math.round(p.discount).toLocaleString('th-TH'));
     h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(p.name) + labelSuffix + '</span>'
       + '<span style="display:flex;align-items:center;gap:8px">' + amountHtml + removeBtnHtml + '</span></div>';
@@ -937,7 +868,6 @@ function renderDiscountSummary(){
   if (lastDiscountInfo && lastDiscountInfo.couponError) {
     h += '<div class="row" style="color:#c62828"><span colspan="2">⚠️ ' + escHtml(lastDiscountInfo.couponError) + '</span></div>';
   }
-  // ⚡ (17/8/69) แสดงค่าจัดส่งแบบขีดฆ่า+ราคาหลังลด ถ้ามีส่วนลดค่าส่ง (ship_percent/ship_fixed)
   var shipDiscount = getShippingDiscount();
   var shipHtml = shipDiscount > 0
     ? '<span style="text-decoration:line-through;color:#999;margin-right:6px">฿' + Math.round(getShippingCost()).toLocaleString('th-TH') + '</span><span style="color:#c62828;font-weight:700">฿' + Math.round(getFinalShippingCost()).toLocaleString('th-TH') + '</span>'
@@ -969,11 +899,14 @@ function getFinalTotal(){
   return Math.max(0, getCartTotal() - getDiscountAmount()) + getFinalShippingCost();
 }
 
+// ⚡ แก้ (21/8/69) — ตามคำขอ: QR พร้อมเพย์ต้องมี "ยอดเงินขึ้นเลยเมื่อสแกน" เหมือนเดิม จึงเปลี่ยนกลับมาสร้าง
+// QR ด้วยโค้ด (buildPromptPayPayload — เข้ารหัสยอดเงินฝังในตัว QR ตามมาตรฐาน EMV QR) แทนการใช้รูปภาพ QR
+// คงที่จาก Google Drive (ซึ่งไม่มียอดเงินฝังอยู่ ต้องพิมพ์ยอดเอง) — ส่วนโลโก้ธนาคาร SCB ยังคงใช้รูปจาก
+// Google Drive ตามที่แก้ไปก่อนหน้านี้ (SCB_LOGO_URL_) ไม่เปลี่ยนแปลง
 function renderPaymentDetail(){
   var wrap = document.getElementById('paymentDetail');
   var total = getFinalTotal();
   if (!paymentInfo) { wrap.innerHTML = ''; return; }
-  // ⚡ (17/8/69) ยอด 0 บาทพอดี — ไม่มีอะไรให้โอน จึงไม่ต้องโชว์ QR/เลขบัญชีให้สับสน แสดงข้อความแทน
   if (total <= 0) {
     wrap.innerHTML = '<div class="bank-box" style="text-align:center"><p style="font-weight:600;color:var(--gd)">🎉 ยอดชำระ ฿0 — ไม่ต้องโอนเงิน</p><p style="font-size:12.5px;color:var(--g6);margin-top:6px">ส่วนลด/สิทธิ์ของคุณครอบคลุมยอดทั้งหมดแล้ว กดยืนยันสั่งซื้อได้เลย ไม่ต้องแนบสลิป</p></div>';
     return;
@@ -984,14 +917,9 @@ function renderPaymentDetail(){
     document.getElementById('qrCanvas').innerHTML = '';
     new QRCode(document.getElementById('qrCanvas'), { text: payload, width: 200, height: 200 });
   } else {
-    // ⚠️ TODO (สำคัญ!): บรรทัดโลโก้ธนาคาร SCB แบบ base64 ด้านล่างนี้ต้องคัดลอกกลับจากไฟล์ index.html
-    // ตัวเดิมของคุณ (บรรทัดที่ขึ้นต้นด้วย "data:image/png;base64,iVBORw0KGgo...") มาวางแทนที่ตรงนี้เอง —
-    // ผมไม่สามารถคัดลอกสตริง base64 ยาวๆ นั้นซ้ำได้แม่นยำ 100% ระหว่างแก้ไฟล์ จึงเว้นไว้เป็นค่าว่างชั่วคราว
-    // กันไม่ให้ส่งรูปที่เพี้ยน/เปิดไม่ขึ้นไปให้ลูกค้าเห็นโดยไม่ตั้งใจ (โค้ดยังทำงานปกติแม้ไม่มีรูปนี้ เพราะ
-    // มี onerror ซ่อนรูปให้อัตโนมัติอยู่แล้ว แค่จะไม่เห็นโลโก้ SCB เฉยๆ จนกว่าจะแปะกลับ)
     var bankLogoHtml = '';
     if (/ไทยพาณิชย์|SCB/i.test(paymentInfo.bankName || '')) {
-      bankLogoHtml = '<div style="text-align:center;margin-bottom:10px"><img src="" alt="SCB" style="height:36px;object-fit:contain" onerror="this.style.display=\'none\'"></div>';
+      bankLogoHtml = '<div style="text-align:center;margin-bottom:10px"><img src="' + SCB_LOGO_URL_ + '" alt="SCB" style="height:36px;object-fit:contain" onerror="this.style.display=\'none\'"></div>';
     }
     wrap.innerHTML = '<div class="bank-box">'
       + bankLogoHtml
@@ -1059,9 +987,6 @@ function submitOrder(){
   openAddressConfirmPopup();
 }
 
-// ⚡ (17/8/69) — ยอด 0 บาทพอดี: ไม่ต้องขึ้น popup แนบสลิปอีกต่อไป เพราะ Code.gs (createShopOrder) จะ
-// ทำเครื่องหมายออเดอร์ว่า "เสร็จสมบูรณ์" และส่งแจ้งเตือน LINE ให้ทันทีอยู่แล้ว (ดู r.skipSlipUpload) —
-// แค่โชว์สรุปคำสั่งซื้อสั้นๆ แล้วปิดหน้าร้านอัตโนมัติกลับไปแชท LINE เหมือนตอนแนบสลิปสำเร็จปกติ
 function confirmSubmitOrder(){
   var errBox = document.getElementById('checkoutErrBox');
   errBox.classList.add('sh');
@@ -1100,17 +1025,9 @@ function confirmSubmitOrder(){
       var summaryHtml =
         '<div class="row"><span>เลขที่ออเดอร์</span><span><b>' + escHtml(r.orderId) + '</b></span></div>'
         + '<div class="row"><span>ยอดสินค้า</span><span>฿' + r.subtotal.toLocaleString('th-TH') + '</span></div>';
-      // ⚡ แก้ (19/8/69) — ใช้ r.cashDiscount (ส่วนลดเงินสดล้วนๆ ไม่รวมมูลค่าของแถม/bogo) แทน r.discount
-      // (ยอดรวมทั้งหมดที่ใช้คำนวณยอดชำระจริงเบื้องหลัง) เพราะของแถมไม่ใช่ส่วนลดเงิน ไม่ควรโชว์เป็นตัวเลขลด
-      // ราคาให้ลูกค้าเห็นตรงนี้ — ของแถมแสดงแยกในกล่อง "🎁 ของแถมที่คุณได้รับ" ด้านล่างอยู่แล้ว
       if (r.cashDiscount > 0) {
         summaryHtml += '<div class="row"><span>ส่วนลดรวม</span><span>-฿' + Math.round(r.cashDiscount).toLocaleString('th-TH') + '</span></div>';
       }
-      // ⚡ เพิ่ม (19/8/69) — แสดงรายการ "ของแถม" (จากโปรซื้อครบแถม/bogo) ในหน้าคำสั่งซื้อสำเร็จด้วย
-      // ข้อมูลนี้มาจาก r.freebieItems ที่ createShopOrder ฝั่ง Code.gs ส่งกลับมาให้แล้ว (เพิ่มเข้าไปในค่า
-      // return เมื่อ 18/8/69) — เดิมหน้านี้ไม่เคยอ่านค่านี้เลย ทำให้ลูกค้าไม่เห็นเรื่องของแถมตรงนี้ แม้ระบบ
-      // จะคำนวณสิทธิ์ถูกต้องและมีข้อมูลพร้อมส่งมาให้แล้วก็ตาม ใช้กล่องสีส้มอ่อนแบบเดียวกับที่ใช้ในข้อความ LINE
-      // (buildFreebieBox_ ในไฟล์ Code.gs) เพื่อให้หน้าตาสอดคล้องกัน
       if (r.freebieItems && r.freebieItems.length) {
         summaryHtml += '<div style="background:#fff3e0;border-radius:8px;padding:10px 12px;margin:8px 0;text-align:left">'
           + '<div style="font-size:12.5px;font-weight:700;color:#e65100;margin-bottom:4px">🎁 ของแถมที่คุณได้รับ</div>'
@@ -1125,8 +1042,6 @@ function confirmSubmitOrder(){
       currentOrderId = r.orderId;
       savedAddressLoaded = false;
 
-      // ⚡ (17/8/69) — ยอด 0 บาท (หรือ Code.gs บอกให้ข้ามแนบสลิป): ไม่ต้องรอแนบสลิปอีกต่อไป ปิดหน้าร้าน
-      // อัตโนมัติกลับไปแชท LINE ได้เลย (แจ้งเตือน LINE ทั้งฝั่งลูกค้า/admin ถูกส่งไปจาก Code.gs แล้ว)
       if (r.skipSlipUpload || r.totalAmount <= 0) {
         pendingSlipOrderId = '';
         document.getElementById('orderDoneBar').classList.add('sh');
