@@ -761,7 +761,8 @@ function recomputeAppliedPrivilegesClientSide_(){
   lastDiscountInfo.privileges = applied;
   lastDiscountInfo.privilegeDiscount = applied.reduce(function(sum, p){ return sum + p.discount; }, 0);
   var shipDiscount = applied.reduce(function(sum, p){ return sum + (p.shippingDiscount || 0); }, 0);
-  var couponShip = (lastDiscountInfo.coupon ? lastDiscountInfo.coupon.shippingDiscount : (lastDiscountInfo.autoCoupon ? lastDiscountInfo.autoCoupon.shippingDiscount : 0)) || 0;
+  var couponShip = (lastDiscountInfo.coupon ? (lastDiscountInfo.coupon.shippingDiscount || 0) : 0)
+    + (lastDiscountInfo.autoCoupons || []).reduce(function(sum, c){ return sum + (c.shippingDiscount || 0); }, 0);
   lastDiscountInfo.shippingDiscount = Math.min(lastDiscountInfo.shippingCost || 0, shipDiscount + couponShip);
   lastDiscountInfo.finalShippingCost = Math.max(0, (lastDiscountInfo.shippingCost || 0) - lastDiscountInfo.shippingDiscount);
 }
@@ -808,8 +809,10 @@ function getDiscountAmount(){
   if (!lastDiscountInfo) return 0;
   var d = 0;
   (lastDiscountInfo.privileges || []).forEach(function(p){ d += (p.productDiscount || 0); });
-  if (lastDiscountInfo.coupon) d += (lastDiscountInfo.coupon.productDiscount != null ? lastDiscountInfo.coupon.productDiscount : lastDiscountInfo.coupon.discount);
-  else if (lastDiscountInfo.autoCoupon) d += (lastDiscountInfo.autoCoupon.productDiscount != null ? lastDiscountInfo.autoCoupon.productDiscount : lastDiscountInfo.autoCoupon.discount);
+  if (lastDiscountInfo.coupon) {
+    d += (lastDiscountInfo.coupon.productDiscount != null ? lastDiscountInfo.coupon.productDiscount : lastDiscountInfo.coupon.discount);
+  }
+  (lastDiscountInfo.autoCoupons || []).forEach(function(c){ d += (c.productDiscount || 0); });
   return Math.min(getCartTotal(), d);
 }
 
@@ -860,9 +863,14 @@ function renderDiscountSummary(){
   });
   if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.discount > 0) {
     h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + '</span><span>-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
-  } else if (lastDiscountInfo && lastDiscountInfo.autoCoupon && lastDiscountInfo.autoCoupon.discount > 0) {
-    h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(lastDiscountInfo.autoCoupon.code) + '</span><span>-฿' + Math.round(lastDiscountInfo.autoCoupon.discount).toLocaleString('th-TH') + '</span></div>';
   }
+  // ⚡ แก้ (22/8/69, รอบ 2) — แสดงทุกโปรอัตโนมัติที่ใช้อยู่เสมอ (ไม่ผูกกับว่ามีโค้ดที่พิมพ์เองหรือไม่แล้ว)
+  // เพราะตอนนี้โปรลดค่าส่งอัตโนมัติใช้ได้พร้อมกับโค้ดที่พิมพ์เองได้ (ข้อ 3) — สูงสุด 3 แถว: โปรสินค้าเฉพาะ +
+  // โปรสินค้าทั่วไป + โปรลดค่าส่ง
+  (lastDiscountInfo.autoCoupons || []).forEach(function(c){
+    if (c.discount <= 0) return;
+    h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(c.code) + '</span><span>-฿' + Math.round(c.discount).toLocaleString('th-TH') + '</span></div>';
+  });
   if (lastDiscountInfo && lastDiscountInfo.couponError) {
     h += '<div class="row" style="color:#c62828"><span colspan="2">⚠️ ' + escHtml(lastDiscountInfo.couponError) + '</span></div>';
   }
