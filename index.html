@@ -551,15 +551,17 @@ function loadProducts(){
     .catch(function(e){ showErrorState('เรียก API ไม่สำเร็จ: ' + e.message); });
 }
 
+// ⚡ แก้ (22/8/69, รอบ 3) — โปรที่ไม่ได้ติ๊กเลือกสินค้าเฉพาะเจาะจง (restriction ว่าง = ใช้ได้กับสินค้า
+// ทุกตัวในร้าน) ไม่ต้องขีดฆ่าราคาที่หน้ารายการสินค้าอีกต่อไป เพราะทำให้ทุกชิ้นในร้านขึ้นราคาขีดฆ่าพร้อมกันหมด
+// ดูรกและไม่ตรงจุด — ขีดฆ่าเฉพาะตอนที่ admin ติ๊กเลือกสินค้าเจาะจงไว้ (restriction มีค่า) เท่านั้น
 function getBestPromoPrice_(skuName, price){
   var best = null;
   activeAutoCoupons.forEach(function(c){
     if (c.type === 'bogo' || c.type === 'ship_percent' || c.type === 'ship_fixed') return;
-    if (c.restriction) {
-      var keywords = c.restriction.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-      var matches = keywords.some(function(kw){ return skuName.indexOf(kw) !== -1; });
-      if (!matches) return;
-    }
+    if (!c.restriction) return; // ไม่ได้เจาะจงสินค้า = ไม่ต้องขีดฆ่าที่หน้ารายการ
+    var keywords = c.restriction.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    var matches = keywords.some(function(kw){ return skuName.indexOf(kw) !== -1; });
+    if (!matches) return;
     var discounted = c.type === 'percent' ? price * (1 - c.value / 100) : Math.max(0, price - c.value);
     if (!best || discounted < best) best = discounted;
   });
@@ -808,9 +810,16 @@ function loadSavedAddress(idTokenParam){
   });
 }
 
+// ⚡ แก้ (22/8/69, รอบ 3) — เดิม d เริ่มจาก lastDiscountInfo.privilegeDiscount ซึ่งเป็นผลรวมของ p.discount
+// ต่อสิทธิ์ (= productDiscount + shippingDiscount รวมกัน มาจาก checkShopDiscounts ฝั่ง Code.gs) แล้วเอาไปหัก
+// จากยอดสินค้าตรงนี้ ทั้งที่ shippingDiscount ถูกหักออกจาก "ค่าจัดส่ง" แยกไปแล้วผ่าน getFinalShippingCost()
+// อยู่แล้ว — ผลคือสิทธิ์ประเภท ship_percent/ship_fixed (ลดค่าจัดส่ง) ถูกหักซ้ำสองรอบ (หน้าชำระเงินเลย
+// แสดงยอดต่ำกว่าความจริง เช่น 255 ทั้งที่ยอดที่ถูกต้องคือ 305 ตามที่ระบบคิดเงินจริงตอนสั่งซื้อสำเร็จ) แก้โดย
+// รวมเฉพาะ productDiscount ของแต่ละสิทธิ์ที่ใช้อยู่ ไม่เอา shippingDiscount มาปนอีกต่อไป
 function getDiscountAmount(){
   if (!lastDiscountInfo) return 0;
-  var d = lastDiscountInfo.privilegeDiscount || 0;
+  var d = 0;
+  (lastDiscountInfo.privileges || []).forEach(function(p){ d += (p.productDiscount || 0); });
   if (lastDiscountInfo.coupon) d += (lastDiscountInfo.coupon.productDiscount != null ? lastDiscountInfo.coupon.productDiscount : lastDiscountInfo.coupon.discount);
   else if (lastDiscountInfo.autoCoupon) d += (lastDiscountInfo.autoCoupon.productDiscount != null ? lastDiscountInfo.autoCoupon.productDiscount : lastDiscountInfo.autoCoupon.discount);
   return Math.min(getCartTotal(), d);
@@ -914,15 +923,11 @@ function renderPaymentDetail(){
     return;
   }
   if (selectedPayment === 'promptpay') {
+    // ⚡ แก้ (22/8/69, รอบ 3) — ตัดแถบไล่สีเขียวที่ซ้อนทับรูป QR ออกตามที่ขอ เหลือแค่ตัวอักษรสีดำธรรมดา
+    // วางไว้ใต้รูป QR (ไม่ซ้อนทับตัวรูปอีกต่อไป) อัปเดตยอดอัตโนมัติเหมือนเดิมทุกครั้งที่ยอดชำระเปลี่ยน
     wrap.innerHTML = '<div class="qr-box">'
-      + '<div style="position:relative;display:inline-block">'
-      +   '<img src="' + PROMPTPAY_QR_IMAGE_URL_ + '" alt="QR ชำระเงิน" style="max-width:220px;width:100%;height:auto;border-radius:8px;background:#fff;display:block" onerror="this.style.display=\'none\'">'
-      +   '<div style="position:absolute;left:0;right:0;bottom:0;background:linear-gradient(0deg,rgba(26,92,42,.92),rgba(26,92,42,.75) 70%,rgba(26,92,42,0));'
-      +     'color:#fff;padding:14px 8px 8px;border-radius:0 0 8px 8px;text-align:center">'
-      +     '<div style="font-size:11px;opacity:.9">ยอดชำระ</div>'
-      +     '<div style="font-size:20px;font-weight:700">฿' + total.toLocaleString('th-TH') + '</div>'
-      +   '</div>'
-      + '</div>'
+      + '<img src="' + PROMPTPAY_QR_IMAGE_URL_ + '" alt="QR ชำระเงิน" style="max-width:220px;width:100%;height:auto;border-radius:8px;background:#fff;display:block;margin:0 auto" onerror="this.style.display=\'none\'">'
+      + '<div style="margin-top:10px;color:#000;font-size:14px;font-weight:700">ยอดชำระ ฿' + total.toLocaleString('th-TH') + '</div>'
       + '</div>';
   } else {
     var bankLogoHtml = '';
