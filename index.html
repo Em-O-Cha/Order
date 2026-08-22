@@ -256,13 +256,10 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbzfhB83ccV-gnji-A_-rNnGmM
 // toDirectImageUrl_() ฝั่ง Code.gs) เพราะลิงก์ /view ปกติเปิดเป็นหน้า Google Drive Viewer ไม่ใช่ไฟล์ภาพตรงๆ
 var SCB_LOGO_URL_ = 'https://drive.google.com/file/d/1gG0133ztGzYbujfrQefbV99htn9_B2y1';
 
-// ⚡ แก้ (22/8/69, รอบ 2) — ยืนยันแล้วว่า QR นี้ไม่ใช่ PromptPay (เป็นรูป QR คงที่จากแอปธนาคาร/ช่องทางอื่น)
-// จึงเข้ารหัสยอดเงินลงในตัว QR เองไม่ได้จริง (payload ของ QR ที่ไม่ใช่ PromptPay เราไม่รู้สเปก) — กลับไปใช้
-// รูป QR คงที่จาก Google Drive เหมือนเดิม แต่เพิ่ม "ป้ายยอดเงิน" ซ้อนทับบนรูป QR ให้ดูเป็นส่วนหนึ่งของการ
-// แสดงผลเดียวกัน (ไม่ใช่ข้อความแยกใต้รูปเฉยๆ แบบเดิม) ป้ายนี้เป็น HTML/CSS ล้วนๆ อัปเดตข้อความอัตโนมัติทุก
-// ครั้งที่ renderPaymentDetail() ถูกเรียกซ้ำ (เปลี่ยนวิธีชำระเงิน/ใช้โค้ด/ลบสิทธิ์ ฯลฯ) — ไม่ได้ฝังในตัว
-// ข้อมูล QR จริงๆ (สแกนแล้วจะไม่เห็นยอดเงิน) แค่แสดงควบคู่กันให้ลูกค้าเห็นชัดเจนตอนโอน
-var PROMPTPAY_QR_IMAGE_URL_ = 'https://drive.google.com/thumbnail?id=1i4WjeOU5Cq9pdK7YEWaartlpq4NGamJL&sz=w400';
+// ⚡ แก้ (22/8/69) — เอารูป QR คงที่ (PROMPTPAY_QR_IMAGE_URL_) ออกแล้ว กลับไปใช้ QR ที่สร้างสดฝั่ง client
+// ด้วยไลบรารี QRCode.js เหมือนเดิม เพราะ QR แบบรูปคงที่ไม่มียอดเงินฝังในตัวเลย ลูกค้าต้องพิมพ์ยอดโอนเอง —
+// ตอนนี้ QR จะฝังยอดเงินไว้ในตัวเสมอ และเปลี่ยนอัตโนมัติทุกครั้งที่ยอดชำระเปลี่ยน (คูปอง/สิทธิ์พิเศษ/ของแถม
+// ที่กระทบราคาถูกใช้ หรือใช้แล้วยกเลิก) เพราะ renderPaymentDetail() ถูกเรียกซ้ำทุกครั้งที่ยอดเปลี่ยนอยู่แล้ว
 
 var currentIdToken = null;
 var categories = [];
@@ -551,14 +548,11 @@ function loadProducts(){
     .catch(function(e){ showErrorState('เรียก API ไม่สำเร็จ: ' + e.message); });
 }
 
-// ⚡ แก้ (22/8/69, รอบ 3) — โปรที่ไม่ได้ติ๊กเลือกสินค้าเฉพาะเจาะจง (restriction ว่าง = ใช้ได้กับสินค้า
-// ทุกตัวในร้าน) ไม่ต้องขีดฆ่าราคาที่หน้ารายการสินค้าอีกต่อไป เพราะทำให้ทุกชิ้นในร้านขึ้นราคาขีดฆ่าพร้อมกันหมด
-// ดูรกและไม่ตรงจุด — ขีดฆ่าเฉพาะตอนที่ admin ติ๊กเลือกสินค้าเจาะจงไว้ (restriction มีค่า) เท่านั้น
 function getBestPromoPrice_(skuName, price){
   var best = null;
   activeAutoCoupons.forEach(function(c){
     if (c.type === 'bogo' || c.type === 'ship_percent' || c.type === 'ship_fixed') return;
-    if (!c.restriction) return; // ไม่ได้เจาะจงสินค้า = ไม่ต้องขีดฆ่าที่หน้ารายการ
+    if (!c.restriction) return;
     var keywords = c.restriction.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
     var matches = keywords.some(function(kw){ return skuName.indexOf(kw) !== -1; });
     if (!matches) return;
@@ -810,12 +804,6 @@ function loadSavedAddress(idTokenParam){
   });
 }
 
-// ⚡ แก้ (22/8/69, รอบ 3) — เดิม d เริ่มจาก lastDiscountInfo.privilegeDiscount ซึ่งเป็นผลรวมของ p.discount
-// ต่อสิทธิ์ (= productDiscount + shippingDiscount รวมกัน มาจาก checkShopDiscounts ฝั่ง Code.gs) แล้วเอาไปหัก
-// จากยอดสินค้าตรงนี้ ทั้งที่ shippingDiscount ถูกหักออกจาก "ค่าจัดส่ง" แยกไปแล้วผ่าน getFinalShippingCost()
-// อยู่แล้ว — ผลคือสิทธิ์ประเภท ship_percent/ship_fixed (ลดค่าจัดส่ง) ถูกหักซ้ำสองรอบ (หน้าชำระเงินเลย
-// แสดงยอดต่ำกว่าความจริง เช่น 255 ทั้งที่ยอดที่ถูกต้องคือ 305 ตามที่ระบบคิดเงินจริงตอนสั่งซื้อสำเร็จ) แก้โดย
-// รวมเฉพาะ productDiscount ของแต่ละสิทธิ์ที่ใช้อยู่ ไม่เอา shippingDiscount มาปนอีกต่อไป
 function getDiscountAmount(){
   if (!lastDiscountInfo) return 0;
   var d = 0;
@@ -909,11 +897,9 @@ function getFinalTotal(){
   return Math.max(0, getCartTotal() - getDiscountAmount()) + getFinalShippingCost();
 }
 
-// ⚡ แก้ (22/8/69, รอบ 2) — กลับไปใช้รูป QR คงที่จาก Google Drive (PROMPTPAY_QR_IMAGE_URL_) ตามที่ยืนยันว่า
-// QR นี้ไม่ใช่ PromptPay จึงฝังยอดเงินลงในตัวข้อมูล QR จริงๆ ไม่ได้ (เข้ารหัส payload ของ QR ประเภทอื่นไม่รู้
-// สเปก) — แทนที่ด้วยการซ้อน "ป้ายยอดเงิน" ทับอยู่บนรูป QR แทน ให้ดูเป็นส่วนหนึ่งของการแสดงผลเดียวกัน อัปเดต
-// อัตโนมัติทุกครั้งที่ renderPaymentDetail() ถูกเรียกซ้ำ (เปลี่ยนวิธีชำระเงิน/ใช้โค้ด/ลบสิทธิ์ ฯลฯ) — ป้ายนี้
-// เป็นแค่ตัวหนังสือซ้อนทับด้วย CSS เฉยๆ ไม่ได้เปลี่ยนแปลงข้อมูลที่สแกนได้จากตัว QR เอง
+// ⚡ แก้ (22/8/69) — กลับไปใช้ QR ที่สร้างสดฝั่ง client (QRCode.js) แทนรูปคงที่ ยอดเงินฝังอยู่ในตัว QR เสมอ
+// และอัปเดตอัตโนมัติทุกครั้งที่ renderPaymentDetail() ถูกเรียกซ้ำ (เปลี่ยนวิธีชำระเงิน/ใช้โค้ด/ลบสิทธิ์ ฯลฯ)
+// โลโก้ธนาคาร SCB ยังคงใช้ลิงก์ Google Drive เหมือนเดิม ไม่เปลี่ยน
 function renderPaymentDetail(){
   var wrap = document.getElementById('paymentDetail');
   var total = getFinalTotal();
@@ -923,12 +909,19 @@ function renderPaymentDetail(){
     return;
   }
   if (selectedPayment === 'promptpay') {
-    // ⚡ แก้ (22/8/69, รอบ 3) — ตัดแถบไล่สีเขียวที่ซ้อนทับรูป QR ออกตามที่ขอ เหลือแค่ตัวอักษรสีดำธรรมดา
-    // วางไว้ใต้รูป QR (ไม่ซ้อนทับตัวรูปอีกต่อไป) อัปเดตยอดอัตโนมัติเหมือนเดิมทุกครั้งที่ยอดชำระเปลี่ยน
     wrap.innerHTML = '<div class="qr-box">'
-      + '<img src="' + PROMPTPAY_QR_IMAGE_URL_ + '" alt="QR ชำระเงิน" style="max-width:220px;width:100%;height:auto;border-radius:8px;background:#fff;display:block;margin:0 auto" onerror="this.style.display=\'none\'">'
-      + '<div style="margin-top:10px;color:#000;font-size:14px;font-weight:700">ยอดชำระ ฿' + total.toLocaleString('th-TH') + '</div>'
+      + '<div id="qrcodeContainer" style="display:inline-block"></div>'
+      + '<p style="margin-top:10px;font-size:13px;color:var(--g6)">ยอดชำระ ฿' + total.toLocaleString('th-TH') + '</p>'
       + '</div>';
+    var qrContainer = document.getElementById('qrcodeContainer');
+    qrContainer.innerHTML = '';
+    if (typeof QRCode === 'undefined') {
+      qrContainer.innerHTML = '<p style="font-size:12px;color:#c62828">กำลังโหลด QR... ถ้าไม่ขึ้นลองปิดเปิดหน้านี้ใหม่</p>';
+      setTimeout(renderPaymentDetail, 400);
+      return;
+    }
+    var payload = buildPromptPayPayload(paymentInfo.promptPayId, total);
+    new QRCode(qrContainer, { text: payload, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
   } else {
     var bankLogoHtml = '';
     if (/ไทยพาณิชย์|SCB/i.test(paymentInfo.bankName || '')) {
