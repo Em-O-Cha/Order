@@ -251,11 +251,17 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 var LIFF_ID = '2010892131-3XYQXNzq';
 var API_URL = 'https://script.google.com/macros/s/AKfycbzfhB83ccV-gnji-A_-rNnGmM7K1O4XnV9w6NBcTRm_d_fN_raU6BjBwyOIWz-SIeL7Bw/exec';
 
-// ⚡ เพิ่ม (21/8/69) — โลโก้ธนาคาร SCB และรูป QR พร้อมเพย์คงที่ เก็บไว้ที่ Google Drive แปลงลิงก์แชร์ปกติ
+// ⚡ เพิ่ม (21/8/69) — โลโก้ธนาคาร SCB คงที่ เก็บไว้ที่ Google Drive แปลงลิงก์แชร์ปกติ
 // (drive.google.com/file/d/FILE_ID/view) เป็นลิงก์ thumbnail แบบเข้าถึงตรงได้เลย (ใช้แพทเทิร์นเดียวกับ
 // toDirectImageUrl_() ฝั่ง Code.gs) เพราะลิงก์ /view ปกติเปิดเป็นหน้า Google Drive Viewer ไม่ใช่ไฟล์ภาพตรงๆ
-// ใส่ไว้เป็นตัวแปรกลางตรงนี้ ไม่ต้องไปหาแก้กระจายหลายจุดถ้าต้องเปลี่ยนรูปในอนาคต
 var SCB_LOGO_URL_ = 'https://drive.google.com/file/d/1gG0133ztGzYbujfrQefbV99htn9_B2y1';
+
+// ⚡ แก้ (22/8/69, รอบ 2) — ยืนยันแล้วว่า QR นี้ไม่ใช่ PromptPay (เป็นรูป QR คงที่จากแอปธนาคาร/ช่องทางอื่น)
+// จึงเข้ารหัสยอดเงินลงในตัว QR เองไม่ได้จริง (payload ของ QR ที่ไม่ใช่ PromptPay เราไม่รู้สเปก) — กลับไปใช้
+// รูป QR คงที่จาก Google Drive เหมือนเดิม แต่เพิ่ม "ป้ายยอดเงิน" ซ้อนทับบนรูป QR ให้ดูเป็นส่วนหนึ่งของการ
+// แสดงผลเดียวกัน (ไม่ใช่ข้อความแยกใต้รูปเฉยๆ แบบเดิม) ป้ายนี้เป็น HTML/CSS ล้วนๆ อัปเดตข้อความอัตโนมัติทุก
+// ครั้งที่ renderPaymentDetail() ถูกเรียกซ้ำ (เปลี่ยนวิธีชำระเงิน/ใช้โค้ด/ลบสิทธิ์ ฯลฯ) — ไม่ได้ฝังในตัว
+// ข้อมูล QR จริงๆ (สแกนแล้วจะไม่เห็นยอดเงิน) แค่แสดงควบคู่กันให้ลูกค้าเห็นชัดเจนตอนโอน
 var PROMPTPAY_QR_IMAGE_URL_ = 'https://drive.google.com/thumbnail?id=1i4WjeOU5Cq9pdK7YEWaartlpq4NGamJL&sz=w400';
 
 var currentIdToken = null;
@@ -821,6 +827,10 @@ function getFinalShippingCost(){
   return Math.max(0, getShippingCost() - getShippingDiscount());
 }
 
+// ⚡ แก้ (22/8/69) — โปรโมชั่นแบบ bogo (ซื้อครบแถม) เปลี่ยนกลไกใหม่: ลูกค้าหยิบสินค้าที่เข้าเงื่อนไขเองใส่
+// ตะกร้า ระบบจะลดราคาส่วนที่เป็น "ของแถม" ให้อัตโนมัติที่หน้าชำระเงินเป็นเงินจริง (ไม่ใช่ของแถมแยกที่ไม่กระทบ
+// ยอดเงินแบบเดิมอีกต่อไป) จึงตัดข้อความรายละเอียดยาวๆ ("แถม X หรือ Y หรือ Z") ออก เหลือแค่หัวข้อสั้นๆ พร้อม
+// ยอดส่วนลดจริง ให้ตรงกับที่ตกลงกันไว้ (แสดงแค่หัวข้อโปรโมชั่น ไม่ต้องมีรายละเอียดสินค้าที่แถม)
 function renderDiscountSummary(){
   var wrap = document.getElementById('discountSummary');
   var subtotal = getCartTotal();
@@ -839,8 +849,6 @@ function renderDiscountSummary(){
   allPrivileges.forEach(function(p){
     var isExcluded = excludedPrivilegeRowIndexes.indexOf(p.rowIndex) !== -1;
     var isRedeemable = p.givenBy === 'แลกด้วยแต้ม';
-    var isBogo = p.type === 'bogo';
-    var labelSuffix = isBogo ? (' (แถม ' + escHtml(p.freeProduct || '') + (p.freeQtyGranted ? ' x' + p.freeQtyGranted : '') + ')') : '';
     if (isExcluded) {
       h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>✅ ไม่ใช้สิทธิ์ "' + escHtml(p.name) + '" ในออเดอร์นี้ (ยังใช้ได้ครั้งถัดไป)</span>'
         + '<span><button type="button" onclick="undoRemovePrivilege(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ยกเลิก</button></span></div>';
@@ -849,25 +857,14 @@ function renderDiscountSummary(){
     var removeBtnHtml = isRedeemable
       ? ' <button type="button" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
       : '';
-    if (p.discount <= 0 && !(isBogo && p.freeQtyGranted > 0)) return;
-    var amountHtml = isBogo ? '<span style="color:var(--gd);font-weight:600;font-size:12px">🎁 ได้รับฟรี</span>' : ('-฿' + Math.round(p.discount).toLocaleString('th-TH'));
-    h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(p.name) + labelSuffix + '</span>'
-      + '<span style="display:flex;align-items:center;gap:8px">' + amountHtml + removeBtnHtml + '</span></div>';
+    if (p.discount <= 0) return;
+    h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(p.name) + '</span>'
+      + '<span style="display:flex;align-items:center;gap:8px">-฿' + Math.round(p.discount).toLocaleString('th-TH') + removeBtnHtml + '</span></div>';
   });
-  if (lastDiscountInfo && lastDiscountInfo.coupon) {
-    var cIsBogo = lastDiscountInfo.coupon.type === 'bogo';
-    var cLabel = cIsBogo ? (' (แถม ' + escHtml(lastDiscountInfo.coupon.freeProduct || '') + (lastDiscountInfo.coupon.freeQtyGranted ? ' x' + lastDiscountInfo.coupon.freeQtyGranted : '') + ')') : '';
-    if (!cIsBogo || lastDiscountInfo.coupon.freeQtyGranted > 0) {
-      var cAmountHtml = cIsBogo ? '<span style="color:var(--gd);font-weight:600;font-size:12px">🎁 ได้รับฟรี</span>' : ('-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH'));
-      h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + cLabel + '</span><span>' + cAmountHtml + '</span></div>';
-    }
-  } else if (lastDiscountInfo && lastDiscountInfo.autoCoupon) {
-    var acIsBogo = lastDiscountInfo.autoCoupon.type === 'bogo';
-    var acLabel = acIsBogo ? (' (แถม ' + escHtml(lastDiscountInfo.autoCoupon.freeProduct || '') + (lastDiscountInfo.autoCoupon.freeQtyGranted ? ' x' + lastDiscountInfo.autoCoupon.freeQtyGranted : '') + ')') : '';
-    if (!acIsBogo || lastDiscountInfo.autoCoupon.freeQtyGranted > 0) {
-      var acAmountHtml = acIsBogo ? '<span style="color:var(--gd);font-weight:600;font-size:12px">🎁 ได้รับฟรี</span>' : ('-฿' + Math.round(lastDiscountInfo.autoCoupon.discount).toLocaleString('th-TH'));
-      h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(lastDiscountInfo.autoCoupon.code) + acLabel + '</span><span>' + acAmountHtml + '</span></div>';
-    }
+  if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.discount > 0) {
+    h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + '</span><span>-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
+  } else if (lastDiscountInfo && lastDiscountInfo.autoCoupon && lastDiscountInfo.autoCoupon.discount > 0) {
+    h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(lastDiscountInfo.autoCoupon.code) + '</span><span>-฿' + Math.round(lastDiscountInfo.autoCoupon.discount).toLocaleString('th-TH') + '</span></div>';
   }
   if (lastDiscountInfo && lastDiscountInfo.couponError) {
     h += '<div class="row" style="color:#c62828"><span colspan="2">⚠️ ' + escHtml(lastDiscountInfo.couponError) + '</span></div>';
@@ -903,14 +900,11 @@ function getFinalTotal(){
   return Math.max(0, getCartTotal() - getDiscountAmount()) + getFinalShippingCost();
 }
 
-// ⚡ แก้ (21/8/69) — เปลี่ยนวิธีแสดงผลการชำระเงินทั้ง 2 ช่องทาง ตามที่ขอ:
-//   1) โลโก้ธนาคาร SCB — เดิมเป็น <img src=""> ว่างเปล่า (รอแปะ base64 เอง) เปลี่ยนเป็นลิงก์รูปจริงจาก
-//      Google Drive (SCB_LOGO_URL_ ประกาศไว้ต้นไฟล์) ผ่านลิงก์ thumbnail แบบเข้าถึงตรง
-//   2) QR พร้อมเพย์ — เดิมสร้าง QR ด้วยไลบรารี QRCode.js ฝั่ง client (เข้ารหัสยอดเงินไว้ในตัว QR อัตโนมัติ)
-//      เปลี่ยนเป็นแสดงรูป QR คงที่จาก Google Drive แทน (PROMPTPAY_QR_IMAGE_URL_) — ⚠️ ข้อควรระวัง: QR แบบ
-//      รูปภาพคงที่นี้ไม่มียอดเงินฝังอยู่ในตัว QR เหมือนแบบเดิม ลูกค้าต้องพิมพ์ยอดโอนเองตอนสแกน (ยอดชำระยัง
-//      แสดงเป็นตัวหนังสือกำกับไว้ใต้ QR เหมือนเดิมเพื่อให้ลูกค้าดูตัวเลขได้) — ฟังก์ชัน buildPromptPayPayload/
-//      tlv/crc16_ ที่เคยใช้สร้าง QR แบบเดิมยังคงเก็บไว้ในไฟล์เฉยๆ ไม่ได้ลบทิ้ง เผื่อต้องการสลับกลับมาใช้ภายหลัง
+// ⚡ แก้ (22/8/69, รอบ 2) — กลับไปใช้รูป QR คงที่จาก Google Drive (PROMPTPAY_QR_IMAGE_URL_) ตามที่ยืนยันว่า
+// QR นี้ไม่ใช่ PromptPay จึงฝังยอดเงินลงในตัวข้อมูล QR จริงๆ ไม่ได้ (เข้ารหัส payload ของ QR ประเภทอื่นไม่รู้
+// สเปก) — แทนที่ด้วยการซ้อน "ป้ายยอดเงิน" ทับอยู่บนรูป QR แทน ให้ดูเป็นส่วนหนึ่งของการแสดงผลเดียวกัน อัปเดต
+// อัตโนมัติทุกครั้งที่ renderPaymentDetail() ถูกเรียกซ้ำ (เปลี่ยนวิธีชำระเงิน/ใช้โค้ด/ลบสิทธิ์ ฯลฯ) — ป้ายนี้
+// เป็นแค่ตัวหนังสือซ้อนทับด้วย CSS เฉยๆ ไม่ได้เปลี่ยนแปลงข้อมูลที่สแกนได้จากตัว QR เอง
 function renderPaymentDetail(){
   var wrap = document.getElementById('paymentDetail');
   var total = getFinalTotal();
@@ -921,8 +915,14 @@ function renderPaymentDetail(){
   }
   if (selectedPayment === 'promptpay') {
     wrap.innerHTML = '<div class="qr-box">'
-      + '<img src="' + PROMPTPAY_QR_IMAGE_URL_ + '" alt="QR พร้อมเพย์" style="max-width:200px;width:100%;height:auto;border-radius:8px;background:#fff" onerror="this.style.display=\'none\'">'
-      + '<p style="margin-top:10px;font-size:13px;color:var(--g6)">ยอดชำระ ฿' + total.toLocaleString('th-TH') + '</p>'
+      + '<div style="position:relative;display:inline-block">'
+      +   '<img src="' + PROMPTPAY_QR_IMAGE_URL_ + '" alt="QR ชำระเงิน" style="max-width:220px;width:100%;height:auto;border-radius:8px;background:#fff;display:block" onerror="this.style.display=\'none\'">'
+      +   '<div style="position:absolute;left:0;right:0;bottom:0;background:linear-gradient(0deg,rgba(26,92,42,.92),rgba(26,92,42,.75) 70%,rgba(26,92,42,0));'
+      +     'color:#fff;padding:14px 8px 8px;border-radius:0 0 8px 8px;text-align:center">'
+      +     '<div style="font-size:11px;opacity:.9">ยอดชำระ</div>'
+      +     '<div style="font-size:20px;font-weight:700">฿' + total.toLocaleString('th-TH') + '</div>'
+      +   '</div>'
+      + '</div>'
       + '</div>';
   } else {
     var bankLogoHtml = '';
@@ -939,7 +939,7 @@ function renderPaymentDetail(){
   }
 }
 
-// ==================== PromptPay QR (EMV QR Code) — เก็บไว้เผื่อสลับกลับมาใช้ภายหลัง ไม่ได้เรียกใช้แล้ว ====================
+// ==================== PromptPay QR (EMV QR Code) ====================
 function tlv(id, value){
   var length = String(value.length).padStart(2, '0');
   return id + length + value;
@@ -1030,17 +1030,13 @@ function confirmSubmitOrder(){
 
       closeAddressConfirmModal();
 
+      // ⚡ แก้ (22/8/69) — ตัดหัวข้อ "ส่วนลดของแถม" (ที่เคยแยกแสดงเป็นรายการฟรีต่างหาก) ออก เพราะตอนนี้
+      // "ของแถม" กลายเป็นส่วนลดเงินจริงที่รวมอยู่ใน cashDiscount แล้ว (ดู createShopOrder ฝั่ง Code.gs)
       var summaryHtml =
         '<div class="row"><span>เลขที่ออเดอร์</span><span><b>' + escHtml(r.orderId) + '</b></span></div>'
         + '<div class="row"><span>ยอดสินค้า</span><span>฿' + r.subtotal.toLocaleString('th-TH') + '</span></div>';
       if (r.cashDiscount > 0) {
         summaryHtml += '<div class="row"><span>ส่วนลดรวม</span><span>-฿' + Math.round(r.cashDiscount).toLocaleString('th-TH') + '</span></div>';
-      }
-      if (r.freebieItems && r.freebieItems.length) {
-        summaryHtml += '<div style="background:#fff3e0;border-radius:8px;padding:10px 12px;margin:8px 0;text-align:left">'
-          + '<div style="font-size:12.5px;font-weight:700;color:#e65100;margin-bottom:4px">🎁 ของแถมที่คุณได้รับ</div>'
-          + r.freebieItems.map(function(f){ return '<div style="font-size:12.5px;color:#e65100">• ' + escHtml(f) + '</div>'; }).join('')
-          + '</div>';
       }
       summaryHtml += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(r.shippingCost || 0).toLocaleString('th-TH') + '</span></div>';
       summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span><b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
