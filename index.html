@@ -884,18 +884,32 @@ function renderDiscountSummary(){
     var removeBtnHtml = isRedeemable
       ? ' <button type="button" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
       : '';
-    if (p.discount <= 0) return;
+    // ⚡ เพิ่ม (23/8/69) — คอนเซปใหม่ของ bogo: ถ้าซื้อครบแค่ "จำนวนที่ต้องซื้อ" (ยังไม่ครบ X+Y) จะไม่มีส่วนลด
+    // เงิน (p.discount = 0) แต่มี physicalFreeQty แทน — ต้องแจ้งลูกค้าว่าจะได้ของแถมเพิ่ม ไม่ใช่ปล่อยให้เงียบไป
+    if (p.discount <= 0) {
+      if (p.physicalFreeQty > 0) {
+        h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(p.name) + ' — มีของแถม ' + p.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
+      }
+      return;
+    }
     h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(p.name) + '</span>'
       + '<span style="display:flex;align-items:center;gap:8px">-฿' + Math.round(p.discount).toLocaleString('th-TH') + removeBtnHtml + '</span></div>';
   });
   if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.discount > 0) {
     h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + '</span><span>-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
+  } else if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.physicalFreeQty > 0) {
+    h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + ' — มีของแถม ' + lastDiscountInfo.coupon.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
   }
   // ⚡ แก้ (22/8/69, รอบ 2) — แสดงทุกโปรอัตโนมัติที่ใช้อยู่เสมอ (ไม่ผูกกับว่ามีโค้ดที่พิมพ์เองหรือไม่แล้ว)
   // เพราะตอนนี้โปรลดค่าส่งอัตโนมัติใช้ได้พร้อมกับโค้ดที่พิมพ์เองได้ (ข้อ 3) — สูงสุด 3 แถว: โปรสินค้าเฉพาะ +
   // โปรสินค้าทั่วไป + โปรลดค่าส่ง
   (lastDiscountInfo.autoCoupons || []).forEach(function(c){
-    if (c.discount <= 0) return;
+    if (c.discount <= 0) {
+      if (c.physicalFreeQty > 0) {
+        h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(c.code) + ' — มีของแถม ' + c.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
+      }
+      return;
+    }
     h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(c.code) + '</span><span>-฿' + Math.round(c.discount).toLocaleString('th-TH') + '</span></div>';
   });
   // ⚡ เพิ่ม (23/8/69) — โชว์ส่วนลด/แต้มโบนัสจากโปร "ซื้อซ้ำในเดือนนี้" ในหน้าชำระเงินตามที่ขอ
