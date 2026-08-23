@@ -921,6 +921,9 @@ function renderDiscountSummary(){
     if (rp.bonusPoints > 0) {
       h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>🔁 ' + escHtml(rp.name) + '</span><span>+' + rp.bonusPoints + ' แต้มโบนัส</span></div>';
     }
+    if (rp.multiplier > 1) {
+      h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>🔁 ' + escHtml(rp.name) + '</span><span>คูณแต้ม x' + rp.multiplier + '</span></div>';
+    }
   }
   if (lastDiscountInfo && lastDiscountInfo.couponError) {
     h += '<div class="row" style="color:#c62828"><span colspan="2">⚠️ ' + escHtml(lastDiscountInfo.couponError) + '</span></div>';
