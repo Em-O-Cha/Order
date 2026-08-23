@@ -850,7 +850,24 @@ function renderDiscountSummary(){
       + '</div>';
   }
 
-  h += '<div class="bank-box"><div class="row"><span>ยอดสินค้า</span><span>฿' + subtotal.toLocaleString('th-TH') + '</span></div>';
+  // ⚡ แก้ (23/8/69) — เพิ่มรายการสินค้า (ชื่อ + จำนวน + น้ำหนักรวม) ใต้หัวข้อ "ยอดสินค้า" ตามที่ขอ
+  // ดึงน้ำหนักต่อชิ้นจาก variantList (มาจาก getShopProducts อยู่แล้ว มีฟิลด์ weightG ต่อ SKU) คูณจำนวนที่
+  // ซื้อ รวมเป็นน้ำหนักทั้งหมดของแต่ละรายการสินค้า แสดงเป็นกรัม (ถ้าเกิน 1000 กรัม แปลงเป็นกิโลกรัมให้อ่านง่าย)
+  function fmtWeight_(g){
+    if (g >= 1000) return (g / 1000).toLocaleString('th-TH', { maximumFractionDigits: 2 }) + ' กก.';
+    return g.toLocaleString('th-TH') + ' ก.';
+  }
+  var productLinesHtml = Object.keys(cart).map(function(skuName){
+    var v = findVariant(skuName);
+    if (!v) return '';
+    var qty = cart[skuName];
+    var weightTotal = (v.weightG || 0) * qty;
+    return '<div style="font-size:12px;color:var(--g6);padding:2px 0 2px 4px">' + escHtml(skuName) + ' x' + qty
+      + (weightTotal > 0 ? ' (' + fmtWeight_(weightTotal) + ')' : '') + '</div>';
+  }).join('');
+
+  h += '<div class="bank-box"><div class="row"><span>ยอดสินค้า</span><span>฿' + subtotal.toLocaleString('th-TH') + '</span></div>'
+    + productLinesHtml;
 
   var allPrivileges = (lastDiscountInfo && lastDiscountInfo.allPrivileges) || [];
   allPrivileges.forEach(function(p){
