@@ -239,7 +239,6 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
         <p style="color:var(--g6);font-size:14px;margin-top:6px">ทีมงานจะตรวจสอบและดำเนินการจัดส่งให้เร็วที่สุด</p>
         <p style="color:var(--gd);font-weight:600;margin-top:14px">🙏 ขอบคุณที่รักเอมโอชา ในทุกๆ วันนะคะ</p>
         <p id="slipCloseNotice" style="font-size:12px;color:var(--g6);margin-top:16px">กำลังปิดหน้าต่างอัตโนมัติ...</p>
-        <button class="btn btn-block" style="margin-top:10px" onclick="closeThisShopWindow_()">ปิดตอนนี้เลย</button>
       </div>
     </div>
   </div>
@@ -254,7 +253,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbzfhB83ccV-gnji-A_-rNnGmM
 // ⚡ เพิ่ม (21/8/69) — โลโก้ธนาคาร SCB คงที่ เก็บไว้ที่ Google Drive แปลงลิงก์แชร์ปกติ
 // (drive.google.com/file/d/FILE_ID/view) เป็นลิงก์ thumbnail แบบเข้าถึงตรงได้เลย (ใช้แพทเทิร์นเดียวกับ
 // toDirectImageUrl_() ฝั่ง Code.gs) เพราะลิงก์ /view ปกติเปิดเป็นหน้า Google Drive Viewer ไม่ใช่ไฟล์ภาพตรงๆ
-var SCB_LOGO_URL_ = 'https://raw.githubusercontent.com/Em-O-Cha/Order/main/scb-logo.png';
+var SCB_LOGO_URL_ = 'https://drive.google.com/thumbnail?id=1gG0133ztGzYbujfrQefbV99htn9_B2y1&sz=w300';
 
 // ⚡ แก้ (22/8/69) — เอารูป QR คงที่ (PROMPTPAY_QR_IMAGE_URL_) ออกแล้ว กลับไปใช้ QR ที่สร้างสดฝั่ง client
 // ด้วยไลบรารี QRCode.js เหมือนเดิม เพราะ QR แบบรูปคงที่ไม่มียอดเงินฝังในตัวเลย ลูกค้าต้องพิมพ์ยอดโอนเอง —
@@ -323,19 +322,26 @@ function closeSlipUploadModal(){
 }
 
 var shopWindowClosed_ = false;
+// ⚡ แก้ (22/8/69, รอบ 2) — ตัดปุ่ม "ปิดตอนนี้เลย" ออกจาก HTML ทั้งหมดแล้วตามที่ขอ (ไม่แสดงทั้งมือถือและคอม)
+// เหลือแค่ระบบปิดอัตโนมัติเบื้องหลัง (liff.closeWindow() บนมือถือ) กับข้อความบอกสถานะเฉยๆ ไม่มีปุ่มให้กดแล้ว
+function isInLineClient_(){
+  try { return typeof liff !== 'undefined' && liff.isInClient && liff.isInClient(); } catch (e) { return false; }
+}
+
+function prepareCloseUi_(){
+  var notice = document.getElementById('slipCloseNotice');
+  if (!notice) return;
+  notice.textContent = isInLineClient_() ? 'กำลังปิดหน้าต่างอัตโนมัติ...' : 'ปิดแท็บนี้ได้เลยค่ะ 🙏';
+}
+
 function closeThisShopWindow_(){
   if (shopWindowClosed_) return;
   shopWindowClosed_ = true;
+  if (!isInLineClient_()) return; // เบราว์เซอร์ปกติปิดเองไม่ได้อยู่แล้ว ไม่ต้องพยายาม
   var closeAttempts = 0;
   function tryClose(){
     closeAttempts++;
-    try {
-      if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
-        liff.closeWindow();
-      } else {
-        window.close();
-      }
-    } catch (e) { /* ปิดไม่ได้ (เช่น เปิดผ่านเบราว์เซอร์ปกตินอกแอป LINE) — โชว์ข้อความสำรองด้านล่างแทน */ }
+    try { liff.closeWindow(); } catch (e) { }
     if (closeAttempts < 3) {
       setTimeout(tryClose, 500);
     } else {
@@ -411,6 +417,7 @@ function submitSlipInline(){
       if (r && r.success) {
         document.getElementById('slipFormState').classList.add('sh');
         document.getElementById('slipSuccessState').classList.remove('sh');
+        prepareCloseUi_();
         if (slipUploadSource_ === 'orderDone') {
           setStepper(3); // ขั้นตอน "เสร็จสิ้น"
           var notice = document.getElementById('slipDoneNotice');
@@ -1059,7 +1066,8 @@ function confirmSubmitOrder(){
         if (hintEl) hintEl.textContent = 'ยอด 0 บาท ไม่ต้องโอนเงิน/แนบสลิป ระบบแจ้งทีมงานเรียบร้อยแล้ว';
         var notice = document.getElementById('slipDoneNotice');
         if (notice) {
-          notice.innerHTML = '✅ สั่งซื้อสำเร็จ ไม่มีค่าใช้จ่าย ขอบคุณค่ะ 🙏<br>กำลังปิดหน้านี้อัตโนมัติ...';
+          var closeMsg = isInLineClient_() ? 'กำลังปิดหน้านี้อัตโนมัติ...' : 'ปิดแท็บนี้ได้เลยค่ะ';
+          notice.innerHTML = '✅ สั่งซื้อสำเร็จ ไม่มีค่าใช้จ่าย ขอบคุณค่ะ 🙏<br>' + closeMsg;
           notice.classList.remove('sh');
         }
         showState('orderDoneState');
