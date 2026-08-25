@@ -185,6 +185,13 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 
     <div id="errorState" class="sh state"></div>
 
+    <div id="notMemberState" class="sh state">
+      <div class="ico">🙏</div>
+      <p style="font-weight:600">กรุณาสมัครสมาชิกก่อนค่ะ</p>
+      <p style="color:var(--g6);font-size:14px;margin-top:6px">สมัครสมาชิกฟรี ใช้เวลาไม่ถึงนาที แล้วกลับมาสั่งซื้อสินค้าได้เลย</p>
+      <a class="btn btn-block" style="margin-top:18px;text-decoration:none;display:block;box-sizing:border-box" href="https://liff.line.me/2010892131-hMnmdrmH">🎉 สมัครสมาชิกตอนนี้</a>
+    </div>
+
   </div>
   <div class="cart-bar sh" id="cartBar">
     <div class="cart-total">รวม <span id="cartCount">0</span> ชิ้น<b id="cartTotal">฿0</b></div>
@@ -434,7 +441,7 @@ function submitSlipInline(){
 }
 
 function showState(id){
-  ['loadingState','catalogState','historyState','checkoutState','orderDoneState','errorState'].forEach(function(s){
+  ['loadingState','catalogState','historyState','checkoutState','orderDoneState','errorState','notMemberState'].forEach(function(s){
     document.getElementById(s).classList.toggle('sh', s !== id);
   });
   document.getElementById('cartBar').classList.toggle('sh', id !== 'catalogState');
@@ -1227,10 +1234,26 @@ function initLiff(){
       showErrorState('LINE Login สำเร็จ แต่ LIFF ไม่ส่ง ID token กลับมา');
       return;
     }
-    loadProducts();
+    checkMembershipThenLoadProducts_();
   }).catch(function(e){
     clearTimeout(initTimeout);
     showErrorState('liff.init() ล้มเหลว: ' + (e && e.message ? e.message : String(e)));
+  });
+}
+
+// ⚡ เพิ่ม (25/8/69) — เช็คว่าเป็นสมาชิกแล้วหรือยังตั้งแต่เปิดหน้านี้ ก่อนให้เลือกสินค้า/ชำระเงิน แทนที่จะ
+// ปล่อยให้เลือกสินค้า กรอกที่อยู่จนจบ แล้วค่อยเจอ error ตอนกดยืนยันสั่งซื้อขั้นตอนสุดท้าย (ประสบการณ์แย่กว่า
+// เห็นเตือนตั้งแต่ต้น) — ถ้าเช็คไม่สำเร็จ (เช่น เครือข่ายมีปัญหาชั่วคราว) จะปล่อยผ่านไปโหลดสินค้าตามปกติ
+// ไม่บล็อกทั้งหน้า เพราะยังมีการเช็คซ้ำอีกชั้นตอนสั่งซื้อจริงอยู่แล้วฝั่งเซิร์ฟเวอร์ (Code.gs) กันหลุดแน่นอน
+function checkMembershipThenLoadProducts_(){
+  callApi('checkMemberStatus', { idToken: currentIdToken }).then(function(r){
+    if (r && r.success && r.isMember) {
+      loadProducts();
+    } else {
+      showState('notMemberState');
+    }
+  }).catch(function(){
+    loadProducts(); // เช็คไม่สำเร็จ ปล่อยผ่านไปก่อน ไม่ให้ทั้งหน้าใช้งานไม่ได้เพราะจุดนี้จุดเดียว
   });
 }
 
