@@ -250,10 +250,9 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 var LIFF_ID = '2010892131-3XYQXNzq';
 var API_URL = 'https://script.google.com/macros/s/AKfycbzfhB83ccV-gnji-A_-rNnGmM7K1O4XnV9w6NBcTRm_d_fN_raU6BjBwyOIWz-SIeL7Bw/exec';
 
-// ⚡ เพิ่ม (21/8/69) — โลโก้ธนาคาร SCB คงที่ เก็บไว้ที่ Google Drive แปลงลิงก์แชร์ปกติ
-// (drive.google.com/file/d/FILE_ID/view) เป็นลิงก์ thumbnail แบบเข้าถึงตรงได้เลย (ใช้แพทเทิร์นเดียวกับ
-// toDirectImageUrl_() ฝั่ง Code.gs) เพราะลิงก์ /view ปกติเปิดเป็นหน้า Google Drive Viewer ไม่ใช่ไฟล์ภาพตรงๆ
-var SCB_LOGO_URL_ = 'https://drive.google.com/thumbnail?id=1gG0133ztGzYbujfrQefbV99htn9_B2y1&sz=w300';
+// ⚡ แก้ (25/8/69) — ย้ายโลโก้ SCB จาก Google Drive มาเป็นไฟล์ในโฟลเดอร์เดียวกับหน้านี้แทน
+// (แพทเทิร์นเดียวกับ brand-logo.png, mascot-left.png ฯลฯ) ต้องอัปโหลดไฟล์ bank-logo.png ไว้ที่เดียวกัน
+var SCB_LOGO_URL_ = 'bank-logo.png';
 
 // ⚡ แก้ (22/8/69) — เอารูป QR คงที่ (PROMPTPAY_QR_IMAGE_URL_) ออกแล้ว กลับไปใช้ QR ที่สร้างสดฝั่ง client
 // ด้วยไลบรารี QRCode.js เหมือนเดิม เพราะ QR แบบรูปคงที่ไม่มียอดเงินฝังในตัวเลย ลูกค้าต้องพิมพ์ยอดโอนเอง —
