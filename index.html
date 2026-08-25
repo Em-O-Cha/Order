@@ -524,6 +524,10 @@ var activeAutoCoupons = [];
 
 function loadProducts(){
   Promise.all([
+    // ⚡ แก้ (25/8/69) — เดิม checkMemberStatus ถูกเรียก "แยกก่อน" (sequential) แล้วค่อยเรียกชุดนี้ต่อ ทำให้
+    // เสียเวลารอเพิ่มไป 1 รอบเต็มๆ ก่อนเริ่มโหลดข้อมูลอื่นเลย — ตอนนี้รวมเข้ามาในชุดขนาน (parallel) เดียวกัน
+    // ยิงพร้อมกันทั้งหมด ลดเวลาโหลดหน้าแรกลงประมาณเท่าตัวของเวลาที่ checkMemberStatus ใช้ไป
+    callApi('checkMemberStatus', { idToken: currentIdToken }).catch(function(){ return null; }),
     callApi('getShopProducts'),
     callApi('getActiveCoupons').catch(function(e){ return { success: false, error: 'fetch error: ' + e.message }; }),
     callApi('getMyPrivileges', { idToken: currentIdToken }).catch(function(){ return null; }),
@@ -531,11 +535,20 @@ function loadProducts(){
     callApi('getShopPaymentInfo').catch(function(){ return null; })
   ])
     .then(function(results){
-      var r = results[0];
-      var couponsResult = results[1];
-      var privilegesResult = results[2];
-      var addressResult = results[3];
-      var paymentResult = results[4];
+      var memberResult = results[0];
+      var r = results[1];
+      var couponsResult = results[2];
+      var privilegesResult = results[3];
+      var addressResult = results[4];
+      var paymentResult = results[5];
+
+      // ⚡ เพิ่ม (25/8/69) — ถ้าเช็คสถานะสมาชิกได้ผลชัดเจนว่า "ยังไม่ได้สมัคร" ให้เตือนทันที ไม่ต้องเสียเวลา
+      // render สินค้าต่อ — แต่ถ้าเช็คไม่สำเร็จ (memberResult เป็น null จาก .catch ด้านบน) ให้ปล่อยผ่านไปโหลด
+      // สินค้าตามปกติ (เหมือนเดิม) ไม่บล็อกทั้งหน้าเพราะจุดเดียว ยังมีการเช็คซ้ำอีกชั้นตอนสั่งซื้อจริงอยู่แล้ว
+      if (memberResult && memberResult.success && !memberResult.isMember) {
+        showState('notMemberState');
+        return;
+      }
 
       if (!r || !r.success) { showErrorState('โหลดสินค้าไม่สำเร็จ: ' + (r ? r.error : '')); return; }
       categories = r.categories || [];
@@ -1234,26 +1247,10 @@ function initLiff(){
       showErrorState('LINE Login สำเร็จ แต่ LIFF ไม่ส่ง ID token กลับมา');
       return;
     }
-    checkMembershipThenLoadProducts_();
+    loadProducts();
   }).catch(function(e){
     clearTimeout(initTimeout);
     showErrorState('liff.init() ล้มเหลว: ' + (e && e.message ? e.message : String(e)));
-  });
-}
-
-// ⚡ เพิ่ม (25/8/69) — เช็คว่าเป็นสมาชิกแล้วหรือยังตั้งแต่เปิดหน้านี้ ก่อนให้เลือกสินค้า/ชำระเงิน แทนที่จะ
-// ปล่อยให้เลือกสินค้า กรอกที่อยู่จนจบ แล้วค่อยเจอ error ตอนกดยืนยันสั่งซื้อขั้นตอนสุดท้าย (ประสบการณ์แย่กว่า
-// เห็นเตือนตั้งแต่ต้น) — ถ้าเช็คไม่สำเร็จ (เช่น เครือข่ายมีปัญหาชั่วคราว) จะปล่อยผ่านไปโหลดสินค้าตามปกติ
-// ไม่บล็อกทั้งหน้า เพราะยังมีการเช็คซ้ำอีกชั้นตอนสั่งซื้อจริงอยู่แล้วฝั่งเซิร์ฟเวอร์ (Code.gs) กันหลุดแน่นอน
-function checkMembershipThenLoadProducts_(){
-  callApi('checkMemberStatus', { idToken: currentIdToken }).then(function(r){
-    if (r && r.success && r.isMember) {
-      loadProducts();
-    } else {
-      showState('notMemberState');
-    }
-  }).catch(function(){
-    loadProducts(); // เช็คไม่สำเร็จ ปล่อยผ่านไปก่อน ไม่ให้ทั้งหน้าใช้งานไม่ได้เพราะจุดนี้จุดเดียว
   });
 }
 
