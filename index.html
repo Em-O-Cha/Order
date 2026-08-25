@@ -156,6 +156,11 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
         <input type="text" id="couponInput" placeholder="มีโค้ดพิเศษอื่น? กรอกตรงนี้" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif">
         <button class="btn" onclick="applyCoupon()" style="white-space:nowrap">ใช้โค้ด</button>
       </div>
+      <div class="fg" style="margin-bottom:16px">
+        <label>🤝 รหัสสมาชิกเพื่อนแนะนำ (ถ้ามี)</label>
+        <input type="text" id="purchaseReferrerInput" placeholder="เช่น EM-20260825001" style="height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;text-transform:uppercase">
+        <div class="hint" style="font-size:12px;color:var(--g6);margin-top:4px">ถ้าเพื่อนแนะนำให้คุณมาซื้อสินค้า กรอกรหัสสมาชิกของเพื่อนตรงนี้ได้เลย ทั้งคุณและเพื่อนอาจได้รับสิทธิพิเศษเพิ่มเติม</div>
+      </div>
       <p style="font-weight:600;margin-bottom:12px">เลือกวิธีชำระเงิน</p>
       <label class="pay-opt active" id="optPromptpay">
         <input type="radio" name="pay" value="promptpay" checked onchange="selectPayment('promptpay')"> 📱 สแกน QR พร้อมเพย์
@@ -250,14 +255,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 var LIFF_ID = '2010892131-3XYQXNzq';
 var API_URL = 'https://script.google.com/macros/s/AKfycbzfhB83ccV-gnji-A_-rNnGmM7K1O4XnV9w6NBcTRm_d_fN_raU6BjBwyOIWz-SIeL7Bw/exec';
 
-// ⚡ แก้ (25/8/69) — ย้ายโลโก้ SCB จาก Google Drive มาเป็นไฟล์ในโฟลเดอร์เดียวกับหน้านี้แทน
-// (แพทเทิร์นเดียวกับ brand-logo.png, mascot-left.png ฯลฯ) ต้องอัปโหลดไฟล์ bank-logo.png ไว้ที่เดียวกัน
 var BANK_LOGO_URL_ = 'bank-logo.png';
-
-// ⚡ แก้ (22/8/69) — เอารูป QR คงที่ (PROMPTPAY_QR_IMAGE_URL_) ออกแล้ว กลับไปใช้ QR ที่สร้างสดฝั่ง client
-// ด้วยไลบรารี QRCode.js เหมือนเดิม เพราะ QR แบบรูปคงที่ไม่มียอดเงินฝังในตัวเลย ลูกค้าต้องพิมพ์ยอดโอนเอง —
-// ตอนนี้ QR จะฝังยอดเงินไว้ในตัวเสมอ และเปลี่ยนอัตโนมัติทุกครั้งที่ยอดชำระเปลี่ยน (คูปอง/สิทธิ์พิเศษ/ของแถม
-// ที่กระทบราคาถูกใช้ หรือใช้แล้วยกเลิก) เพราะ renderPaymentDetail() ถูกเรียกซ้ำทุกครั้งที่ยอดเปลี่ยนอยู่แล้ว
 
 var currentIdToken = null;
 var categories = [];
@@ -321,8 +319,6 @@ function closeSlipUploadModal(){
 }
 
 var shopWindowClosed_ = false;
-// ⚡ แก้ (22/8/69, รอบ 2) — ตัดปุ่ม "ปิดตอนนี้เลย" ออกจาก HTML ทั้งหมดแล้วตามที่ขอ (ไม่แสดงทั้งมือถือและคอม)
-// เหลือแค่ระบบปิดอัตโนมัติเบื้องหลัง (liff.closeWindow() บนมือถือ) กับข้อความบอกสถานะเฉยๆ ไม่มีปุ่มให้กดแล้ว
 function isInLineClient_(){
   try { return typeof liff !== 'undefined' && liff.isInClient && liff.isInClient(); } catch (e) { return false; }
 }
@@ -819,8 +815,6 @@ function getDiscountAmount(){
     d += (lastDiscountInfo.coupon.productDiscount != null ? lastDiscountInfo.coupon.productDiscount : lastDiscountInfo.coupon.discount);
   }
   (lastDiscountInfo.autoCoupons || []).forEach(function(c){ d += (c.productDiscount || 0); });
-  // ⚡ เพิ่ม (23/8/69) — ส่วนลดจากโปร "ซื้อซ้ำในเดือนนี้" (repeatPromo) ให้รวมเข้ายอดลดด้วย ตามที่ขอให้ขึ้น
-  // ส่วนลดให้เห็นในระบบสั่งซื้อทันที ไม่ใช่แค่คำนวณเงียบๆ ตอนสั่งซื้อจริง
   if (lastDiscountInfo.repeatPromo) d += (lastDiscountInfo.repeatPromo.discount || 0);
   return Math.min(getCartTotal(), d);
 }
@@ -836,10 +830,6 @@ function getFinalShippingCost(){
   return Math.max(0, getShippingCost() - getShippingDiscount());
 }
 
-// ⚡ แก้ (22/8/69) — โปรโมชั่นแบบ bogo (ซื้อครบแถม) เปลี่ยนกลไกใหม่: ลูกค้าหยิบสินค้าที่เข้าเงื่อนไขเองใส่
-// ตะกร้า ระบบจะลดราคาส่วนที่เป็น "ของแถม" ให้อัตโนมัติที่หน้าชำระเงินเป็นเงินจริง (ไม่ใช่ของแถมแยกที่ไม่กระทบ
-// ยอดเงินแบบเดิมอีกต่อไป) จึงตัดข้อความรายละเอียดยาวๆ ("แถม X หรือ Y หรือ Z") ออก เหลือแค่หัวข้อสั้นๆ พร้อม
-// ยอดส่วนลดจริง ให้ตรงกับที่ตกลงกันไว้ (แสดงแค่หัวข้อโปรโมชั่น ไม่ต้องมีรายละเอียดสินค้าที่แถม)
 function renderDiscountSummary(){
   var wrap = document.getElementById('discountSummary');
   var subtotal = getCartTotal();
@@ -852,9 +842,6 @@ function renderDiscountSummary(){
       + '</div>';
   }
 
-  // ⚡ แก้ (23/8/69) — เพิ่มรายการสินค้า (ชื่อ + จำนวน + น้ำหนักรวม) ใต้หัวข้อ "ยอดสินค้า" ตามที่ขอ
-  // ดึงน้ำหนักต่อชิ้นจาก variantList (มาจาก getShopProducts อยู่แล้ว มีฟิลด์ weightG ต่อ SKU) คูณจำนวนที่
-  // ซื้อ รวมเป็นน้ำหนักทั้งหมดของแต่ละรายการสินค้า แสดงเป็นกรัม (ถ้าเกิน 1000 กรัม แปลงเป็นกิโลกรัมให้อ่านง่าย)
   function fmtWeight_(g){
     if (g >= 1000) return (g / 1000).toLocaleString('th-TH', { maximumFractionDigits: 2 }) + ' กก.';
     return g.toLocaleString('th-TH') + ' ก.';
@@ -883,8 +870,6 @@ function renderDiscountSummary(){
     var removeBtnHtml = isRedeemable
       ? ' <button type="button" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
       : '';
-    // ⚡ เพิ่ม (23/8/69) — คอนเซปใหม่ของ bogo: ถ้าซื้อครบแค่ "จำนวนที่ต้องซื้อ" (ยังไม่ครบ X+Y) จะไม่มีส่วนลด
-    // เงิน (p.discount = 0) แต่มี physicalFreeQty แทน — ต้องแจ้งลูกค้าว่าจะได้ของแถมเพิ่ม ไม่ใช่ปล่อยให้เงียบไป
     if (p.discount <= 0) {
       if (p.physicalFreeQty > 0) {
         h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(p.name) + ' — มีของแถม ' + p.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
@@ -899,9 +884,6 @@ function renderDiscountSummary(){
   } else if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.physicalFreeQty > 0) {
     h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + ' — มีของแถม ' + lastDiscountInfo.coupon.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
   }
-  // ⚡ แก้ (22/8/69, รอบ 2) — แสดงทุกโปรอัตโนมัติที่ใช้อยู่เสมอ (ไม่ผูกกับว่ามีโค้ดที่พิมพ์เองหรือไม่แล้ว)
-  // เพราะตอนนี้โปรลดค่าส่งอัตโนมัติใช้ได้พร้อมกับโค้ดที่พิมพ์เองได้ (ข้อ 3) — สูงสุด 3 แถว: โปรสินค้าเฉพาะ +
-  // โปรสินค้าทั่วไป + โปรลดค่าส่ง
   (lastDiscountInfo.autoCoupons || []).forEach(function(c){
     if (c.discount <= 0) {
       if (c.physicalFreeQty > 0) {
@@ -911,7 +893,6 @@ function renderDiscountSummary(){
     }
     h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(c.code) + '</span><span>-฿' + Math.round(c.discount).toLocaleString('th-TH') + '</span></div>';
   });
-  // ⚡ เพิ่ม (23/8/69) — โชว์ส่วนลด/แต้มโบนัสจากโปร "ซื้อซ้ำในเดือนนี้" ในหน้าชำระเงินตามที่ขอ
   if (lastDiscountInfo && lastDiscountInfo.repeatPromo) {
     var rp = lastDiscountInfo.repeatPromo;
     if (rp.discount > 0) {
@@ -958,8 +939,6 @@ function getFinalTotal(){
   return Math.max(0, getCartTotal() - getDiscountAmount()) + getFinalShippingCost();
 }
 
-// ⚡ แก้ (22/8/69) — กลับไปใช้ QR ที่สร้างสดฝั่ง client (QRCode.js) แทนรูปคงที่ ยอดเงินฝังอยู่ในตัว QR เสมอ
-// และอัปเดตอัตโนมัติทุกครั้งที่ renderPaymentDetail() ถูกเรียกซ้ำ (เปลี่ยนวิธีชำระเงิน/ใช้โค้ด/ลบสิทธิ์ ฯลฯ)
 function renderPaymentDetail(){
   var wrap = document.getElementById('paymentDetail');
   var total = getFinalTotal();
@@ -1073,8 +1052,13 @@ function confirmSubmitOrder(){
   var itemsJsonRaw = JSON.stringify(items);
   var itemsB64 = btoa(unescape(encodeURIComponent(itemsJsonRaw)));
 
+  // ⚡ เพิ่ม (25/8/69) — อ่านค่ารหัสสมาชิกเพื่อนแนะนำจากช่องกรอกที่หน้าชำระเงิน (ระบบ "แนะนำเพื่อนซื้อสินค้า"
+  // คนละระบบกับ "แนะนำเพื่อนสมัครสมาชิก") ส่งแนบไปกับ createShopOrder เสมอ (ว่างก็ส่งว่างไปได้ ฝั่ง Code.gs
+  // จะข้ามให้เองถ้าไม่มีค่าหรือรหัสไม่ถูกต้อง ไม่ทำให้คำสั่งซื้อพังหรือ error)
+  var purchaseReferrerCode = document.getElementById('purchaseReferrerInput').value.trim();
+
   getFreshIdToken().then(function(idToken){
-    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId });
+    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId, purchaseReferrerCode: purchaseReferrerCode });
   })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันที่อยู่และสั่งซื้อ';
@@ -1088,8 +1072,6 @@ function confirmSubmitOrder(){
 
       closeAddressConfirmModal();
 
-      // ⚡ แก้ (22/8/69) — ตัดหัวข้อ "ส่วนลดของแถม" (ที่เคยแยกแสดงเป็นรายการฟรีต่างหาก) ออก เพราะตอนนี้
-      // "ของแถม" กลายเป็นส่วนลดเงินจริงที่รวมอยู่ใน cashDiscount แล้ว (ดู createShopOrder ฝั่ง Code.gs)
       var summaryHtml =
         '<div class="row"><span>เลขที่ออเดอร์</span><span><b>' + escHtml(r.orderId) + '</b></span></div>'
         + '<div class="row"><span>ยอดสินค้า</span><span>฿' + r.subtotal.toLocaleString('th-TH') + '</span></div>';
