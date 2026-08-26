@@ -110,6 +110,9 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 .history-item{background:var(--gp);border-radius:12px;padding:16px;text-align:left;margin-bottom:12px;}
 .history-item .row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;}
 .badge-pending{font-size:11px;color:#e65100;background:#fff3e0;padding:3px 10px;border-radius:20px;font-weight:600;}
+.icon-btn{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;line-height:1;}
+.icon-btn-cancel{border:1.5px solid #c62828;background:#fff;}
+.icon-btn-primary{border:none;background:var(--gm);}
 .badge-done{font-size:11px;color:var(--gd);background:#fff;padding:3px 10px;border-radius:20px;font-weight:600;}
 </style>
 </head>
@@ -156,7 +159,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
         <input type="text" id="couponInput" placeholder="มีโค้ดพิเศษอื่น? กรอกตรงนี้" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif">
         <button class="btn" onclick="applyCoupon()" style="white-space:nowrap">ใช้โค้ด</button>
       </div>
-      <div class="fg" style="margin-bottom:16px">
+      <div class="fg sh" id="purchaseReferrerField" style="margin-bottom:16px">
         <label>🤝 รหัสสมาชิกเพื่อนแนะนำ (ถ้ามี)</label>
         <input type="text" id="purchaseReferrerInput" placeholder="เช่น EM-20260825001" style="height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;text-transform:uppercase">
         <div class="hint" style="font-size:12px;color:var(--g6);margin-top:4px">ถ้าเพื่อนแนะนำให้คุณมาซื้อสินค้า กรอกรหัสสมาชิกของเพื่อนตรงนี้ได้เลย ทั้งคุณและเพื่อนอาจได้รับสิทธิพิเศษเพิ่มเติม</div>
@@ -454,7 +457,7 @@ function showErrorState(msg){
   showState('errorState');
 }
 
-var NON_IDEMPOTENT_ACTIONS_ = ['registerMember', 'createShopOrder', 'redeemReward', 'updateMemberProfile'];
+var NON_IDEMPOTENT_ACTIONS_ = ['registerMember', 'createShopOrder', 'redeemReward', 'updateMemberProfile', 'cancelShopOrder'];
 
 function callApi(action, payload, _attempt){
   payload = payload || {};
@@ -532,7 +535,11 @@ function loadProducts(){
     callApi('getActiveCoupons').catch(function(e){ return { success: false, error: 'fetch error: ' + e.message }; }),
     callApi('getMyPrivileges', { idToken: currentIdToken }).catch(function(){ return null; }),
     callApi('getMyShippingAddress', { idToken: currentIdToken }).catch(function(){ return null; }),
-    callApi('getShopPaymentInfo').catch(function(){ return null; })
+    callApi('getShopPaymentInfo').catch(function(){ return null; }),
+    // ⚡ เพิ่ม (25/8/69) — เช็คว่าระบบแนะนำเพื่อนซื้อสินค้า (MGM) เปิดใช้งานอยู่หรือไม่ พ่วงมากับชุดขนานนี้เลย
+    // (คนละเอ็นด์พอยต์กับ checkMemberStatus) เพื่อไม่ต้องเพิ่มรอบคำขอแยกต่างหาก — ถ้าปิดอยู่/เช็คไม่สำเร็จ
+    // ช่องกรอกรหัสจะซ่อนไว้ต่อไปเงียบๆ (ค่าเริ่มต้นซ่อนไว้แล้วด้วย class="sh" ใน HTML)
+    callApi('getPurchaseReferralPublicStatus', {}).catch(function(){ return null; })
   ])
     .then(function(results){
       var memberResult = results[0];
@@ -541,6 +548,7 @@ function loadProducts(){
       var privilegesResult = results[3];
       var addressResult = results[4];
       var paymentResult = results[5];
+      var purchaseReferralStatusResult = results[6];
 
       // ⚡ เพิ่ม (25/8/69) — ถ้าเช็คสถานะสมาชิกได้ผลชัดเจนว่า "ยังไม่ได้สมัคร" ให้เตือนทันที ไม่ต้องเสียเวลา
       // render สินค้าต่อ — แต่ถ้าเช็คไม่สำเร็จ (memberResult เป็น null จาก .catch ด้านบน) ให้ปล่อยผ่านไปโหลด
@@ -548,6 +556,10 @@ function loadProducts(){
       if (memberResult && memberResult.success && !memberResult.isMember) {
         showState('notMemberState');
         return;
+      }
+
+      if (purchaseReferralStatusResult && purchaseReferralStatusResult.success && purchaseReferralStatusResult.enabled) {
+        document.getElementById('purchaseReferrerField').classList.remove('sh');
       }
 
       if (!r || !r.success) { showErrorState('โหลดสินค้าไม่สำเร็จ: ' + (r ? r.error : '')); return; }
@@ -673,7 +685,7 @@ function loadOrderHistory(){
       document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:#c62828">โหลดรายการไม่สำเร็จ: ' + escHtml(r ? r.error : '') + '</p>';
       return;
     }
-    var pending = (r.results || []).filter(function(o){ return !o.hasSlip; });
+    var pending = (r.results || []).filter(function(o){ return !o.hasSlip && !o.cancelled; });
     renderOrderHistory(pending);
   }).catch(function(e){
     if (e && e.alreadyShown) return;
@@ -687,15 +699,60 @@ function renderOrderHistory(list){
     return;
   }
   var h = list.map(function(o){
+    var oid = escHtml(o.orderId);
     return '<div class="history-item">'
-      + '<div class="row"><span><b>#' + escHtml(o.orderId) + '</b></span><span class="badge-pending">⏳ รอแนบสลิป</span></div>'
+      + '<div class="row"><span><b>#' + oid + '</b></span><span class="badge-pending">⏳ รอแนบสลิป</span></div>'
       + '<div class="row"><span>วันที่</span><span>' + escHtml(o.date) + '</span></div>'
       + '<div class="row"><span>สินค้า</span><span>' + escHtml(o.firstItemName) + '</span></div>'
       + '<div class="row"><span>ยอดชำระ</span><span>฿' + Math.round(o.totalAmount).toLocaleString('th-TH') + '</span></div>'
-      + '<button class="btn btn-block" style="margin-top:10px" onclick="continueToSlipUpload(\'' + escHtml(o.orderId) + '\')">📎 ดำเนินการต่อ — แนบสลิป</button>'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">'
+      +   '<button class="icon-btn icon-btn-cancel" title="ยกเลิกคำสั่งซื้อนี้" aria-label="ยกเลิกคำสั่งซื้อนี้" onclick="askCancelOrder_(\'' + oid + '\')">🗑️</button>'
+      +   '<button class="icon-btn icon-btn-primary" title="ดำเนินการต่อ — แนบสลิป" aria-label="ดำเนินการต่อ แนบสลิป" onclick="continueToSlipUpload(\'' + oid + '\')">📎</button>'
+      + '</div>'
+      + '<div class="err" id="cancelConfirm_' + oid + '" style="margin-top:8px;text-align:left">'
+      +   'ยืนยันยกเลิกคำสั่งซื้อ #' + oid + ' ใช่ไหม? ข้อมูลจะถูกลบออกจากระบบถาวร แก้คืนไม่ได้'
+      +   '<div style="display:flex;gap:8px;margin-top:10px">'
+      +     '<button class="btn" style="background:#c62828;flex:1" id="cancelYesBtn_' + oid + '" onclick="confirmCancelOrder_(\'' + oid + '\')">ใช่ ยกเลิกเลย</button>'
+      +     '<button class="btn btn-outline" style="flex:1" onclick="document.getElementById(\'cancelConfirm_' + oid + '\').classList.remove(\'show\')">ไม่ใช่</button>'
+      +   '</div>'
+      + '</div>'
       + '</div>';
   }).join('');
   document.getElementById('historyList').innerHTML = h;
+}
+
+// ⚡ เพิ่ม (25/8/69) — ปุ่มยกเลิกคำสั่งซื้อที่ยังไม่แนบสลิป (เผื่อกดผิด/ไม่ต้องการซื้อแล้ว) ใช้กล่องยืนยัน
+// แบบฝังอยู่ในหน้าเว็บเอง (ไม่ใช้ window.confirm() เพราะเว็บวิวของ LINE บางเครื่องบล็อก dialog แบบนั้นจน
+// กดยืนยันไม่ได้เลย) กดยกเลิกแล้วจะลบแถวออกจากชีต Revenue จริง แก้คืนไม่ได้ จึงต้องมีขั้นตอนยืนยันก่อนเสมอ
+function askCancelOrder_(orderId){
+  var box = document.getElementById('cancelConfirm_' + orderId);
+  if (box) box.classList.add('show');
+}
+
+var cancelOrderInFlight_ = false;
+function confirmCancelOrder_(orderId){
+  if (cancelOrderInFlight_) return;
+  cancelOrderInFlight_ = true;
+  var btn = document.getElementById('cancelYesBtn_' + orderId);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ กำลังยกเลิก...'; }
+
+  getFreshIdToken().then(function(idToken){
+    return callApi('cancelShopOrder', { idToken: idToken, orderId: orderId });
+  }).then(function(r){
+    cancelOrderInFlight_ = false;
+    if (r && r.success) {
+      loadOrderHistory(); // รีเฟรชรายการ ตัดออเดอร์ที่ยกเลิกออกไป
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = 'ใช่ ยกเลิกเลย'; }
+      var box = document.getElementById('cancelConfirm_' + orderId);
+      if (box) box.textContent = '⚠️ ' + (r ? r.error : 'เกิดข้อผิดพลาด');
+    }
+  }).catch(function(e){
+    cancelOrderInFlight_ = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'ใช่ ยกเลิกเลย'; }
+    var box = document.getElementById('cancelConfirm_' + orderId);
+    if (box) box.textContent = '⚠️ Error: ' + e.message;
+  });
 }
 
 function continueToSlipUpload(orderId){
