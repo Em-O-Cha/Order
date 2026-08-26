@@ -451,6 +451,10 @@ function showState(id){
   document.getElementById('checkoutBar').classList.toggle('sh', id !== 'checkoutState');
   document.getElementById('orderDoneBar').classList.toggle('sh', id !== 'orderDoneState');
   setStepper(STEP_MAP_.hasOwnProperty(id) ? STEP_MAP_[id] : null);
+  // ⚡ เพิ่ม (26/8/69) — เลื่อนจอกลับขึ้นบนสุดทุกครั้งที่เปลี่ยนหน้า โดยเฉพาะตอนไปหน้าชำระเงิน (checkoutState)
+  // เพราะลูกค้าอาจเลื่อนดูสินค้าลงมาลึกมากแล้วก่อนกดปุ่ม "ไปหน้าชำระเงิน" ถ้าไม่เลื่อนกลับขึ้นบนก่อน จอจะ
+  // ค้างอยู่ตำแหน่งเดิม (อาจเจอ QR code ทันทีก่อนเห็นสรุปยอดสินค้า/ที่อยู่ด้านบนเลย) ให้เห็นสรุปออเดอร์ก่อนเสมอ
+  window.scrollTo(0, 0);
 }
 function showErrorState(msg){
   document.getElementById('errorState').innerHTML = '<div class="ico">⚠️</div><div id="errorMsg">' + msg.replace(/</g,'&lt;') + '</div>';
