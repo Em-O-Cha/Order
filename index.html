@@ -270,6 +270,8 @@ var LIFF_ID = '2010892131-3XYQXNzq';
 var API_URL = 'https://script.google.com/macros/s/AKfycbzfhB83ccV-gnji-A_-rNnGmM7K1O4XnV9w6NBcTRm_d_fN_raU6BjBwyOIWz-SIeL7Bw/exec';
 
 var BANK_LOGO_URL_ = 'bank-logo.png';
+// ใช้ไอคอน Copy มาตรฐานเดียวกับระบบแจ้งพัสดุบน GitHub
+var COPY_ICON_URL_ = 'https://raw.githubusercontent.com/Em-O-Cha/Order/main/copy-icon.png';
 
 var currentIdToken = null;
 var categories = [];
@@ -1129,7 +1131,7 @@ function renderPaymentDetail(){
       + '<div class="row"><span>ธนาคาร</span><span>' + escHtml(paymentInfo.bankName) + '</span></div>'
       + '<div class="row" style="align-items:center"><span>เลขบัญชี</span><span style="display:flex;align-items:center;gap:8px">'
       + '<b id="bankAccountText">' + escHtml(paymentInfo.bankAccount) + '</b>'
-      + '<button type="button" id="copyBankAccountBtn" onclick="copyBankAccount_(this)" title="คัดลอกเลขบัญชี" style="border:none;background:var(--gp);color:var(--gm);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">📋</button>'
+      + '<button type="button" id="copyBankAccountBtn" onclick="copyBankAccount_(this)" title="คัดลอกเลขบัญชี" aria-label="คัดลอกเลขบัญชี" style="border:none;background:var(--gp);width:28px;height:28px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0"><img src="' + COPY_ICON_URL_ + '" alt="" style="width:18px;height:18px;object-fit:contain"></button>'
       + '</span></div>'
       + '<div class="row"><span>ชื่อบัญชี</span><span>' + escHtml(paymentInfo.accountName) + '</span></div>'
       + '<div class="row"><span>ยอดโอน</span><span>฿' + total.toLocaleString('th-TH') + '</span></div>'
@@ -1137,27 +1139,49 @@ function renderPaymentDetail(){
   }
 }
 
-// ⚡ เพิ่ม (19/8/69) — บันทึกรูป QR พร้อมเพย์ลงเครื่องโทรศัพท์ทันที ไม่ต้องแคปหน้าจอเอง — ดึงรูปจาก
-// <canvas> ที่ QRCode.js สร้างไว้ แปลงเป็น PNG แล้วสั่งดาวน์โหลด — บาง in-app browser (โดยเฉพาะ LINE บน
-// iOS/Safari) อาจไม่รองรับการดาวน์โหลดไฟล์ตรงๆ ผ่าน <a download> จึงมี fallback เปิดรูปในแท็บใหม่ให้กดค้าง
-// แล้วเลือก "บันทึกรูปภาพ" เองแทน
+// บันทึกรูป QR เป็น PNG: ใช้แผงแชร์/บันทึกของเครื่องบน LINE และ Safari หากรองรับ
+// หรือดาวน์โหลดไฟล์โดยตรงสำหรับเบราว์เซอร์ทั่วไป พร้อมรองรับผลลัพธ์ทั้ง canvas และ img จาก QRCode.js
 function saveQrCode_(){
   var canvas = document.querySelector('#qrcodeContainer canvas');
-  if (!canvas) return;
-  try {
-    var dataUrl = canvas.toDataURL('image/png');
-    var link = document.createElement('a');
-    link.href = dataUrl;
-    link.download = 'QR-พร้อมเพย์-เอมโอชา.png';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } catch (e) {
-    try {
-      var win = window.open();
-      if (win) win.document.write('<body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="' + canvas.toDataURL('image/png') + '" style="max-width:100%"></body>');
-    } catch (e2) { /* ทำอะไรไม่ได้จริงๆ แล้ว ปล่อยให้ลูกค้าแคปหน้าจอเอง */ }
-  }
+  var image = document.querySelector('#qrcodeContainer img');
+  if (!canvas && !(image && image.src)) return;
+
+  // QRCode.js อาจสร้างได้ทั้ง canvas และ img ขึ้นกับเบราว์เซอร์ จึงรองรับทั้งสองแบบ
+  if (!canvas) { downloadQrFile_(image.src); return; }
+  if (!canvas.toBlob) { downloadQrFile_(canvas.toDataURL('image/png')); return; }
+  canvas.toBlob(function(blob){
+    if (!blob) { downloadQrFile_(canvas.toDataURL('image/png')); return; }
+    // LINE/Safari บางรุ่นไม่รองรับ a[download] จึงเปิดแผงบันทึก/แชร์ของเครื่องแทน
+    // ลูกค้าเลือก "บันทึกรูปภาพ" หรือ "บันทึกไปยังไฟล์" ได้โดยตรง
+    if (window.File && navigator.canShare && navigator.share) {
+      var file = new File([blob], 'QR-พร้อมเพย์-เอมโอชา.png', { type: 'image/png' });
+      if (navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'QR พร้อมเพย์ เอมโอชา' })
+          .catch(function(error){
+            // ผู้ใช้กดปิดแผงแชร์เองไม่ต้องสั่งดาวน์โหลดซ้ำ
+            if (error && error.name !== 'AbortError') downloadQrBlob_(blob);
+          });
+        return;
+      }
+    }
+    downloadQrBlob_(blob);
+  }, 'image/png');
+}
+
+function downloadQrBlob_(blob){
+  var url = URL.createObjectURL(blob);
+  downloadQrFile_(url);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+
+function downloadQrFile_(url){
+  var link = document.createElement('a');
+  link.href = url;
+  link.download = 'QR-พร้อมเพย์-เอมโอชา.png';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 // ⚡ เพิ่ม (19/8/69) — คัดลอกเลขบัญชีธนาคารไปยัง clipboard ทันทีที่กด ไม่ต้องลากเลือกข้อความเอง — ใช้
@@ -1168,9 +1192,9 @@ function copyBankAccount_(btn){
   var text = paymentInfo ? String(paymentInfo.bankAccount || '') : '';
   if (!text) return;
   function showCopied(){
-    var original = btn.textContent;
+    var original = btn.innerHTML;
     btn.textContent = '✅';
-    setTimeout(function(){ btn.textContent = original; }, 1500);
+    setTimeout(function(){ btn.innerHTML = original; }, 1500);
   }
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(showCopied).catch(function(){ fallbackCopy_(text, showCopied); });
