@@ -107,7 +107,7 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 
 /* ==================== Order history ==================== */
 .history-link{text-align:right;margin-bottom:10px;}
-.history-link button{background:none;border:none;color:var(--gm);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline;font-family:'Kanit',sans-serif;}
+.history-link button{background:transparent !important;border:none !important;box-shadow:none !important;color:var(--gm) !important;font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline;font-family:'Kanit',sans-serif;}
 .history-item{background:var(--gp);border-radius:12px;padding:16px;text-align:left;margin-bottom:12px;}
 .history-item .row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;}
 .badge-pending{font-size:11px;color:#e65100;background:#fff3e0;padding:3px 10px;border-radius:20px;font-weight:600;}
@@ -121,6 +121,8 @@ button,.btn,.sbu,.shop-cta-btn{
   background:var(--brand-button-gradient) !important;color:#fff !important;
   border-color:#a50d0c !important;box-shadow:0 5px 14px rgba(165,13,12,.42);
 }
+/* ปุ่ม Copy เป็นปุ่มเครื่องมือ จึงคงพื้นเรียบไว้ */
+button.copy-account-btn{background:#fff !important;border:1px solid #d7d7d7 !important;box-shadow:none !important;}
 button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
 </style>
 </head>
@@ -544,58 +546,30 @@ function getIdTokenExpiryMs_(token){
 var activeAutoCoupons = [];
 
 function loadProducts(){
-  Promise.all([
-    // ⚡ แก้ (25/8/69) — เดิม checkMemberStatus ถูกเรียก "แยกก่อน" (sequential) แล้วค่อยเรียกชุดนี้ต่อ ทำให้
-    // เสียเวลารอเพิ่มไป 1 รอบเต็มๆ ก่อนเริ่มโหลดข้อมูลอื่นเลย — ตอนนี้รวมเข้ามาในชุดขนาน (parallel) เดียวกัน
-    // ยิงพร้อมกันทั้งหมด ลดเวลาโหลดหน้าแรกลงประมาณเท่าตัวของเวลาที่ checkMemberStatus ใช้ไป
-    callApi('checkMemberStatus', { idToken: currentIdToken }).catch(function(){ return null; }),
-    callApi('getShopProducts'),
-    callApi('getActiveCoupons').catch(function(e){ return { success: false, error: 'fetch error: ' + e.message }; }),
-    callApi('getMyPrivileges', { idToken: currentIdToken }).catch(function(){ return null; }),
-    callApi('getMyShippingAddress', { idToken: currentIdToken }).catch(function(){ return null; }),
-    callApi('getShopPaymentInfo').catch(function(){ return null; }),
-    // ⚡ เพิ่ม (25/8/69) — เช็คว่าระบบแนะนำเพื่อนซื้อสินค้า (MGM) เปิดใช้งานอยู่หรือไม่ พ่วงมากับชุดขนานนี้เลย
-    // (คนละเอ็นด์พอยต์กับ checkMemberStatus) เพื่อไม่ต้องเพิ่มรอบคำขอแยกต่างหาก — ถ้าปิดอยู่/เช็คไม่สำเร็จ
-    // ช่องกรอกรหัสจะซ่อนไว้ต่อไปเงียบๆ (ค่าเริ่มต้นซ่อนไว้แล้วด้วย class="sh" ใน HTML)
-    callApi('getPurchaseReferralPublicStatus', {}).catch(function(){ return null; })
-  ])
-    .then(function(results){
-      var memberResult = results[0];
-      var r = results[1];
-      var couponsResult = results[2];
-      var privilegesResult = results[3];
-      var addressResult = results[4];
-      var paymentResult = results[5];
-      var purchaseReferralStatusResult = results[6];
-
-      // ⚡ เพิ่ม (25/8/69) — ถ้าเช็คสถานะสมาชิกได้ผลชัดเจนว่า "ยังไม่ได้สมัคร" ให้เตือนทันที ไม่ต้องเสียเวลา
-      // render สินค้าต่อ — แต่ถ้าเช็คไม่สำเร็จ (memberResult เป็น null จาก .catch ด้านบน) ให้ปล่อยผ่านไปโหลด
-      // สินค้าตามปกติ (เหมือนเดิม) ไม่บล็อกทั้งหน้าเพราะจุดเดียว ยังมีการเช็คซ้ำอีกชั้นตอนสั่งซื้อจริงอยู่แล้ว
-      if (memberResult && memberResult.success && !memberResult.isMember) {
+  // รวมข้อมูลเริ่มต้นเป็นคำขอเดียว ลดการเปิด Apps Script และตรวจ LINE token ซ้ำ 7 รอบ
+  callApi('getShopBootstrap', { idToken: currentIdToken })
+    .then(function(r){
+      if (!r || !r.success) { showErrorState('โหลดสินค้าไม่สำเร็จ: ' + (r ? r.error : '')); return; }
+      if (!r.isMember) {
         showState('notMemberState');
         return;
       }
 
-      if (purchaseReferralStatusResult && purchaseReferralStatusResult.success && purchaseReferralStatusResult.enabled) {
+      if (r.purchaseReferralEnabled) {
         document.getElementById('purchaseReferrerField').classList.remove('sh');
       }
 
-      if (!r || !r.success) { showErrorState('โหลดสินค้าไม่สำเร็จ: ' + (r ? r.error : '')); return; }
       categories = r.categories || [];
-      activeAutoCoupons = (couponsResult && couponsResult.success)
-        ? couponsResult.results.filter(function(c){ return c.autoApply; })
-        : [];
+      activeAutoCoupons = (r.coupons || []).filter(function(c){ return c.autoApply; });
       renderCatalog();
       showState('catalogState');
-      renderMyPrivileges_(privilegesResult);
+      renderMyPrivileges_({ success: true, results: r.privileges || [] });
 
-      savedAddressLoaded = true; // ทำเครื่องหมายว่าโหลดแล้ว ไม่ว่าผลจะสำเร็จหรือพลาด กัน goToCheckout() ยิงซ้ำ
-      if (addressResult && addressResult.success) {
-        if (addressResult.province) savedProvince = addressResult.province;
-        if (addressResult.address) savedAddress = addressResult.address;
-      }
+      savedAddressLoaded = true;
+      if (r.province) savedProvince = r.province;
+      if (r.address) savedAddress = r.address;
 
-      if (paymentResult && paymentResult.success) paymentInfo = paymentResult;
+      if (r.paymentInfo) paymentInfo = r.paymentInfo;
     })
     .catch(function(e){ showErrorState('เรียก API ไม่สำเร็จ: ' + e.message); });
 }
@@ -801,6 +775,10 @@ function goToCheckout(){
   var btn = document.getElementById('checkoutBtn');
   btn.disabled = true; var originalBtnText = btn.textContent; btn.textContent = '⏳ กำลังโหลด...';
 
+  // เปลี่ยนหน้าให้ทันที ส่วนคำนวณสิทธิ์/ส่วนลดทำต่อในพื้นหลัง
+  document.getElementById('discountSummary').innerHTML = '<div class="bank-box" style="text-align:center">กำลังคำนวณสิทธิ์และยอดชำระ...</div>';
+  showState('checkoutState');
+
   var flow = getFreshIdToken().then(function(idToken){
     var calls = [refreshDiscounts(idToken), loadSavedAddress(idToken)];
     if (!paymentInfo) {
@@ -812,12 +790,11 @@ function goToCheckout(){
   withTimeout_(flow, 25000, 'หมดเวลารอ (เกิน 25 วินาที) — เครือข่ายอาจมีปัญหา หรือ Apps Script ตอบช้าผิดปกติ ลองกดใหม่อีกครั้ง')
     .then(function(){
       btn.disabled = false; btn.textContent = originalBtnText;
-      showState('checkoutState');
     }).catch(function(e){
       btn.disabled = false; btn.textContent = originalBtnText;
       if (e && e.alreadyShown) return;
       var reason = (e && e.message) ? e.message : 'ไม่ทราบสาเหตุ';
-      showFriendlyCheckoutError_(reason);
+      showInlineCheckoutError_(reason);
     });
 }
 
@@ -1138,7 +1115,7 @@ function renderPaymentDetail(){
       + '<div class="row"><span>ธนาคาร</span><span>' + escHtml(paymentInfo.bankName) + '</span></div>'
       + '<div class="row" style="align-items:center"><span>เลขบัญชี</span><span style="display:flex;align-items:center;gap:8px">'
       + '<b id="bankAccountText">' + escHtml(paymentInfo.bankAccount) + '</b>'
-      + '<button type="button" id="copyBankAccountBtn" onclick="copyBankAccount_(this)" title="คัดลอกเลขบัญชี" aria-label="คัดลอกเลขบัญชี" style="border:none;background:var(--gp);width:28px;height:28px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0"><img src="' + COPY_ICON_URL_ + '" alt="" style="width:18px;height:18px;object-fit:contain"></button>'
+      + '<button type="button" class="copy-account-btn" id="copyBankAccountBtn" onclick="copyBankAccount_(this)" title="คัดลอกเลขบัญชี" aria-label="คัดลอกเลขบัญชี" style="width:28px;height:28px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0"><img src="' + COPY_ICON_URL_ + '" alt="" style="width:18px;height:18px;object-fit:contain"></button>'
       + '</span></div>'
       + '<div class="row"><span>ชื่อบัญชี</span><span>' + escHtml(paymentInfo.accountName) + '</span></div>'
       + '<div class="row"><span>ยอดโอน</span><span>฿' + total.toLocaleString('th-TH') + '</span></div>'
