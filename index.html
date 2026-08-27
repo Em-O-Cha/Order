@@ -13,6 +13,7 @@
 :root{
   --gd:#1a5c2a; --gm:#2e7d32; --gp:#e8f5e9; --gb:#c8e6c9;
   --g6:#757575; --g8:#424242; --td:#1b2e1c;
+  --brand-button-gradient:linear-gradient(135deg,#a50d0c 0%,#e4504d 55%,#a50d0c 100%);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-height:100vh;padding:16px;}
@@ -115,6 +116,12 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 .icon-btn-danger{border:1.5px solid #c62828;color:#c62828;}
 .icon-btn-success{border:1.5px solid var(--gm);color:var(--gm);}
 .badge-done{font-size:11px;color:var(--gd);background:#fff;padding:3px 10px;border-radius:20px;font-weight:600;}
+/* ใช้สีเดียวกันกับทุกปุ่มในหน้านี้ รวมปุ่มที่สร้างภายหลังด้วย JavaScript */
+button,.btn,.sbu,.shop-cta-btn{
+  background:var(--brand-button-gradient) !important;color:#fff !important;
+  border-color:#a50d0c !important;box-shadow:0 5px 14px rgba(165,13,12,.42);
+}
+button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
 </style>
 </head>
 <body>
