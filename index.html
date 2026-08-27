@@ -160,6 +160,9 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
         <input type="text" id="couponInput" placeholder="มีโค้ดพิเศษอื่น? กรอกตรงนี้" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif">
         <button class="btn" onclick="applyCoupon()" style="white-space:nowrap">ใช้โค้ด</button>
       </div>
+      <!-- ⚡ เพิ่ม (19/8/69) — ให้ลูกค้าพิมพ์จำนวนคะแนนที่จะแลกเป็นส่วนลดเงินสดเองได้ที่นี่เลย (ซ่อนไว้ก่อน
+           ถ้าระบบยังไม่เปิดใช้งาน หรือลูกค้ายังไม่มีคะแนนเลย — ดู renderPointsRedeemBox_) -->
+      <div id="pointsRedeemBox" class="sh" style="margin-bottom:16px"></div>
       <div class="fg sh" id="purchaseReferrerField" style="margin-bottom:16px">
         <label>🤝 รหัสสมาชิกเพื่อนแนะนำ (ถ้ามี)</label>
         <input type="text" id="purchaseReferrerInput" placeholder="เช่น EM-20260825001" style="height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;text-transform:uppercase">
@@ -276,6 +279,7 @@ var paymentInfo = null;
 var selectedPayment = 'promptpay';
 var appliedCouponCode = '';
 var lastDiscountInfo = null;
+var pointsToRedeemInput_ = 0; // ⚡ เพิ่ม (19/8/69) จำนวนคะแนนที่ลูกค้าพิมพ์จะแลกเป็นส่วนลดเงินสด
 var LIFF_LOGIN_GUARD = 'emocha.shop.login-attempted';
 var pendingSlipOrderId = '';
 var currentOrderId = '';
@@ -674,7 +678,7 @@ function updateCartBar(){
   document.getElementById('checkoutBtn').disabled = count === 0;
 }
 
-function backToCatalog(){ excludedPrivilegeRowIndexes = []; showState('catalogState'); }
+function backToCatalog(){ excludedPrivilegeRowIndexes = []; pointsToRedeemInput_ = 0; showState('catalogState'); }
 
 function showHistory(){
   showState('historyState');
@@ -816,7 +820,7 @@ function refreshDiscounts(idTokenParam){
   var itemsB64 = btoa(unescape(encodeURIComponent(JSON.stringify(items))));
   var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
   return tokenPromise.then(function(idToken){
-    return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|') });
+    return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), pointsToRedeem: pointsToRedeemInput_ });
   }).then(function(r){
     if (r && r.success) {
       lastDiscountInfo = r;
@@ -869,6 +873,51 @@ function applyCoupon(){
   if (!code) return;
   appliedCouponCode = code;
   refreshDiscounts();
+}
+
+// ⚡ เพิ่ม (19/8/69) — ลูกค้าพิมพ์จำนวนคะแนนที่ต้องการแลกเป็นส่วนลดเงินสดเอง แล้วกด "ใช้คะแนน" เพื่อคำนวณ
+// ใหม่ (เซิร์ฟเวอร์เป็นคนตรวจสอบ/ปรับจำนวนให้ถูกต้องเสมอ เช่น เกินคะแนนที่มี/เกินเพดาน/เกินยอดที่ต้องจ่าย —
+// ฝั่งนี้แค่ส่งค่าที่พิมพ์ไปให้เซิร์ฟเวอร์ตัดสิน ไม่คำนวณเองเพื่อกันความคลาดเคลื่อน)
+function applyPointsRedeem(){
+  var input = document.getElementById('pointsRedeemInput');
+  if (!input) return;
+  var val = parseInt(input.value) || 0;
+  pointsToRedeemInput_ = Math.max(0, val);
+  refreshDiscounts();
+}
+function clearPointsRedeem(){
+  pointsToRedeemInput_ = 0;
+  refreshDiscounts();
+}
+
+// ⚡ เพิ่ม (19/8/69) — แสดงกล่อง "แลกคะแนนเป็นส่วนลดเงินสด" ที่หน้าชำระเงิน ซ่อนไว้ถ้าระบบยังไม่เปิดใช้งาน
+// หรือลูกค้ายังไม่มีคะแนนเลย (ไม่มีประโยชน์จะโชว์ถ้าแลกไม่ได้อยู่ดี)
+function renderPointsRedeemBox_(){
+  var wrap = document.getElementById('pointsRedeemBox');
+  var cfg = lastDiscountInfo && lastDiscountInfo.pointsRedeemConfig;
+  var memberPoints = (lastDiscountInfo && lastDiscountInfo.memberPoints) || 0;
+  if (!cfg || !cfg.enabled || memberPoints <= 0) { wrap.classList.add('sh'); wrap.innerHTML = ''; return; }
+  wrap.classList.remove('sh');
+
+  var rateText = cfg.pointsPerBaht === 1 ? '1 คะแนน = 1 บาท' : (cfg.pointsPerBaht + ' คะแนน = 1 บาท');
+  var h = '<div class="bank-box" style="text-align:left">'
+    + '<p style="font-weight:600;margin-bottom:6px">🎯 แลกคะแนนเป็นส่วนลดเงินสด (มี ' + memberPoints.toLocaleString('th-TH') + ' คะแนน · ' + escHtml(rateText) + ')</p>';
+  if (cfg.minRedeem > 0) h += '<p style="font-size:11.5px;color:var(--g6);margin-bottom:8px">แลกขั้นต่ำ ' + cfg.minRedeem + ' คะแนน</p>';
+
+  if (lastDiscountInfo.pointsUsed > 0) {
+    h += '<div class="row" style="align-items:center"><span>ใช้ไปแล้ว ' + lastDiscountInfo.pointsUsed + ' คะแนน (-฿' + Math.round(lastDiscountInfo.pointsRedeemDiscount).toLocaleString('th-TH') + ')</span>'
+      + '<button type="button" onclick="clearPointsRedeem()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ยกเลิก</button></div>';
+  } else {
+    h += '<div style="display:flex;gap:8px">'
+      + '<input type="number" id="pointsRedeemInput" min="0" max="' + memberPoints + '" placeholder="จำนวนคะแนน" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:\'Sarabun\',sans-serif">'
+      + '<button class="btn" onclick="applyPointsRedeem()" style="white-space:nowrap">ใช้คะแนน</button>'
+      + '</div>';
+  }
+  if (lastDiscountInfo.pointsRedeemError) {
+    h += '<p style="font-size:11.5px;color:#c62828;margin-top:6px">⚠️ ' + escHtml(lastDiscountInfo.pointsRedeemError) + '</p>';
+  }
+  h += '</div>';
+  wrap.innerHTML = h;
 }
 
 // ==================== ที่อยู่จัดส่ง ====================
@@ -1003,6 +1052,9 @@ function renderDiscountSummary(){
   if (lastDiscountInfo && lastDiscountInfo.couponError) {
     h += '<div class="row" style="color:#c62828"><span colspan="2">⚠️ ' + escHtml(lastDiscountInfo.couponError) + '</span></div>';
   }
+  if (lastDiscountInfo && lastDiscountInfo.pointsUsed > 0) {
+    h += '<div class="row"><span>🎯 แลกคะแนน ' + lastDiscountInfo.pointsUsed + ' คะแนน</span><span>-฿' + Math.round(lastDiscountInfo.pointsRedeemDiscount).toLocaleString('th-TH') + '</span></div>';
+  }
   var shipDiscount = getShippingDiscount();
   var shipHtml = shipDiscount > 0
     ? '<span style="text-decoration:line-through;color:#999;margin-right:6px">฿' + Math.round(getShippingCost()).toLocaleString('th-TH') + '</span><span style="color:#c62828;font-weight:700">฿' + Math.round(getFinalShippingCost()).toLocaleString('th-TH') + '</span>'
@@ -1012,6 +1064,7 @@ function renderDiscountSummary(){
   h += '</div>';
   wrap.innerHTML = h;
   document.getElementById('checkoutBarTotal').textContent = '฿' + getFinalTotal().toLocaleString('th-TH');
+  renderPointsRedeemBox_();
 }
 
 function selectPayment(method){
@@ -1030,8 +1083,17 @@ function getCartTotal(){
   return total;
 }
 
+// ⚡ เพิ่ม (19/8/69) — ส่วนลดจากการแลกคะแนนเป็นเงินสด (หักจากยอดรวมสินค้า+ค่าส่งทีเดียว ไม่ใช่แค่ยอดสินค้า
+// เฉยๆ — ต้องแยกคำนวณจาก getDiscountAmount() ข้างบน ซึ่ง cap ไว้ที่ getCartTotal() อย่างเดียว ถ้ารวมเข้าไป
+// ในนั้นจะคำนวณผิดกรณีคะแนนที่แลกมากพอจะลดเกินยอดสินค้าไปถึงค่าส่งด้วย) ต้องตรงกับลำดับการคำนวณฝั่ง
+// backend เป๊ะๆ (createShopOrder: หักส่วนลดอื่นๆ ก่อน แล้วค่อยหักคะแนนจากยอดรวมที่เหลือทีเดียว)
+function getPointsRedeemDiscount(){
+  return (lastDiscountInfo && lastDiscountInfo.pointsRedeemDiscount) ? lastDiscountInfo.pointsRedeemDiscount : 0;
+}
+
 function getFinalTotal(){
-  return Math.max(0, getCartTotal() - getDiscountAmount()) + getFinalShippingCost();
+  var beforePoints = Math.max(0, getCartTotal() - getDiscountAmount()) + getFinalShippingCost();
+  return Math.max(0, beforePoints - getPointsRedeemDiscount());
 }
 
 function renderPaymentDetail(){
@@ -1046,6 +1108,7 @@ function renderPaymentDetail(){
     wrap.innerHTML = '<div class="qr-box">'
       + '<div id="qrcodeContainer" style="display:inline-block"></div>'
       + '<p style="margin-top:10px;font-size:13px;color:var(--g6)">ยอดชำระ ฿' + total.toLocaleString('th-TH') + '</p>'
+      + '<button type="button" onclick="saveQrCode_()" style="margin-top:12px;display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:24px;border:none;background:linear-gradient(135deg,var(--gd),#66bb6a);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:\'Sarabun\',sans-serif;box-shadow:0 3px 10px rgba(46,125,50,.25)">⬇️ บันทึก QR ลงเครื่อง</button>'
       + '</div>';
     var qrContainer = document.getElementById('qrcodeContainer');
     qrContainer.innerHTML = '';
@@ -1064,11 +1127,69 @@ function renderPaymentDetail(){
     wrap.innerHTML = '<div class="bank-box">'
       + bankLogoHtml
       + '<div class="row"><span>ธนาคาร</span><span>' + escHtml(paymentInfo.bankName) + '</span></div>'
-      + '<div class="row"><span>เลขบัญชี</span><span>' + escHtml(paymentInfo.bankAccount) + '</span></div>'
+      + '<div class="row" style="align-items:center"><span>เลขบัญชี</span><span style="display:flex;align-items:center;gap:8px">'
+      + '<b id="bankAccountText">' + escHtml(paymentInfo.bankAccount) + '</b>'
+      + '<button type="button" id="copyBankAccountBtn" onclick="copyBankAccount_(this)" title="คัดลอกเลขบัญชี" style="border:none;background:var(--gp);color:var(--gm);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">📋</button>'
+      + '</span></div>'
       + '<div class="row"><span>ชื่อบัญชี</span><span>' + escHtml(paymentInfo.accountName) + '</span></div>'
       + '<div class="row"><span>ยอดโอน</span><span>฿' + total.toLocaleString('th-TH') + '</span></div>'
       + '</div>';
   }
+}
+
+// ⚡ เพิ่ม (19/8/69) — บันทึกรูป QR พร้อมเพย์ลงเครื่องโทรศัพท์ทันที ไม่ต้องแคปหน้าจอเอง — ดึงรูปจาก
+// <canvas> ที่ QRCode.js สร้างไว้ แปลงเป็น PNG แล้วสั่งดาวน์โหลด — บาง in-app browser (โดยเฉพาะ LINE บน
+// iOS/Safari) อาจไม่รองรับการดาวน์โหลดไฟล์ตรงๆ ผ่าน <a download> จึงมี fallback เปิดรูปในแท็บใหม่ให้กดค้าง
+// แล้วเลือก "บันทึกรูปภาพ" เองแทน
+function saveQrCode_(){
+  var canvas = document.querySelector('#qrcodeContainer canvas');
+  if (!canvas) return;
+  try {
+    var dataUrl = canvas.toDataURL('image/png');
+    var link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = 'QR-พร้อมเพย์-เอมโอชา.png';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (e) {
+    try {
+      var win = window.open();
+      if (win) win.document.write('<body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="' + canvas.toDataURL('image/png') + '" style="max-width:100%"></body>');
+    } catch (e2) { /* ทำอะไรไม่ได้จริงๆ แล้ว ปล่อยให้ลูกค้าแคปหน้าจอเอง */ }
+  }
+}
+
+// ⚡ เพิ่ม (19/8/69) — คัดลอกเลขบัญชีธนาคารไปยัง clipboard ทันทีที่กด ไม่ต้องลากเลือกข้อความเอง — ใช้
+// navigator.clipboard API (รองรับทุกเบราว์เซอร์สมัยใหม่รวมถึง in-app browser ของ LINE) พร้อม fallback แบบเก่า
+// (execCommand) เผื่อบางอุปกรณ์เก่าไม่รองรับ API ใหม่ ให้ feedback ชั่วคราว (เปลี่ยนไอคอนเป็น ✅ 1.5 วินาที)
+// ว่าคัดลอกสำเร็จแล้ว
+function copyBankAccount_(btn){
+  var text = paymentInfo ? String(paymentInfo.bankAccount || '') : '';
+  if (!text) return;
+  function showCopied(){
+    var original = btn.textContent;
+    btn.textContent = '✅';
+    setTimeout(function(){ btn.textContent = original; }, 1500);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(showCopied).catch(function(){ fallbackCopy_(text, showCopied); });
+  } else {
+    fallbackCopy_(text, showCopied);
+  }
+}
+function fallbackCopy_(text, cb){
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (cb) cb();
+  } catch (e) { /* คัดลอกไม่สำเร็จ ปล่อยให้ลูกค้าคัดลอกเองแทน */ }
 }
 
 // ==================== PromptPay QR (EMV QR Code) ====================
@@ -1153,7 +1274,7 @@ function confirmSubmitOrder(){
   var purchaseReferrerCode = document.getElementById('purchaseReferrerInput').value.trim();
 
   getFreshIdToken().then(function(idToken){
-    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId, purchaseReferrerCode: purchaseReferrerCode });
+    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId, purchaseReferrerCode: purchaseReferrerCode, pointsToRedeem: pointsToRedeemInput_ });
   })
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันที่อยู่และสั่งซื้อ';
@@ -1173,6 +1294,11 @@ function confirmSubmitOrder(){
       if (r.cashDiscount > 0) {
         summaryHtml += '<div class="row"><span>ส่วนลดรวม</span><span>-฿' + Math.round(r.cashDiscount).toLocaleString('th-TH') + '</span></div>';
       }
+      // ⚡ เพิ่ม (19/8/69) — แสดงบรรทัดแยกว่าใช้คะแนนไปเท่าไหร่ (คะแนนถูกนับรวมอยู่ใน cashDiscount ด้านบน
+      // แล้วผ่านการคำนวณฝั่ง backend แต่แยกโชว์ให้ชัดว่าเป็นคะแนนที่แลก ไม่ใช่แค่ "ส่วนลด" เฉยๆ)
+      if (r.pointsRedeemed > 0) {
+        summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>🎯 แลกคะแนน ' + r.pointsRedeemed + ' คะแนน</span><span>-฿' + Math.round(r.pointsRedeemDiscount).toLocaleString('th-TH') + '</span></div>';
+      }
       summaryHtml += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(r.shippingCost || 0).toLocaleString('th-TH') + '</span></div>';
       summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span><b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
         + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : 'โอนธนาคาร') + '</span></div>';
@@ -1180,6 +1306,7 @@ function confirmSubmitOrder(){
 
       currentOrderId = r.orderId;
       savedAddressLoaded = false;
+      pointsToRedeemInput_ = 0; // ⚡ เพิ่ม (19/8/69) คะแนนถูกหักไปแล้วตอนสร้างออเดอร์นี้ รีเซ็ตกันแลกซ้ำถ้าสั่งซื้อรอบถัดไป
 
       if (r.skipSlipUpload || r.totalAmount <= 0) {
         pendingSlipOrderId = '';
