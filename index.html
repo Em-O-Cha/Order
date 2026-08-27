@@ -9,14 +9,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>สั่งซื้อสินค้า</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&display=swap');
 :root{
   --gd:#1a5c2a; --gm:#2e7d32; --gp:#e8f5e9; --gb:#c8e6c9;
-  --g6:#757575; --g8:#424242; --td:#1b2e1c;
+  --g6:#5f5555; --g8:#332525; --td:#302121;
   --brand-button-gradient:linear-gradient(135deg,#a50d0c 0%,#e4504d 55%,#a50d0c 100%);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-height:100vh;padding:16px;}
+body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-height:100vh;padding:16px;}
 .card{background:#fff;border-radius:20px;box-shadow:0 4px 20px rgba(0,0,0,.08);max-width:420px;width:100%;
   margin:0 auto;overflow:hidden;}
 .hd{background:linear-gradient(135deg,#a50d0c,#d85d5c);padding:24px;text-align:center;color:#fff;}
@@ -52,7 +52,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 .cart-total{font-size:13px;color:var(--g6);}
 .cart-total b{font-size:17px;color:var(--gd);display:block;}
 .btn{padding:12px 24px;border:none;border-radius:10px;background:var(--gm);color:#fff;
-  font-size:14px;font-weight:600;font-family:'Sarabun',sans-serif;cursor:pointer;}
+  font-size:14px;font-weight:600;font-family:'Kanit',sans-serif;cursor:pointer;}
 .btn:disabled{opacity:.5;}
 .btn-block{width:100%;height:48px;}
 .btn-outline{background:#fff;color:var(--gm);border:1.5px solid var(--gm);}
@@ -78,7 +78,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 .sbox{border:1.5px dashed var(--gb);border-radius:12px;padding:20px;text-align:center;background:var(--gp);}
 .sbox img{max-width:100%;max-height:220px;border-radius:8px;margin-bottom:10px;}
 .sbu{padding:10px 20px;border:none;border-radius:8px;background:var(--gm);color:#fff;font-size:14px;
-  font-weight:600;font-family:'Sarabun',sans-serif;cursor:pointer;}
+  font-weight:600;font-family:'Kanit',sans-serif;cursor:pointer;}
 .err{background:#ffebee;color:#c62828;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;display:none;}
 .err.show{display:block;}
 
@@ -107,7 +107,7 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f5;color:var(--td);min-hei
 
 /* ==================== Order history ==================== */
 .history-link{text-align:right;margin-bottom:10px;}
-.history-link button{background:none;border:none;color:var(--gm);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline;font-family:'Sarabun',sans-serif;}
+.history-link button{background:none;border:none;color:var(--gm);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline;font-family:'Kanit',sans-serif;}
 .history-item{background:var(--gp);border-radius:12px;padding:16px;text-align:left;margin-bottom:12px;}
 .history-item .row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;}
 .badge-pending{font-size:11px;color:#e65100;background:#fff3e0;padding:3px 10px;border-radius:20px;font-weight:600;}
@@ -164,7 +164,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
     <div id="checkoutState" class="sh">
       <div id="discountSummary" style="margin-bottom:16px"></div>
       <div class="fg-coupon" style="display:flex;gap:8px;margin-bottom:16px">
-        <input type="text" id="couponInput" placeholder="มีโค้ดพิเศษอื่น? กรอกตรงนี้" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif">
+        <input type="text" id="couponInput" placeholder="มีโค้ดพิเศษอื่น? กรอกตรงนี้" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Kanit',sans-serif">
         <button class="btn" onclick="applyCoupon()" style="white-space:nowrap">ใช้โค้ด</button>
       </div>
       <!-- ⚡ เพิ่ม (19/8/69) — ให้ลูกค้าพิมพ์จำนวนคะแนนที่จะแลกเป็นส่วนลดเงินสดเองได้ที่นี่เลย (ซ่อนไว้ก่อน
@@ -172,7 +172,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
       <div id="pointsRedeemBox" class="sh" style="margin-bottom:16px"></div>
       <div class="fg sh" id="purchaseReferrerField" style="margin-bottom:16px">
         <label>🤝 รหัสสมาชิกเพื่อนแนะนำ (ถ้ามี)</label>
-        <input type="text" id="purchaseReferrerInput" placeholder="เช่น EM-20260825001" style="height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;text-transform:uppercase">
+        <input type="text" id="purchaseReferrerInput" placeholder="เช่น EM-20260825001" style="height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Kanit',sans-serif;text-transform:uppercase">
         <div class="hint" style="font-size:12px;color:var(--g6);margin-top:4px">ถ้าเพื่อนแนะนำให้คุณมาซื้อสินค้า กรอกรหัสสมาชิกของเพื่อนตรงนี้ได้เลย ทั้งคุณและเพื่อนอาจได้รับสิทธิพิเศษเพิ่มเติม</div>
       </div>
       <p style="font-weight:600;margin-bottom:12px">เลือกวิธีชำระเงิน</p>
@@ -226,8 +226,8 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
     <div class="mo-hd"><h2>📍 ยืนยันที่อยู่จัดส่ง</h2></div>
     <div class="mo-bd">
       <p style="font-size:13px;color:var(--g6);margin-bottom:10px">กรุณากรอก/ตรวจสอบที่อยู่จัดส่งให้ถูกต้องก่อนยืนยันสั่งซื้อ</p>
-      <textarea id="confirmAddressInput" rows="3" style="width:100%;padding:10px 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;resize:vertical;margin-bottom:8px"></textarea>
-      <select id="confirmProvinceSelect" style="width:100%;height:44px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Sarabun',sans-serif;background:#fff;margin-bottom:18px">
+      <textarea id="confirmAddressInput" rows="3" style="width:100%;padding:10px 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Kanit',sans-serif;resize:vertical;margin-bottom:8px"></textarea>
+      <select id="confirmProvinceSelect" style="width:100%;height:44px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Kanit',sans-serif;background:#fff;margin-bottom:18px">
         <option value="">— เลือกจังหวัด —</option>
       </select>
       <button class="btn btn-block" onclick="confirmSubmitOrder()" id="confirmAddressBtn">✅ ยืนยันที่อยู่และสั่งซื้อ</button>
@@ -918,7 +918,7 @@ function renderPointsRedeemBox_(){
       + '<button type="button" onclick="clearPointsRedeem()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ยกเลิก</button></div>';
   } else {
     h += '<div style="display:flex;gap:8px">'
-      + '<input type="number" id="pointsRedeemInput" min="0" max="' + memberPoints + '" placeholder="จำนวนคะแนน" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:\'Sarabun\',sans-serif">'
+      + '<input type="number" id="pointsRedeemInput" min="0" max="' + memberPoints + '" placeholder="จำนวนคะแนน" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:\'Kanit\',sans-serif">'
       + '<button class="btn" onclick="applyPointsRedeem()" style="white-space:nowrap">ใช้คะแนน</button>'
       + '</div>';
   }
@@ -1117,7 +1117,7 @@ function renderPaymentDetail(){
     wrap.innerHTML = '<div class="qr-box">'
       + '<div id="qrcodeContainer" style="display:inline-block"></div>'
       + '<p style="margin-top:10px;font-size:13px;color:var(--g6)">ยอดชำระ ฿' + total.toLocaleString('th-TH') + '</p>'
-      + '<button type="button" onclick="saveQrCode_()" style="margin-top:12px;display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:24px;border:none;background:linear-gradient(135deg,var(--gd),#66bb6a);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:\'Sarabun\',sans-serif;box-shadow:0 3px 10px rgba(46,125,50,.25)">⬇️ บันทึก QR ลงเครื่อง</button>'
+      + '<button type="button" onclick="saveQrCode_()" style="margin-top:12px;display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:24px;border:none;background:linear-gradient(135deg,var(--gd),#66bb6a);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:\'Kanit\',sans-serif;box-shadow:0 3px 10px rgba(46,125,50,.25)">⬇️ บันทึก QR ลงเครื่อง</button>'
       + '</div>';
     var qrContainer = document.getElementById('qrcodeContainer');
     qrContainer.innerHTML = '';
