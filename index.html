@@ -57,10 +57,15 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .btn-block{width:100%;height:48px;}
 .btn-outline{background:#fff;color:var(--gm);border:1.5px solid var(--gm);}
 
-.pay-opt{border:1.5px solid #eee;border-radius:12px;padding:14px;margin-bottom:10px;cursor:pointer;
-  display:flex;align-items:center;width:100%;box-sizing:border-box;}
-.pay-opt.active{border-color:var(--gm);background:var(--gp);}
-.pay-opt input{margin-right:8px;}
+.payment-methods{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.payment-method{min-height:112px;border:1.5px solid #dde3df;border-radius:16px;background:#fff;color:var(--g8);
+  padding:13px 8px;cursor:pointer;font-family:'Kanit',sans-serif;text-align:center;transition:all .18s ease;}
+.payment-method.active{border-color:var(--gm);background:var(--gp);color:var(--gd);box-shadow:0 4px 12px rgba(46,125,50,.15);}
+.payment-method-icon{display:flex;justify-content:center;margin-bottom:7px;}
+.payment-method-icon svg{width:27px;height:27px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.payment-method-title{display:block;font-size:13px;font-weight:600;line-height:1.28;}
+.payment-method-sub{display:block;font-size:11px;font-weight:400;color:var(--g6);margin-top:3px;}
+.payment-method.active .payment-method-sub{color:var(--gd);}
 
 .qr-box{text-align:center;padding:16px;background:var(--gp);border-radius:12px;margin-top:14px;}
 .qr-box canvas,.qr-box img{margin:0 auto;}
@@ -180,12 +185,16 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
         <div class="hint" style="font-size:12px;color:var(--g6);margin-top:4px">ถ้าเพื่อนแนะนำให้คุณมาซื้อสินค้า กรอกรหัสสมาชิกของเพื่อนตรงนี้ได้เลย ทั้งคุณและเพื่อนอาจได้รับสิทธิพิเศษเพิ่มเติม</div>
       </div>
       <p style="font-weight:600;margin-bottom:12px">เลือกวิธีชำระเงิน</p>
-      <label class="pay-opt active" id="optPromptpay">
-        <input type="radio" name="pay" value="promptpay" checked onchange="selectPayment('promptpay')"> 📱 สแกน QR พร้อมเพย์
-      </label>
-      <label class="pay-opt" id="optBank">
-        <input type="radio" name="pay" value="bank" onchange="selectPayment('bank')"> 🏦 โอนเข้าบัญชีธนาคาร
-      </label>
+      <div class="payment-methods" role="group" aria-label="เลือกวิธีชำระเงิน">
+        <button type="button" class="payment-method active" id="optPromptpay" aria-pressed="true" onclick="selectPayment('promptpay')">
+          <span class="payment-method-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M10 10h1v1h-1zm3 0h1v1h-1zm-3 3h1v1h-1zm3 3h1v1h-1z"/></svg></span>
+          <span class="payment-method-title">สแกน QR พร้อมเพย์</span><span class="payment-method-sub">ชำระได้ทันที</span>
+        </button>
+        <button type="button" class="payment-method" id="optBank" aria-pressed="false" onclick="selectPayment('bank')">
+          <span class="payment-method-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10 12 4l9 6"/><path d="M5 10h14"/><path d="M6 10v8m4-8v8m4-8v8m4-8v8"/><path d="M4 18h16v2H4z"/></svg></span>
+          <span class="payment-method-title">โอนเข้าบัญชี</span><span class="payment-method-sub">แนบสลิปภายหลัง</span>
+        </button>
+      </div>
       <div id="paymentDetail"></div>
       <div id="checkoutErrBox" class="sh" style="background:#fff3e0;color:#e65100;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px"></div>
       <button class="btn btn-outline btn-block" style="margin-top:18px" onclick="backToCatalog()">← กลับไปเลือกสินค้าต่อ</button>
@@ -1081,8 +1090,13 @@ function renderDiscountSummary(){
 
 function selectPayment(method){
   selectedPayment = method;
-  document.getElementById('optPromptpay').classList.toggle('active', method === 'promptpay');
-  document.getElementById('optBank').classList.toggle('active', method === 'bank');
+  var isPromptpay = method === 'promptpay';
+  var promptpayButton = document.getElementById('optPromptpay');
+  var bankButton = document.getElementById('optBank');
+  promptpayButton.classList.toggle('active', isPromptpay);
+  bankButton.classList.toggle('active', !isPromptpay);
+  promptpayButton.setAttribute('aria-pressed', isPromptpay ? 'true' : 'false');
+  bankButton.setAttribute('aria-pressed', isPromptpay ? 'false' : 'true');
   renderPaymentDetail();
 }
 
