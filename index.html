@@ -99,7 +99,7 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .points-insufficient-dialog{width:min(100%,290px);background:#fff;border-radius:18px;padding:20px 16px 16px;
   text-align:center;box-shadow:0 16px 42px rgba(0,0,0,.28);animation:pointsPopupIn .2s ease-out;}
 @keyframes pointsPopupIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
-.points-insufficient-icon{width:46px;height:46px;margin:0 auto 10px;border-radius:50%;background:#e8f5e9;
+.points-insufficient-icon{width:46px;height:46px;margin:0 auto 10px;border-radius:50%;background:#fff3e0;
   display:flex;align-items:center;justify-content:center;font-size:24px;}
 .points-insufficient-title{font-size:15px;font-weight:700;color:#302121;margin:0 0 8px;}
 .points-insufficient-text{font-size:13px;line-height:1.55;color:#454545;margin:0 0 14px;}
@@ -932,7 +932,7 @@ function showPointsInsufficientPopup_(available, requested){
   dialog.className = 'points-insufficient-dialog';
   var icon = document.createElement('div');
   icon.className = 'points-insufficient-icon';
-  icon.textContent = '🎉';
+  icon.textContent = '⚠️';
   var title = document.createElement('p');
   title.className = 'points-insufficient-title';
   title.textContent = 'แลกคะแนนไม่สำเร็จ';
