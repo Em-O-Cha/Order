@@ -135,6 +135,16 @@ button,.btn,.sbu,.shop-cta-btn{
   background:var(--brand-button-gradient) !important;color:#fff !important;
   border-color:#a50d0c !important;box-shadow:0 5px 14px rgba(165,13,12,.42);
 }
+/* ยกเว้นตัวเลือกวิธีชำระเงิน: ไม่ใช้พื้นแดงจากกฎปุ่มรวม */
+.payment-method,.payment-method.active{
+  background:transparent !important;border:0 !important;box-shadow:none !important;color:#1a5c2a !important;
+}
+.payment-method-title,.payment-method.active .payment-method-title{color:#1a5c2a !important;}
+.payment-method-icon{background:#dff1e2 !important;color:#28733a !important;}
+.payment-method.active .payment-method-icon{
+  background:linear-gradient(135deg,#176b32,#54ad61) !important;color:#fff !important;
+  box-shadow:0 5px 12px rgba(23,107,50,.28) !important;
+}
 /* ปุ่ม Copy เป็นปุ่มเครื่องมือ จึงคงพื้นเรียบไว้ */
 button.copy-account-btn{background:#fff !important;border:1px solid #d7d7d7 !important;box-shadow:none !important;}
 /* ปุ่มดำเนินการต่อและปุ่ม “ไม่ใช่” ในคำสั่งซื้อรอดำเนินการ ใช้สีเขียว */
