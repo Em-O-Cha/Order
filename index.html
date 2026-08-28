@@ -20,9 +20,6 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .card{background:#fff;border-radius:20px;box-shadow:0 4px 20px rgba(0,0,0,.08);max-width:420px;width:100%;
   margin:0 auto;overflow:hidden;}
 .hd{background:linear-gradient(135deg,#a50d0c,#d85d5c);padding:24px;text-align:center;color:#fff;}
-/* เฉพาะขั้นตอนชำระเงิน ใช้เขียวที่อ่านชัด */
-.card.checkout-mode .hd{background:linear-gradient(135deg,#176b32 0%,#54ad61 100%);}
-.card.checkout-mode .hd h1,.card.checkout-mode .hd p{color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.2);opacity:1;}
 .brand-logo{width:76px;height:80px;object-fit:contain;margin:0 auto 8px;display:block;background:#fff;border-radius:10px;padding:3px;}
 .hd h1{font-size:19px;font-weight:600;}
 .hd p{font-size:13px;opacity:.9;margin-top:4px;}
@@ -497,8 +494,6 @@ function showState(id){
   document.getElementById('checkoutBar').classList.toggle('sh', id !== 'checkoutState');
   document.getElementById('orderDoneBar').classList.toggle('sh', id !== 'orderDoneState');
   setStepper(STEP_MAP_.hasOwnProperty(id) ? STEP_MAP_[id] : null);
-  var mainCard = document.querySelector('.card');
-  if (mainCard) mainCard.classList.toggle('checkout-mode', id === 'checkoutState');
   // ⚡ เพิ่ม (26/8/69) — เลื่อนจอกลับขึ้นบนสุดทุกครั้งที่เปลี่ยนหน้า โดยเฉพาะตอนไปหน้าชำระเงิน (checkoutState)
   // เพราะลูกค้าอาจเลื่อนดูสินค้าลงมาลึกมากแล้วก่อนกดปุ่ม "ไปหน้าชำระเงิน" ถ้าไม่เลื่อนกลับขึ้นบนก่อน จอจะ
   // ค้างอยู่ตำแหน่งเดิม (อาจเจอ QR code ทันทีก่อนเห็นสรุปยอดสินค้า/ที่อยู่ด้านบนเลย) ให้เห็นสรุปออเดอร์ก่อนเสมอ
