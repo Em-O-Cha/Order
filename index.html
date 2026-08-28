@@ -954,15 +954,38 @@ function showPointsInsufficientPopup_(available, requested){
   ok.focus();
 }
 
+function showPointsReservedPopup_(available, requested, reserved){
+  var existing = document.getElementById('pointsInsufficientPopup');
+  if (existing) existing.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'pointsInsufficientPopup'; overlay.className = 'points-insufficient-overlay';
+  overlay.setAttribute('role', 'dialog'); overlay.setAttribute('aria-modal', 'true');
+  var dialog = document.createElement('div'); dialog.className = 'points-insufficient-dialog';
+  var icon = document.createElement('div'); icon.className = 'points-insufficient-icon'; icon.textContent = '⏳';
+  var title = document.createElement('p'); title.className = 'points-insufficient-title'; title.textContent = 'คะแนนถูกกันไว้แล้ว';
+  var detail = document.createElement('p'); detail.className = 'points-insufficient-text';
+  detail.innerHTML = 'คุณต้องการใช้ <b>' + Number(requested).toLocaleString('th-TH') + '</b> คะแนน<br>'
+    + 'แต่มีคะแนนใช้ได้ <b>' + Number(available).toLocaleString('th-TH') + '</b> คะแนน<br><br>'
+    + '<b>' + Number(reserved).toLocaleString('th-TH') + ' คะแนน</b> ถูกกันไว้ในออเดอร์ที่รอแนบสลิป<br>'
+    + 'กรุณายกเลิกออเดอร์เดิมก่อน แล้วจึงสั่งซื้อใหม่';
+  var ok = document.createElement('button'); ok.type = 'button'; ok.className = 'points-insufficient-ok'; ok.textContent = 'ตกลง';
+  ok.onclick = function(){ overlay.remove(); };
+  dialog.appendChild(icon); dialog.appendChild(title); dialog.appendChild(detail); dialog.appendChild(ok);
+  overlay.appendChild(dialog); overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay); ok.focus();
+}
+
 function applyPointsRedeem(){
   var input = document.getElementById('pointsRedeemInput');
   if (!input) return;
   var val = Math.max(0, parseInt(input.value) || 0);
-  var available = Math.max(0, parseInt((lastDiscountInfo && lastDiscountInfo.memberPoints) || 0) || 0);
+  var available = Math.max(0, parseInt((lastDiscountInfo && (lastDiscountInfo.memberAvailablePoints !== undefined ? lastDiscountInfo.memberAvailablePoints : lastDiscountInfo.memberPoints)) || 0) || 0);
+  var reserved = Math.max(0, parseInt((lastDiscountInfo && lastDiscountInfo.reservedPointsPending) || 0) || 0);
   if (val > available) {
     input.value = '';
     pointsToRedeemInput_ = 0;
-    showPointsInsufficientPopup_(available, val);
+    if (reserved > 0) showPointsReservedPopup_(available, val, reserved);
+    else showPointsInsufficientPopup_(available, val);
     return;
   }
   pointsToRedeemInput_ = val;
@@ -981,12 +1004,15 @@ function renderPointsRedeemBox_(){
   var wrap = document.getElementById('pointsRedeemBox');
   var cfg = lastDiscountInfo && lastDiscountInfo.pointsRedeemConfig;
   var memberPoints = (lastDiscountInfo && lastDiscountInfo.memberPoints) || 0;
+  var availablePoints = Math.max(0, parseInt((lastDiscountInfo && (lastDiscountInfo.memberAvailablePoints !== undefined ? lastDiscountInfo.memberAvailablePoints : memberPoints)) || 0) || 0);
+  var reservedPoints = Math.max(0, parseInt((lastDiscountInfo && lastDiscountInfo.reservedPointsPending) || 0) || 0);
   if (!cfg || !cfg.enabled || memberPoints <= 0) { wrap.classList.add('sh'); wrap.innerHTML = ''; return; }
   wrap.classList.remove('sh');
 
   var rateText = cfg.pointsPerBaht === 1 ? '1 คะแนน = 1 บาท' : (cfg.pointsPerBaht + ' คะแนน = 1 บาท');
   var h = '<div class="bank-box" style="text-align:left">'
     + '<p style="font-weight:600;margin-bottom:6px">🎯 แลกคะแนนเป็นส่วนลดเงินสดทันที ' + escHtml(rateText) + ' ( มี ' + memberPoints.toLocaleString('th-TH') + ' คะแนน )</p>';
+  if (reservedPoints > 0) h += '<p style="font-size:11.5px;color:#a50d0c;margin:-2px 0 8px">⏳ ใช้ได้ ' + availablePoints.toLocaleString('th-TH') + ' คะแนน · มี ' + reservedPoints.toLocaleString('th-TH') + ' คะแนนถูกกันไว้ในออเดอร์รอแนบสลิป</p>';
   if (cfg.minRedeem > 0) h += '<p style="font-size:11.5px;color:var(--g6);margin-bottom:8px">แลกขั้นต่ำ ' + cfg.minRedeem + ' คะแนน</p>';
 
   if (lastDiscountInfo.pointsUsed > 0) {
@@ -994,7 +1020,7 @@ function renderPointsRedeemBox_(){
       + '<button type="button" onclick="clearPointsRedeem()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ยกเลิก</button></div>';
   } else {
     h += '<div style="display:flex;gap:8px">'
-      + '<input type="number" id="pointsRedeemInput" min="0" max="' + memberPoints + '" placeholder="จำนวนคะแนน" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:\'Kanit\',sans-serif">'
+      + '<input type="number" id="pointsRedeemInput" min="0" max="' + availablePoints + '" placeholder="จำนวนคะแนน" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:\'Kanit\',sans-serif">'
       + '<button class="btn" onclick="applyPointsRedeem()" style="white-space:nowrap">ใช้คะแนน</button>'
       + '</div>';
   }
