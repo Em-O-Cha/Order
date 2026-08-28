@@ -864,16 +864,40 @@ function applyCoupon(){
 // ⚡ เพิ่ม (19/8/69) — ลูกค้าพิมพ์จำนวนคะแนนที่ต้องการแลกเป็นส่วนลดเงินสดเอง แล้วกด "ใช้คะแนน" เพื่อคำนวณ
 // ใหม่ (เซิร์ฟเวอร์เป็นคนตรวจสอบ/ปรับจำนวนให้ถูกต้องเสมอ เช่น เกินคะแนนที่มี/เกินเพดาน/เกินยอดที่ต้องจ่าย —
 // ฝั่งนี้แค่ส่งค่าที่พิมพ์ไปให้เซิร์ฟเวอร์ตัดสิน ไม่คำนวณเองเพื่อกันความคลาดเคลื่อน)
+function previewPointsRedeem_(points){
+  if (!lastDiscountInfo) return;
+  var cfg = lastDiscountInfo.pointsRedeemConfig || {};
+  var oldDiscount = Number(lastDiscountInfo.pointsRedeemDiscount) || 0;
+  var usablePoints = Math.max(0, parseInt(points) || 0);
+  if (cfg.maxRedeemPerOrder > 0) usablePoints = Math.min(usablePoints, cfg.maxRedeemPerOrder);
+  var rate = Number(cfg.pointsPerBaht) || 1;
+  var maxPayable = Math.max(0, getFinalTotal() + oldDiscount);
+  var provisionalDiscount = Math.min(maxPayable, usablePoints / rate);
+  lastDiscountInfo.pointsUsed = usablePoints;
+  lastDiscountInfo.pointsRedeemDiscount = provisionalDiscount;
+  lastDiscountInfo.pointsRedeemError = '';
+  renderDiscountSummary();
+  renderPaymentDetail();
+}
 function applyPointsRedeem(){
   var input = document.getElementById('pointsRedeemInput');
   if (!input) return;
-  var val = parseInt(input.value) || 0;
-  pointsToRedeemInput_ = Math.max(0, val);
-  refreshDiscounts();
+  var val = Math.max(0, parseInt(input.value) || 0);
+  var available = Math.max(0, parseInt((lastDiscountInfo && lastDiscountInfo.memberPoints) || 0) || 0);
+  if (val > available) {
+    input.value = '';
+    pointsToRedeemInput_ = 0;
+    alert('ไม่สามารถแลกคะแนนได้เนื่องจากคะแนนมีไม่พอ\nคะแนนคงเหลือ: ' + available.toLocaleString('th-TH') + ' คะแนน');
+    return;
+  }
+  pointsToRedeemInput_ = val;
+  previewPointsRedeem_(val);
+  refreshDiscounts(); // ยืนยันยอดกับเซิร์ฟเวอร์แบบเบื้องหลัง
 }
 function clearPointsRedeem(){
   pointsToRedeemInput_ = 0;
-  refreshDiscounts();
+  previewPointsRedeem_(0);
+  refreshDiscounts(); // คืนสู่ยอดจริงแบบเบื้องหลัง
 }
 
 // ⚡ เพิ่ม (19/8/69) — แสดงกล่อง "แลกคะแนนเป็นส่วนลดเงินสด" ที่หน้าชำระเงิน ซ่อนไว้ถ้าระบบยังไม่เปิดใช้งาน
@@ -1314,7 +1338,7 @@ function confirmSubmitOrder(){
 
       currentOrderId = r.orderId;
       savedAddressLoaded = false;
-      pointsToRedeemInput_ = 0; // ⚡ เพิ่ม (19/8/69) คะแนนถูกหักไปแล้วตอนสร้างออเดอร์นี้ รีเซ็ตกันแลกซ้ำถ้าสั่งซื้อรอบถัดไป
+      pointsToRedeemInput_ = 0; // คะแนนของออเดอร์ที่ยังรอแนบสลิปถูกกันไว้แล้ว รีเซ็ตกันใช้ซ้ำในรอบถัดไป
 
       if (r.skipSlipUpload || r.totalAmount <= 0) {
         pendingSlipOrderId = '';
