@@ -20,6 +20,9 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .card{background:#fff;border-radius:20px;box-shadow:0 4px 20px rgba(0,0,0,.08);max-width:420px;width:100%;
   margin:0 auto;overflow:hidden;}
 .hd{background:linear-gradient(135deg,#a50d0c,#d85d5c);padding:24px;text-align:center;color:#fff;}
+/* เฉพาะขั้นตอนชำระเงิน ใช้เขียวที่อ่านชัด */
+.card.checkout-mode .hd{background:linear-gradient(135deg,#176b32 0%,#54ad61 100%);}
+.card.checkout-mode .hd h1,.card.checkout-mode .hd p{color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.2);opacity:1;}
 .brand-logo{width:76px;height:80px;object-fit:contain;margin:0 auto 8px;display:block;background:#fff;border-radius:10px;padding:3px;}
 .hd h1{font-size:19px;font-weight:600;}
 .hd p{font-size:13px;opacity:.9;margin-top:4px;}
@@ -60,12 +63,12 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .payment-methods{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
 .payment-method{min-height:112px;border:1.5px solid #dde3df;border-radius:16px;background:#fff;color:var(--g8);
   padding:13px 8px;cursor:pointer;font-family:'Kanit',sans-serif;text-align:center;transition:all .18s ease;}
-.payment-method.active{border-color:var(--gm);background:var(--gp);color:var(--gd);box-shadow:0 4px 12px rgba(46,125,50,.15);}
+.payment-method.active{border-color:#217a3a;background:linear-gradient(135deg,#1d7a38,#55ac63);color:#fff;box-shadow:0 4px 12px rgba(25,103,48,.25);}
 .payment-method-icon{display:flex;justify-content:center;margin-bottom:7px;}
 .payment-method-icon svg{width:27px;height:27px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
 .payment-method-title{display:block;font-size:13px;font-weight:600;line-height:1.28;}
 .payment-method-sub{display:block;font-size:11px;font-weight:400;color:var(--g6);margin-top:3px;}
-.payment-method.active .payment-method-sub{color:var(--gd);}
+.payment-method.active .payment-method-sub{color:#fff;opacity:.92;}
 
 .qr-box{text-align:center;padding:16px;background:var(--gp);border-radius:12px;margin-top:14px;}
 .qr-box canvas,.qr-box img{margin:0 auto;}
@@ -478,6 +481,8 @@ function showState(id){
   document.getElementById('checkoutBar').classList.toggle('sh', id !== 'checkoutState');
   document.getElementById('orderDoneBar').classList.toggle('sh', id !== 'orderDoneState');
   setStepper(STEP_MAP_.hasOwnProperty(id) ? STEP_MAP_[id] : null);
+  var mainCard = document.querySelector('.card');
+  if (mainCard) mainCard.classList.toggle('checkout-mode', id === 'checkoutState');
   // ⚡ เพิ่ม (26/8/69) — เลื่อนจอกลับขึ้นบนสุดทุกครั้งที่เปลี่ยนหน้า โดยเฉพาะตอนไปหน้าชำระเงิน (checkoutState)
   // เพราะลูกค้าอาจเลื่อนดูสินค้าลงมาลึกมากแล้วก่อนกดปุ่ม "ไปหน้าชำระเงิน" ถ้าไม่เลื่อนกลับขึ้นบนก่อน จอจะ
   // ค้างอยู่ตำแหน่งเดิม (อาจเจอ QR code ทันทีก่อนเห็นสรุปยอดสินค้า/ที่อยู่ด้านบนเลย) ให้เห็นสรุปออเดอร์ก่อนเสมอ
