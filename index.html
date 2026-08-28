@@ -986,7 +986,7 @@ function renderPointsRedeemBox_(){
 
   var rateText = cfg.pointsPerBaht === 1 ? '1 คะแนน = 1 บาท' : (cfg.pointsPerBaht + ' คะแนน = 1 บาท');
   var h = '<div class="bank-box" style="text-align:left">'
-    + '<p style="font-weight:600;margin-bottom:6px">🎯 แลกคะแนนเป็นส่วนลดเงินสด (มี ' + memberPoints.toLocaleString('th-TH') + ' คะแนน · ' + escHtml(rateText) + ')</p>';
+    + '<p style="font-weight:600;margin-bottom:6px">🎯 แลกคะแนนเป็นส่วนลดเงินสดทันที ' + escHtml(rateText) + ' ( มี ' + memberPoints.toLocaleString('th-TH') + ' คะแนน )</p>';
   if (cfg.minRedeem > 0) h += '<p style="font-size:11.5px;color:var(--g6);margin-bottom:8px">แลกขั้นต่ำ ' + cfg.minRedeem + ' คะแนน</p>';
 
   if (lastDiscountInfo.pointsUsed > 0) {
