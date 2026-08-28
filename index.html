@@ -1403,14 +1403,20 @@ function confirmSubmitOrder(){
       var summaryHtml =
         '<div class="row"><span>เลขที่ออเดอร์</span><span><b>' + escHtml(r.orderId) + '</b></span></div>'
         + '<div class="row"><span>ยอดสินค้า</span><span>฿' + r.subtotal.toLocaleString('th-TH') + '</span></div>';
-      if (r.cashDiscount > 0) {
-        summaryHtml += '<div class="row"><span>ส่วนลดรวม</span><span>-฿' + Math.round(r.cashDiscount).toLocaleString('th-TH') + '</span></div>';
-      }
-      // ⚡ เพิ่ม (19/8/69) — แสดงบรรทัดแยกว่าใช้คะแนนไปเท่าไหร่ (คะแนนถูกนับรวมอยู่ใน cashDiscount ด้านบน
-      // แล้วผ่านการคำนวณฝั่ง backend แต่แยกโชว์ให้ชัดว่าเป็นคะแนนที่แลก ไม่ใช่แค่ "ส่วนลด" เฉยๆ)
+      // แสดงเฉพาะส่วนลดแต่ละรายการจริง ห้ามแสดง "ส่วนลดรวม" เพราะทำให้ยอดซ้ำกับคะแนน/คูปอง
       if (r.pointsRedeemed > 0) {
         summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>🎯 แลกคะแนน ' + r.pointsRedeemed + ' คะแนน</span><span>-฿' + Math.round(r.pointsRedeemDiscount).toLocaleString('th-TH') + '</span></div>';
       }
+      var detailDiscounts = Array.isArray(r.discountDetail) ? r.discountDetail : [];
+      detailDiscounts.forEach(function(detail){
+        detail = String(detail || '');
+        // คะแนนแสดงในบรรทัดด้านบนแล้ว และรายการคูณแต้มไม่ใช่ส่วนลดเงินสด
+        if (detail.indexOf('แลกคะแนน:') === 0 || detail.indexOf('คูณแต้ม:') === 0 || detail.indexOf('(-') === -1) return;
+        var amountMatch = detail.match(/\(-([0-9,.]+)\)/);
+        var label = detail.replace(/\s*\(-[0-9,.]+\)/, '').trim();
+        if (!amountMatch || !label) return;
+        summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>' + escHtml(label) + '</span><span>-฿' + amountMatch[1] + '</span></div>';
+      });
       summaryHtml += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(r.shippingCost || 0).toLocaleString('th-TH') + '</span></div>';
       summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span><b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
         + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : 'โอนธนาคาร') + '</span></div>';
