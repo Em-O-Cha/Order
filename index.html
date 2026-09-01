@@ -312,9 +312,21 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
   </div>
 </div>
 
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 <script>
+// ⚡ แก้ (1/9/69) — เดิม <script src="...sdk.js"> เป็น tag ปกติ (ไม่มี defer/async) เป็น script แบบบล็อกการ
+// โหลดหน้า (render-blocking): เบราว์เซอร์ต้องรอโหลด+รัน SDK จาก LINE ให้เสร็จก่อน ถึงจะไปแตะโค้ดส่วนที่เหลือ
+// ของหน้านี้ได้เลยสักบรรทัด (ฟังก์ชันทั้งหมดที่ปุ่ม onclick ต่างๆ อ้างถึง ยังไม่ถูกประกาศเลยจนกว่า SDK จะโหลด
+// เสร็จ) ถ้าเน็ตช้าหรือ LINE server ตอบช้าเป็นพิเศษ ทั้งหน้าจะกดอะไรไม่ได้เลยทั้งที่มองเห็นหน้าตาครบแล้ว — แก้
+// ให้ตรงจุดแบบเดียวกับที่แก้ไปแล้วใน slipUpload.html: โหลด SDK แบบ inject เข้ามาด้วยโค้ดเองแทน ฟังก์ชันหลัก
+// ของหน้านี้ประกาศพร้อมใช้งานได้ทันทีไม่ต้องรอ SDK เลย ส่วน liff.init() (ผ่าน initLiff()) จะถูกเรียกก็ต่อเมื่อ
+// SDK โหลดเสร็จจริงๆ เท่านั้น (ผ่าน onload ของ script ที่ inject เอง)
+var liffSdkScript_ = document.createElement('script');
+liffSdkScript_.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
+liffSdkScript_.onload = function(){ initLiff(); };
+liffSdkScript_.onerror = function(){ showErrorState('โหลด LIFF SDK ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'); };
+document.head.appendChild(liffSdkScript_);
+
 var LIFF_ID = '2010892131-3XYQXNzq';
 var API_URL = 'https://script.google.com/macros/s/AKfycbzfhB83ccV-gnji-A_-rNnGmM7K1O4XnV9w6NBcTRm_d_fN_raU6BjBwyOIWz-SIeL7Bw/exec';
 
@@ -1599,8 +1611,7 @@ function initLiff(){
     showErrorState('liff.init() ล้มเหลว: ' + (e && e.message ? e.message : String(e)));
   });
 }
-
-initLiff();
+// initLiff() ถูกเรียกจาก onload ของ liffSdkScript_ ด้านบนแทน (หลัง SDK โหลดเสร็จจริงๆ เท่านั้น) ไม่ต้องเรียกซ้ำตรงนี้
 </script>
 </body>
 </html>
