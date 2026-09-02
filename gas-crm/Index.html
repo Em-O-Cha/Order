@@ -10,7 +10,7 @@
 :root{
   --gd:#00997a; --gm:#00c896; --gp:#e3fff8; --gb:#b8f2e6;
   --g6:#5f6b68; --g8:#233a35; --td:#233a35;
-  --red:#e4504d; --bg:#f2fbf9; --card:#fff;
+  --red:#b3261e; --bg:#f2fbf9; --card:#fff;
   --warn:#f9a825; --urgent:#e4504d; --overdue:#c0392b;
   --topbar:linear-gradient(135deg,#00e6b8,#00b894);
 }
@@ -50,7 +50,8 @@ h2.section-title{font-size:16px;font-weight:600;margin:22px 0 10px;color:var(--g
   font-size:14px;font-weight:600;font-family:'Kanit',sans-serif;cursor:pointer;}
 .btn:hover{opacity:.92;}
 .btn.outline{background:#fff;color:var(--gm);border:1.5px solid var(--gm);}
-.btn.danger{background:var(--red);}
+.btn.danger,.btn.danger.outline{background:var(--red);color:#fff;border:none;}
+.btn.danger:hover,.btn.danger.outline:hover{opacity:.88;}
 .btn.sm{padding:6px 12px;font-size:12px;border-radius:8px;}
 .table{width:100%;border-collapse:collapse;font-size:13px;}
 .table th{text-align:left;padding:10px;background:var(--gp);color:var(--gd);font-weight:600;}
