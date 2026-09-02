@@ -24,13 +24,74 @@ function countryLabelFor(code) {
   return found ? found.th : (code || '');
 }
 
-function generateRevenueId() {
-  return 'REVX' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss');
+/**
+ * ต่อเลขที่บิลจากคอลัมน์ "Revenue ID" เดิมในชีต ให้อยู่รูปแบบเดียวกับที่ใช้อยู่แล้ว (เช่น REV6907001)
+ * คือ REV + ปี พ.ศ. 2 หลักท้าย + เดือน 2 หลัก + เลขรันต่อจากตัวสูงสุดของเดือนนั้น
+ * หมายเหตุ: ถ้ามีระบบอื่น (เช่นตัวซิงก์ออเดอร์ปลีก) เขียนแถวใหม่พร้อมกันในจังหวะเดียวกันพอดี
+ * มีโอกาสชนกันได้เล็กน้อย (ข้อจำกัดร่วมของการต่อเลขรันในชีตเดียวกันจากหลายระบบ)
+ */
+function generateRevenueId(sheet) {
+  var tz = Session.getScriptTimeZone();
+  var yy = Utilities.formatDate(new Date(), tz, 'yy');
+  var mm = Utilities.formatDate(new Date(), tz, 'MM');
+  var prefix = 'REV' + yy + mm;
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var idCol = headers.indexOf('Revenue ID');
+  var maxSeq = 0;
+  if (idCol !== -1) {
+    for (var r = 1; r < data.length; r++) {
+      var val = String(data[r][idCol] || '');
+      if (val.indexOf(prefix) === 0) {
+        var seq = parseInt(val.slice(prefix.length), 10);
+        if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+      }
+    }
+  }
+  var seqStr = String(maxSeq + 1);
+  while (seqStr.length < 3) seqStr = '0' + seqStr;
+  return prefix + seqStr;
+}
+
+/**
+ * อ่านรายการตัวเลือก (คอลัมน์แรก ไม่รวมหัวตาราง) จากแท็บหนึ่ง ๆ ในสเปรดชีต Master Data Sales
+ * ใช้กับลิสต์ Ad / Payment ที่ผู้ใช้ดูแลอยู่แล้วในไฟล์นั้น
+ */
+function getMasterDataList(tabName) {
+  try {
+    var sheetId = getSkuSettings().sheetId;
+    var ss = SpreadsheetApp.openById(sheetId);
+    var sheet = ss.getSheetByName(tabName);
+    if (!sheet) return [];
+    var values = sheet.getDataRange().getValues();
+    if (values.length < 2) return [];
+    return values.slice(1)
+      .map(function (r) { return r[0]; })
+      .filter(function (v) { return v !== '' && v !== null && v !== undefined; })
+      .map(String);
+  } catch (e) {
+    Logger.log('อ่านรายการจากแท็บ "' + tabName + '" ไม่สำเร็จ: ' + e.message);
+    return [];
+  }
+}
+
+function getAdOptions() {
+  return getMasterDataList(PROPS.getProperty('AD_LIST_TAB') || 'AD');
+}
+
+function getPaymentOptions() {
+  var list = getMasterDataList(PROPS.getProperty('PAYMENT_LIST_TAB') || 'Payment');
+  if (list.length) return list;
+  list = getMasterDataList('PaymentType'); // ชื่อแท็บทางเลือกที่พบได้บ่อย
+  if (list.length) return list;
+  // ค่าเริ่มต้นสำรอง เผื่อยังหาแท็บที่ถูกต้องไม่เจอ (แก้ชื่อแท็บได้ในหน้าตั้งค่า)
+  return ['Transfer', 'Credit Card/ Debit Card', 'Cash', 'Spaylater', 'เก็บเงินปลายทาง',
+    'ตัดบัญชีธนาคาร', 'TrueMoney', 'MobileBanking', 'QR พร้อมเพย์'];
 }
 
 /**
  * ตรวจสอบว่าดีลนี้เพิ่งเปลี่ยนเป็น "ปิดการขายสำเร็จ" (won) หรือไม่ (เทียบสถานะก่อน/หลัง)
- * ถ้าใช่และยังไม่เคยส่งออก ให้ส่งเข้า Revenue sheet แล้วติดธง RevenueExported ไว้กันส่งซ้ำ
+ * ใช้เป็นทางสำรองสำหรับจุดที่ไม่ได้ผ่านหน้าต่างปิดการขาย (closeDealWon) เช่นการตั้งสถานะลูกค้าด่วนจากหน้ารายชื่อ
  * ห่อด้วย try/catch เพื่อไม่ให้การอัปเดตดีลล้มเหลวไปด้วยหาก Revenue sheet มีปัญหา (เช่น สิทธิ์เข้าถึง)
  */
 function maybeExportWonDealToRevenue(before, after) {
@@ -38,14 +99,61 @@ function maybeExportWonDealToRevenue(before, after) {
   var becameWon = after.Status === 'won' && (!before || before.Status !== 'won');
   if (!becameWon) return;
   try {
-    var result = exportDealToRevenue(after);
+    var result = exportDealToRevenue(after, {});
     updateObjectById(SHEETS.DEALS, after.ID, { RevenueExported: result.revenueId });
   } catch (e) {
     Logger.log('ส่งออกดีล ' + after.ID + ' ไปยัง Revenue sheet ไม่สำเร็จ: ' + e.message);
   }
 }
 
-function exportDealToRevenue(deal) {
+/**
+ * ปิดการขายสำเร็จแบบครบถ้วน: อัปเดตดีล+ลูกค้า, แนบสลิปถ้ามี, บันทึกยอดขายเข้า Revenue
+ * พร้อมยอดขายจริง/ช่องทางโฆษณา/วิธีชำระเงินที่กรอกตอนปิดการขาย
+ */
+function closeDealWon(dealId, extra) {
+  extra = extra || {};
+  var before = getObjectById(SHEETS.DEALS, dealId);
+  if (!before) throw new Error('ไม่พบดีลนี้');
+
+  var patch = { Stage: 'won', Status: 'won', UpdatedAt: nowIso() };
+  var updated = updateObjectById(SHEETS.DEALS, dealId, patch);
+  updateObjectById(SHEETS.CUSTOMERS, updated.CustomerID, { Status: 'won', UpdatedAt: nowIso() });
+
+  var slipFileUrl = '';
+  if (extra.fileBase64 && extra.fileName) {
+    var doc = uploadDocument({
+      CustomerID: updated.CustomerID,
+      DealID: updated.ID,
+      DocType: 'payment_slip',
+      DocNumber: '',
+      IssueDate: todayStr(),
+      fileBase64: extra.fileBase64,
+      fileName: extra.fileName,
+      mimeType: extra.mimeType,
+    });
+    slipFileUrl = doc.FileUrl;
+  }
+
+  var revenueResult = null;
+  if (!updated.RevenueExported) {
+    try {
+      revenueResult = exportDealToRevenue(updated, {
+        billTotal: extra.BillTotal,
+        ad: extra.Ad,
+        payment: extra.Payment,
+        slipFileUrl: slipFileUrl,
+      });
+      updateObjectById(SHEETS.DEALS, updated.ID, { RevenueExported: revenueResult.revenueId });
+    } catch (e) {
+      Logger.log('ส่งออกดีล ' + updated.ID + ' ไปยัง Revenue sheet ไม่สำเร็จ: ' + e.message);
+    }
+  }
+
+  return { deal: getObjectById(SHEETS.DEALS, dealId), revenue: revenueResult };
+}
+
+function exportDealToRevenue(deal, overrides) {
+  overrides = overrides || {};
   var customer = getObjectById(SHEETS.CUSTOMERS, deal.CustomerID);
   if (!customer) throw new Error('ไม่พบข้อมูลลูกค้าของดีลนี้');
 
@@ -55,13 +163,18 @@ function exportDealToRevenue(deal) {
   var timestamp = Utilities.formatDate(new Date(), tz, 'dd/MM/yyyy HH:mm:ss');
   var customerName = customer.Type === 'company' ? (customer.CompanyName || customer.Name) : customer.Name;
   var countryLabel = countryLabelFor(customer.Country);
-  var amount = Number(deal.EstimatedValue) || 0;
+  var hasBillTotal = overrides.billTotal !== undefined && overrides.billTotal !== null && overrides.billTotal !== '';
+  var amount = hasBillTotal ? Number(overrides.billTotal) : (Number(deal.EstimatedValue) || 0);
 
-  var receiptDoc = sheetToObjects(getSheet(SHEETS.DOCUMENTS))
-    .filter(function (d) { return d.CustomerID === customer.ID && d.DocType === 'receipt'; })
-    .sort(function (a, b) { return String(b.CreatedAt).localeCompare(String(a.CreatedAt)); })[0];
+  var slipUrl = overrides.slipFileUrl || '';
+  if (!slipUrl) {
+    var slipDoc = sheetToObjects(getSheet(SHEETS.DOCUMENTS))
+      .filter(function (d) { return d.CustomerID === customer.ID && d.DocType === 'payment_slip'; })
+      .sort(function (a, b) { return String(b.CreatedAt).localeCompare(String(a.CreatedAt)); })[0];
+    slipUrl = slipDoc ? slipDoc.FileUrl : '';
+  }
 
-  var revenueId = generateRevenueId();
+  var revenueId = generateRevenueId(sheet);
   var rowObj = {
     'Revenue ID': revenueId,
     'Timestamp': timestamp,
@@ -72,11 +185,12 @@ function exportDealToRevenue(deal) {
     'Amount': amount,
     'Delivery': 0,
     'Bill Total': amount,
-    'Payment': '',
-    'Slip1': receiptDoc ? receiptDoc.FileUrl : '',
+    'Payment': overrides.payment || '',
+    'Slip1': slipUrl,
     'Customer Name': customerName,
     'Phone Number': customer.Phone || '',
     'Sales Name': (function () { try { return Session.getActiveUser().getEmail() || 'Export CRM'; } catch (e) { return 'Export CRM'; } })(),
+    'Ad': overrides.ad || '',
     'Campaign': 'Export',
     'CustomerType': 'ลูกค้าส่งออกต่างประเทศ',
     'Remark': (deal.Notes || '') + (countryLabel ? ' | ประเทศปลายทาง: ' + countryLabel : ''),
@@ -95,5 +209,24 @@ function exportDealToRevenue(deal) {
 function testExportDealToRevenue(dealId) {
   var deal = getObjectById(SHEETS.DEALS, dealId);
   if (!deal) throw new Error('ไม่พบดีลนี้');
-  return exportDealToRevenue(deal);
+  return exportDealToRevenue(deal, {});
+}
+
+/** ทดสอบการเชื่อมต่อสินค้า/Ad/Payment จาก Master Data Sales เพื่อ debug จากหน้าตั้งค่า */
+function testMasterDataConnection() {
+  var skuSettings = getSkuSettings();
+  var result = { sheetId: skuSettings.sheetId, skuTabConfigured: skuSettings.tabName };
+  try {
+    var ss = SpreadsheetApp.openById(skuSettings.sheetId);
+    result.spreadsheetTitle = ss.getName();
+    result.allTabs = ss.getSheets().map(function (s) { return s.getName(); });
+  } catch (e) {
+    result.error = e.message;
+    return result;
+  }
+  result.skus = getSkus();
+  result.skuCount = result.skus.length;
+  result.adOptions = getAdOptions();
+  result.paymentOptions = getPaymentOptions();
+  return result;
 }

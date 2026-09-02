@@ -31,6 +31,10 @@ function apiCall(name, args) {
     analyzeAllOpenCustomers: analyzeAllOpenCustomers,
     getSkus: getSkus,
     testExportDealToRevenue: testExportDealToRevenue,
+    testMasterDataConnection: testMasterDataConnection,
+    getAdOptions: getAdOptions,
+    getPaymentOptions: getPaymentOptions,
+    closeDealWon: closeDealWon,
     getSettings: getSettings,
     saveSettings: saveSettings,
   };

@@ -193,7 +193,10 @@ function getMeta() {
     documentTypes: [
       { value: 'quotation', label: 'ใบเสนอราคา' },
       { value: 'po', label: 'ใบสั่งซื้อ (PO)' },
+      { value: 'invoice', label: 'ใบแจ้งหนี้' },
+      { value: 'payment_slip', label: 'สลิปการโอนเงิน' },
       { value: 'delivery_note', label: 'ใบส่งของ' },
+      { value: 'goods_receipt', label: 'ใบรับสินค้า' },
       { value: 'receipt', label: 'ใบเสร็จ' },
     ],
     followupTypes: [
@@ -362,8 +365,12 @@ function createDeal(customerId, data) {
 function updateDeal(id, data) {
   var before = getObjectById(SHEETS.DEALS, id);
   data.UpdatedAt = nowIso();
+  if (data.Stage === 'won' || data.Stage === 'lost') data.Status = data.Stage;
   var updated = updateObjectById(SHEETS.DEALS, id, data);
   maybeExportWonDealToRevenue(before, updated);
+  if (data.Stage) {
+    updateObjectById(SHEETS.CUSTOMERS, updated.CustomerID, { Status: data.Stage, UpdatedAt: nowIso() });
+  }
   return updated;
 }
 

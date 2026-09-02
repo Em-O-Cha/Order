@@ -8,11 +8,11 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&display=swap');
 :root{
-  --gd:#00997a; --gm:#00c896; --gp:#e3fff8; --gb:#b8f2e6;
+  --gd:#00664f; --gm:#00805f; --gp:#e3fff8; --gb:#b8f2e6;
   --g6:#5f6b68; --g8:#233a35; --td:#233a35;
   --red:#b3261e; --bg:#f2fbf9; --card:#fff;
   --warn:#f9a825; --urgent:#e4504d; --overdue:#c0392b;
-  --topbar:linear-gradient(135deg,#00e6b8,#00b894);
+  --topbar:linear-gradient(135deg,#00a67e,#007a5c);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Kanit',sans-serif;background:var(--bg);color:var(--td);min-height:100vh;}
@@ -185,6 +185,19 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
     <button class="btn sm outline" id="backToListBtn">&larr; กลับไปรายชื่อลูกค้า</button>
     <div class="card" id="customerHeader" style="margin-top:10px"></div>
 
+    <details class="section-card" id="sec-edit">
+      <summary>✏️ แก้ไขข้อมูลลูกค้า</summary>
+      <div class="section-body">
+        <form id="editForm">
+          <div class="form-grid" id="editFormGrid"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn danger outline" id="deleteCustomerBtn">ลบลูกค้านี้</button>
+            <button type="submit" class="btn">บันทึกการแก้ไข</button>
+          </div>
+        </form>
+      </div>
+    </details>
+
     <details class="section-card" open id="sec-deals">
       <summary>💼 ดีล/โอกาสการขาย</summary>
       <div class="section-body">
@@ -217,18 +230,6 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
       </div>
     </details>
 
-    <details class="section-card" id="sec-edit">
-      <summary>✏️ แก้ไขข้อมูลลูกค้า</summary>
-      <div class="section-body">
-        <form id="editForm">
-          <div class="form-grid" id="editFormGrid"></div>
-          <div class="modal-actions">
-            <button type="button" class="btn danger outline" id="deleteCustomerBtn">ลบลูกค้านี้</button>
-            <button type="submit" class="btn">บันทึกการแก้ไข</button>
-          </div>
-        </form>
-      </div>
-    </details>
   </div>
 
   <!-- ================= SKUs ================= -->
@@ -271,6 +272,14 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
         <div class="field">
           <label>ชื่อแท็บสินค้า</label>
           <input name="SKU_SHEET_TAB" placeholder="SKU ส่งออก">
+        </div>
+        <div class="field">
+          <label>ชื่อแท็บช่องทางโฆษณา (Ad) ใน Master Data Sales</label>
+          <input name="AD_LIST_TAB" placeholder="AD">
+        </div>
+        <div class="field">
+          <label>ชื่อแท็บวิธีชำระเงิน (Payment) ใน Master Data Sales</label>
+          <input name="PAYMENT_LIST_TAB" placeholder="Payment">
         </div>
         <div class="field">
           <label>Google Sheet ID ของระบบ Revenue (บันทึกยอดขายอัตโนมัติเมื่อปิดการขายสำเร็จ)</label>
@@ -356,6 +365,13 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
     </div>
 
     <div class="card" style="margin-top:14px">
+      <h3 style="margin-bottom:4px">ทดสอบเชื่อมต่อ Master Data Sales</h3>
+      <p class="muted">กดเพื่อดูว่าอ่านชีตสินค้า/รายการโฆษณา/วิธีชำระเงินได้จริงหรือไม่ และเจอกี่รายการ</p>
+      <button class="btn sm outline" id="testMasterDataBtn" style="margin-top:10px">ทดสอบการเชื่อมต่อ</button>
+      <div id="masterDataTestResult" style="margin-top:10px;font-size:13px"></div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
       <h3 style="margin-bottom:8px">ฐานข้อมูล (Google Sheet)</h3>
       <p class="muted">ข้อมูลลูกค้า/ดีล/เอกสารทั้งหมดเก็บอยู่ใน Google Sheet นี้ เปิดดู/แก้ไขตรง ๆ ได้เช่นกัน</p>
       <a id="spreadsheetLink" href="#" target="_blank" class="btn sm outline" style="display:inline-block;margin-top:10px">เปิด Google Sheet ฐานข้อมูล</a>
@@ -407,6 +423,11 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
         <div class="field full">
           <label>สินค้าที่สนใจ (เลือกจากรายการสินค้า SKU ได้หลายรายการ — กด Ctrl หรือ Cmd ค้างไว้เพื่อเลือกหลายอัน)</label>
           <select id="productInterestSelect" multiple size="6"></select>
+          <div class="muted" id="productInterestEmptyHint" hidden>⚠️ ยังไม่พบรายการสินค้าจาก Master Data Sales ลองตรวจสอบที่หน้า "ตั้งค่า" หรือพิมพ์ชื่อสินค้าเองด้านล่างแทนได้</div>
+        </div>
+        <div class="field full">
+          <label>หรือพิมพ์ชื่อสินค้าเอง (ถ้าไม่มีในรายการด้านบน — จะต่อท้ายรายการที่เลือกไว้)</label>
+          <input id="productInterestManual" placeholder="เช่น น้ำพริกสูตรพิเศษ">
         </div>
         <div class="field"><label>มูลค่าประมาณ</label><input name="EstimatedValue" type="number" step="0.01"></div>
         <div class="field"><label>สกุลเงิน</label><input name="Currency" value="THB"></div>
@@ -417,6 +438,35 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
       <div class="modal-actions">
         <button type="button" class="btn outline" data-close="dealModal">ยกเลิก</button>
         <button type="submit" class="btn">บันทึก</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="closeWonModal" hidden>
+  <div class="modal">
+    <h3>🎉 ปิดการขายสำเร็จ - กรอกรายละเอียดก่อนบันทึกยอดขาย</h3>
+    <p class="muted">ข้อมูลนี้จะถูกบันทึกเป็นแถวใหม่ในชีต Revenue โดยอัตโนมัติ</p>
+    <form id="closeWonForm">
+      <div class="form-grid">
+        <div class="field full"><label>ยอดขายจริง (Bill Total) *</label><input name="BillTotal" type="number" step="0.01" required></div>
+        <div class="field">
+          <label>ช่องทางโฆษณา (Ad)</label>
+          <select name="Ad" id="closeWonAdSelect"><option value="">- ไม่ระบุ -</option></select>
+        </div>
+        <div class="field">
+          <label>วิธีการชำระเงิน (Payment)</label>
+          <select name="Payment" id="closeWonPaymentSelect"><option value="">- ไม่ระบุ -</option></select>
+        </div>
+        <div class="field full">
+          <label>แนบสลิปการโอนเงิน (ถ้ายังไม่เคยอัปโหลดไว้ในเอกสารของลูกค้ารายนี้)</label>
+          <input type="file" id="closeWonSlipInput" accept="application/pdf,image/jpeg,image/jpg,image/png">
+          <div class="muted" style="margin-top:4px">ถ้าเคยอัปโหลด "สลิปการโอนเงิน" ไว้ในแท็บเอกสารแล้ว ไม่ต้องแนบซ้ำ ระบบจะดึงให้เอง</div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn outline" id="cancelCloseWonBtn">ยกเลิก</button>
+        <button type="submit" class="btn" id="closeWonSubmitBtn">บันทึกปิดการขาย</button>
       </div>
     </form>
   </div>
@@ -623,12 +673,20 @@ function statusOptionsHtml(selected) {
 function bindStatusSelects(root) {
   root.querySelectorAll('[data-status-customer]').forEach(function (sel) {
     sel.classList.add('badge', 'stage-' + sel.value, 'status-select');
+    sel.dataset.prevValue = sel.value;
     sel.addEventListener('click', function (e) { e.stopPropagation(); });
     sel.addEventListener('change', function () {
       var id = sel.dataset.statusCustomer;
+      if (sel.value === 'won') {
+        toast('เปิดหน้าลูกค้าเพื่อกรอกรายละเอียดปิดการขาย (ยอดขาย/การชำระเงิน/Ad) ก่อนบันทึกเข้า Revenue', true);
+        sel.value = sel.dataset.prevValue;
+        openCustomerDetail(id);
+        return;
+      }
       gsRun('updateCustomerStatus', id, sel.value).then(function () {
         toast('อัปเดตสถานะแล้ว');
         sel.className = 'badge stage-' + sel.value + ' status-select' + (sel.classList.contains('lg') ? ' lg' : '');
+        sel.dataset.prevValue = sel.value;
         if (currentCustomerId === id) openCustomerDetail(id); else loadCustomerList();
       }).catch(function (e) { toast(e.message, true); });
     });
@@ -698,7 +756,7 @@ function renderCustomerHeader(c) {
   document.getElementById('customerHeader').innerHTML =
     '<div class="header-top">' +
     '<h2 style="font-size:20px">' + escapeHtml(displayName) + '</h2>' +
-    '<select data-status-customer="' + c.ID + '" class="lg">' + statusOptionsHtml(status) + '</select>' +
+    '<span class="badge stage-' + status + '" style="font-size:12px;padding:5px 12px" title="เปลี่ยนสถานะได้ที่ดีลด้านล่าง">' + stageLabel(status) + '</span>' +
     '<span class="badge type-' + c.Type + '">' + (c.Type === 'company' ? 'บริษัท' : 'บุคคลธรรมดา') + '</span>' +
     '</div>' +
     banner +
@@ -712,7 +770,6 @@ function renderCustomerHeader(c) {
     '<span data-jump="deals">💼 ดีลทั้งหมด: ' + c.deals.length + ' รายการ</span>' +
     '</div>';
 
-  bindStatusSelects(document.getElementById('customerHeader'));
   document.getElementById('customerHeader').querySelectorAll('[data-jump]').forEach(function (el) {
     el.addEventListener('click', function () {
       var target = document.getElementById('sec-' + el.dataset.jump);
@@ -726,21 +783,28 @@ function renderDeals(c) {
   if (!c.deals.length) { el.innerHTML = '<div class="empty-state">ยังไม่มีดีล</div>'; return; }
   el.innerHTML = c.deals.map(function (d) {
     return '<div class="doc-item">' +
-      '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;"><b>' + escapeHtml(d.Title) + '</b>' +
-      '<span class="badge stage-' + d.Stage + '">' + stageLabel(d.Stage) + '</span></div>' +
+      '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center;"><b>' + escapeHtml(d.Title) + '</b>' +
+      '<select data-deal-stage="' + d.ID + '">' + statusOptionsHtml(d.Stage) + '</select></div>' +
       '<div class="muted" style="margin-top:6px">สินค้าที่สนใจ: ' + escapeHtml(d.ProductInterest || '-') + ' | มูลค่า: ' + fmtMoney(d.EstimatedValue) + ' ' + escapeHtml(d.Currency) +
       ' | คาดปิดดีล: ' + fmtDate(d.ExpectedCloseDate) + ' | วันจัดส่ง: ' + fmtDate(d.DeliveryDate) + '</div>' +
+      (d.RevenueExported ? '<div class="muted" style="margin-top:4px">✅ บันทึกยอดขายเข้า Revenue แล้ว (' + escapeHtml(d.RevenueExported) + ')</div>' : '') +
       '<div style="margin-top:8px;display:flex;gap:8px;">' +
-      '<select data-deal-status="' + d.ID + '">' +
-      '<option value="open"' + (d.Status === 'open' ? ' selected' : '') + '>เปิดอยู่</option>' +
-      '<option value="won"' + (d.Status === 'won' ? ' selected' : '') + '>ปิดสำเร็จ</option>' +
-      '<option value="lost"' + (d.Status === 'lost' ? ' selected' : '') + '>ปิดไม่สำเร็จ</option>' +
-      '</select><button class="btn sm danger outline" data-del-deal="' + d.ID + '">ลบ</button></div></div>';
+      '<button class="btn sm danger outline" data-del-deal="' + d.ID + '">ลบดีลนี้</button></div></div>';
   }).join('');
 
-  el.querySelectorAll('[data-deal-status]').forEach(function (sel) {
+  el.querySelectorAll('[data-deal-stage]').forEach(function (sel) {
+    sel.classList.add('badge', 'stage-' + sel.value, 'status-select');
+    sel.dataset.prevValue = sel.value;
     sel.addEventListener('change', function () {
-      gsRun('updateDeal', sel.dataset.dealStatus, { Status: sel.value }).then(function () {
+      var dealId = sel.dataset.dealStage;
+      var newStage = sel.value;
+      if (newStage === 'won') {
+        openCloseWonModal(dealId, c.deals.find(function (x) { return x.ID === dealId; }), sel);
+        return;
+      }
+      sel.className = 'badge stage-' + newStage + ' status-select';
+      sel.dataset.prevValue = newStage;
+      gsRun('updateDeal', dealId, { Stage: newStage }).then(function () {
         toast('อัปเดตสถานะดีลแล้ว');
         openCustomerDetail(currentCustomerId);
       }).catch(function (e) { toast(e.message, true); });
@@ -874,19 +938,105 @@ function populateProductInterestSelect() {
     var label = s.productNameTh + (s.category ? ' (' + s.category + ')' : '');
     return '<option value="' + escapeHtml(s.productNameTh) + '">' + escapeHtml(label) + '</option>';
   }).join('');
+  document.getElementById('productInterestEmptyHint').hidden = skus.length > 0;
 }
 
 document.getElementById('dealForm').addEventListener('submit', function (e) {
   e.preventDefault();
   var data = Object.fromEntries(new FormData(e.target).entries());
   var selectedProducts = Array.from(document.getElementById('productInterestSelect').selectedOptions).map(function (o) { return o.value; });
+  var manualProduct = document.getElementById('productInterestManual').value.trim();
+  if (manualProduct) selectedProducts.push(manualProduct);
   data.ProductInterest = selectedProducts.join(', ');
   gsRun('createDeal', currentCustomerId, data).then(function () {
     document.getElementById('dealModal').hidden = true;
+    document.getElementById('productInterestManual').value = '';
     e.target.reset();
     toast('เพิ่มดีลแล้ว');
     openCustomerDetail(currentCustomerId);
   }).catch(function (err) { toast(err.message, true); });
+});
+
+// ============ ปิดการขายสำเร็จ -> บันทึกเข้า Revenue ============
+var adOptionsCache = null;
+var paymentOptionsCache = null;
+var pendingCloseWonDealId = null;
+var pendingCloseWonSelectEl = null;
+
+function ensureAdPaymentOptionsLoaded() {
+  var adPromise = adOptionsCache ? Promise.resolve(adOptionsCache) : gsRun('getAdOptions').then(function (list) { adOptionsCache = list; return list; });
+  var paymentPromise = paymentOptionsCache ? Promise.resolve(paymentOptionsCache) : gsRun('getPaymentOptions').then(function (list) { paymentOptionsCache = list; return list; });
+  return Promise.all([adPromise, paymentPromise]).then(function (results) {
+    var adSel = document.getElementById('closeWonAdSelect');
+    var paySel = document.getElementById('closeWonPaymentSelect');
+    adSel.innerHTML = '<option value="">- ไม่ระบุ -</option>' + results[0].map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+    paySel.innerHTML = '<option value="">- ไม่ระบุ -</option>' + results[1].map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+  });
+}
+
+function openCloseWonModal(dealId, deal, selEl) {
+  pendingCloseWonDealId = dealId;
+  pendingCloseWonSelectEl = selEl;
+  document.querySelector('#closeWonForm input[name=BillTotal]').value = deal ? (deal.EstimatedValue || '') : '';
+  document.getElementById('closeWonSlipInput').value = '';
+  ensureAdPaymentOptionsLoaded().catch(function (e) { toast(e.message, true); });
+  document.getElementById('closeWonModal').hidden = false;
+}
+
+document.getElementById('cancelCloseWonBtn').addEventListener('click', function () {
+  if (pendingCloseWonSelectEl) {
+    pendingCloseWonSelectEl.value = pendingCloseWonSelectEl.dataset.prevValue;
+    pendingCloseWonSelectEl.className = 'badge stage-' + pendingCloseWonSelectEl.value + ' status-select';
+  }
+  document.getElementById('closeWonModal').hidden = true;
+});
+
+document.getElementById('closeWonForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var data = Object.fromEntries(new FormData(e.target).entries());
+  var submitBtn = document.getElementById('closeWonSubmitBtn');
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<span class="spinner"></span> กำลังบันทึก...';
+
+  function finish() {
+    gsRun('closeDealWon', pendingCloseWonDealId, data).then(function (result) {
+      document.getElementById('closeWonModal').hidden = true;
+      e.target.reset();
+      toast(result.revenue && result.revenue.revenueId
+        ? 'ปิดการขายสำเร็จ บันทึกเข้า Revenue แล้ว (' + result.revenue.revenueId + ')'
+        : 'ปิดการขายสำเร็จ (บันทึกเข้า Revenue ไม่สำเร็จ ลองตรวจสอบสิทธิ์เข้าถึงชีต)');
+      openCustomerDetail(currentCustomerId);
+    }).catch(function (err) {
+      toast(err.message, true);
+      if (pendingCloseWonSelectEl) {
+        pendingCloseWonSelectEl.value = pendingCloseWonSelectEl.dataset.prevValue;
+        pendingCloseWonSelectEl.className = 'badge stage-' + pendingCloseWonSelectEl.value + ' status-select';
+      }
+    }).finally(function () {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'บันทึกปิดการขาย';
+    });
+  }
+
+  var fileInput = document.getElementById('closeWonSlipInput');
+  if (fileInput.files && fileInput.files[0]) {
+    var file = fileInput.files[0];
+    var reader = new FileReader();
+    reader.onerror = function () {
+      toast('อ่านไฟล์สลิปไม่สำเร็จ', true);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'บันทึกปิดการขาย';
+    };
+    reader.onload = function () {
+      data.fileBase64 = reader.result.split(',')[1];
+      data.fileName = file.name;
+      data.mimeType = file.type;
+      finish();
+    };
+    reader.readAsDataURL(file);
+  } else {
+    finish();
+  }
 });
 
 document.getElementById('docForm').addEventListener('submit', function (e) {
@@ -1013,6 +1163,19 @@ document.getElementById('enableMonthlyBtn').addEventListener('click', function (
 });
 document.getElementById('disableMonthlyBtn').addEventListener('click', function () {
   gsRun('removeMonthlyTrigger').then(function () { toast('ปิดใช้งานแล้ว'); loadSettings(); }).catch(function (e) { toast(e.message, true); });
+});
+document.getElementById('testMasterDataBtn').addEventListener('click', function () {
+  var el = document.getElementById('masterDataTestResult');
+  el.textContent = 'กำลังทดสอบ...';
+  gsRun('testMasterDataConnection').then(function (r) {
+    if (r.error) { el.innerHTML = '⚠️ เปิดชีตไม่สำเร็จ: ' + escapeHtml(r.error); return; }
+    el.innerHTML =
+      '✅ เปิดไฟล์ "' + escapeHtml(r.spreadsheetTitle) + '" สำเร็จ<br>' +
+      'แท็บทั้งหมดในไฟล์: ' + r.allTabs.map(escapeHtml).join(', ') + '<br>' +
+      'สินค้าที่อ่านได้: <b>' + r.skuCount + '</b> รายการ' + (r.skuCount ? ' (ตัวอย่าง: ' + escapeHtml(r.skus[0].productNameTh) + ')' : '') + '<br>' +
+      'รายการช่องทางโฆษณา (Ad): ' + (r.adOptions.length ? r.adOptions.map(escapeHtml).join(', ') : '<span style="color:#b3261e">ไม่พบ - ตรวจสอบชื่อแท็บด้านบน</span>') + '<br>' +
+      'รายการวิธีชำระเงิน (Payment): ' + (r.paymentOptions.length ? r.paymentOptions.map(escapeHtml).join(', ') : '<span style="color:#b3261e">ไม่พบ</span>');
+  }).catch(function (e) { el.innerHTML = '⚠️ ' + escapeHtml(e.message); });
 });
 document.getElementById('sendReportNowBtn').addEventListener('click', function () {
   var el = document.getElementById('reportResult');
