@@ -223,14 +223,9 @@ function sendLinePush(text) {
   return { sent: true };
 }
 
-/** เรียกจากปุ่มในหน้าเว็บ เพื่อส่งรายงานทันที */
+/** เรียกจากปุ่มในหน้าเว็บ เพื่อส่งรายงานทันที (ไม่เกี่ยวกับตารางเวลาอัตโนมัติ) */
 function sendDailyReportNow() {
   return sendDailyReportInternal();
-}
-
-/** ฟังก์ชันนี้จะถูกเรียกอัตโนมัติทุกวันโดย Time-driven Trigger (ดู installDailyTrigger) */
-function dailyReportTrigger() {
-  sendDailyReportInternal();
 }
 
 function sendDailyReportInternal() {
@@ -239,24 +234,88 @@ function sendDailyReportInternal() {
   return { sent: result.sent, reason: result.reason || null, summary: built.summary, reportDate: todayStr() };
 }
 
-/** ตั้งค่า Time-driven Trigger ให้ส่งรายงานอัตโนมัติทุกวัน ตามชั่วโมงที่กำหนด (0-23) */
+// ===================== ตารางส่งรายงานอัตโนมัติ (เปิดได้พร้อมกันหลายเงื่อนไข) =====================
+// รองรับ 3 เงื่อนไขอิสระต่อกัน: รายวัน, รายสัปดาห์ (เลือกวัน), รายเดือน (วันสุดท้ายของเดือน)
+// แต่ละเงื่อนไขเปิด/ปิดแยกกันได้ ไม่ทับกัน
+
+var WEEKDAY_MAP = {
+  sunday: 'SUNDAY', monday: 'MONDAY', tuesday: 'TUESDAY', wednesday: 'WEDNESDAY',
+  thursday: 'THURSDAY', friday: 'FRIDAY', saturday: 'SATURDAY',
+};
+
+function isLastDayOfMonth(date) {
+  var tomorrow = new Date(date.getTime());
+  tomorrow.setDate(date.getDate() + 1);
+  return tomorrow.getMonth() !== date.getMonth();
+}
+
+/** ฟังก์ชันที่ Time-driven Trigger เรียกจริง (ตั้งชื่อแยกกันเพื่อเปิด/ปิดอิสระจากกัน) */
+function dailyReportTrigger() {
+  sendDailyReportInternal();
+}
+function weeklyReportTrigger() {
+  sendDailyReportInternal();
+}
+function monthlyReportTrigger() {
+  // Apps Script ตั้งทริกเกอร์แบบ "วันสุดท้ายของเดือน" ตรง ๆ ไม่ได้ (บางเดือนมี 28-31 วันไม่เท่ากัน)
+  // จึงตั้งให้ทริกเกอร์นี้รันทุกวัน แล้วเช็คเองว่าวันนี้เป็นวันสุดท้ายของเดือนหรือไม่ก่อนส่งจริง
+  if (isLastDayOfMonth(new Date())) sendDailyReportInternal();
+}
+
+function removeTriggerByHandler(handlerName) {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === handlerName) ScriptApp.deleteTrigger(t);
+  });
+}
+
+function isTriggerActive(handlerName) {
+  return ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === handlerName; });
+}
+
+/** เปิดใช้งานส่งรายงานทุกวัน ตามชั่วโมงที่กำหนด (0-23) */
 function installDailyTrigger(hour) {
-  removeDailyTrigger();
-  ScriptApp.newTrigger('dailyReportTrigger')
-    .timeBased()
-    .everyDays(1)
-    .atHour(hour === undefined || hour === null ? 8 : Number(hour))
+  removeTriggerByHandler('dailyReportTrigger');
+  ScriptApp.newTrigger('dailyReportTrigger').timeBased()
+    .everyDays(1).atHour(hour === undefined || hour === null || hour === '' ? 8 : Number(hour))
     .create();
   return { ok: true };
 }
-
 function removeDailyTrigger() {
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'dailyReportTrigger') ScriptApp.deleteTrigger(t);
-  });
+  removeTriggerByHandler('dailyReportTrigger');
   return { ok: true };
 }
 
-function isDailyTriggerActive() {
-  return ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'dailyReportTrigger'; });
+/** เปิดใช้งานส่งรายงานทุกสัปดาห์ ในวัน+เวลาที่กำหนด เช่น ทุกวันเสาร์ 10 โมงเช้า */
+function installWeeklyTrigger(weekday, hour) {
+  removeTriggerByHandler('weeklyReportTrigger');
+  var wd = ScriptApp.WeekDay[WEEKDAY_MAP[weekday]] || ScriptApp.WeekDay.SATURDAY;
+  ScriptApp.newTrigger('weeklyReportTrigger').timeBased()
+    .onWeekDay(wd).atHour(hour === undefined || hour === null || hour === '' ? 10 : Number(hour))
+    .create();
+  return { ok: true };
+}
+function removeWeeklyTrigger() {
+  removeTriggerByHandler('weeklyReportTrigger');
+  return { ok: true };
+}
+
+/** เปิดใช้งานส่งรายงานทุกสิ้นเดือน ตามชั่วโมงที่กำหนด */
+function installMonthlyTrigger(hour) {
+  removeTriggerByHandler('monthlyReportTrigger');
+  ScriptApp.newTrigger('monthlyReportTrigger').timeBased()
+    .everyDays(1).atHour(hour === undefined || hour === null || hour === '' ? 18 : Number(hour))
+    .create();
+  return { ok: true };
+}
+function removeMonthlyTrigger() {
+  removeTriggerByHandler('monthlyReportTrigger');
+  return { ok: true };
+}
+
+function getTriggerStatuses() {
+  return {
+    daily: isTriggerActive('dailyReportTrigger'),
+    weekly: isTriggerActive('weeklyReportTrigger'),
+    monthly: isTriggerActive('monthlyReportTrigger'),
+  };
 }

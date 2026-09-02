@@ -286,18 +286,64 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
     </form>
 
     <div class="card" style="margin-top:14px">
-      <h3 style="margin-bottom:8px">ส่งรายงานสรุปเข้ากลุ่ม LINE ทุกวัน</h3>
-      <p class="muted" id="triggerStatus"></p>
-      <div class="field" style="max-width:220px;margin-top:10px">
-        <label>ส่งเวลา (0-23 น. ตามเขตเวลาของสคริปต์)</label>
-        <input type="number" id="triggerHour" min="0" max="23" value="8">
+      <h3 style="margin-bottom:4px">ตารางส่งรายงานสรุปเข้ากลุ่ม LINE</h3>
+      <p class="muted">เปิดได้พร้อมกันหลายเงื่อนไข เช่น ส่งทุกวันเสาร์ 10 โมงเช้า และส่งอีกครั้งทุกสิ้นเดือน</p>
+
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid #eee;">
+        <b style="font-size:13px">📆 ทุกวัน</b>
+        <p class="muted" id="dailyTriggerStatus" style="margin-top:4px"></p>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:8px;">
+          <div class="field" style="max-width:140px">
+            <label>เวลา (0-23 น.)</label>
+            <input type="number" id="dailyHour" min="0" max="23" value="8">
+          </div>
+          <button class="btn sm" id="enableDailyBtn">เปิดใช้งาน</button>
+          <button class="btn sm outline" id="disableDailyBtn">ปิดใช้งาน</button>
+        </div>
       </div>
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn sm" id="enableTriggerBtn">เปิดใช้งานส่งอัตโนมัติ</button>
-        <button class="btn sm outline" id="disableTriggerBtn">ปิดใช้งาน</button>
-        <button class="btn sm outline" id="sendReportNowBtn">ส่งทดสอบตอนนี้</button>
+
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid #eee;">
+        <b style="font-size:13px">📅 ทุกสัปดาห์</b>
+        <p class="muted" id="weeklyTriggerStatus" style="margin-top:4px"></p>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:8px;">
+          <div class="field" style="max-width:160px">
+            <label>วัน</label>
+            <select id="weeklyDay">
+              <option value="monday">จันทร์</option>
+              <option value="tuesday">อังคาร</option>
+              <option value="wednesday">พุธ</option>
+              <option value="thursday">พฤหัสบดี</option>
+              <option value="friday">ศุกร์</option>
+              <option value="saturday" selected>เสาร์</option>
+              <option value="sunday">อาทิตย์</option>
+            </select>
+          </div>
+          <div class="field" style="max-width:140px">
+            <label>เวลา (0-23 น.)</label>
+            <input type="number" id="weeklyHour" min="0" max="23" value="10">
+          </div>
+          <button class="btn sm" id="enableWeeklyBtn">เปิดใช้งาน</button>
+          <button class="btn sm outline" id="disableWeeklyBtn">ปิดใช้งาน</button>
+        </div>
       </div>
-      <div id="reportResult" style="margin-top:10px;font-size:13px"></div>
+
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid #eee;">
+        <b style="font-size:13px">🗓️ ทุกสิ้นเดือน</b>
+        <p class="muted" id="monthlyTriggerStatus" style="margin-top:4px"></p>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:8px;">
+          <div class="field" style="max-width:140px">
+            <label>เวลา (0-23 น.)</label>
+            <input type="number" id="monthlyHour" min="0" max="23" value="18">
+          </div>
+          <button class="btn sm" id="enableMonthlyBtn">เปิดใช้งาน</button>
+          <button class="btn sm outline" id="disableMonthlyBtn">ปิดใช้งาน</button>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid #eee;">
+        <button class="btn sm outline" id="sendReportNowBtn">ส่งทดสอบตอนนี้ (ไม่เกี่ยวกับตารางเวลาด้านบน)</button>
+        <div id="reportResult" style="margin-top:10px;font-size:13px"></div>
+      </div>
     </div>
 
     <div class="card" style="margin-top:14px">
@@ -772,19 +818,35 @@ function renderEditForm(c) {
     '<div class="field full"><label>หมายเหตุ</label><textarea name="Notes" rows="2">' + escapeHtml(c.Notes || '') + '</textarea></div>';
 }
 
+function showDetailLoadError(id, message) {
+  document.getElementById('customerHeader').innerHTML =
+    '<div class="alert-banner">⚠️ โหลดข้อมูลลูกค้าไม่สำเร็จ: ' + escapeHtml(message) +
+    '<div style="margin-top:10px"><button class="btn sm" id="retryLoadBtn">ลองใหม่</button></div></div>';
+  document.getElementById('retryLoadBtn').addEventListener('click', function () { openCustomerDetail(id); });
+}
+
 function openCustomerDetail(id) {
   if (!id) { toast('ไม่พบรหัสลูกค้า', true); return; }
   currentCustomerId = id;
   showView('detail');
+  document.getElementById('customerHeader').innerHTML = '<div class="muted">กำลังโหลดข้อมูลลูกค้า...</div>';
   gsRun('getCustomerDetail', id).then(function (c) {
-    if (!c) { toast('โหลดข้อมูลลูกค้าไม่สำเร็จ ลองกดใหม่อีกครั้ง', true); return; }
+    if (!c) {
+      console.error('getCustomerDetail resolved with empty value for id=', id);
+      showDetailLoadError(id, 'เซิร์ฟเวอร์ส่งค่าว่างกลับมา (ไม่ทราบสาเหตุ)');
+      return;
+    }
     renderCustomerHeader(c);
     renderDeals(c);
     renderDocs(c);
     renderFollowups(c);
     renderAi(c);
     renderEditForm(c);
-  }).catch(function (e) { toast(e.message, true); });
+  }).catch(function (e) {
+    console.error('getCustomerDetail failed for id=', id, e);
+    showDetailLoadError(id, e.message);
+    toast(e.message, true);
+  });
 }
 
 document.getElementById('backToListBtn').addEventListener('click', function () { showView('customers'); });
@@ -912,9 +974,10 @@ function loadSettings() {
       if (form.elements[k]) form.elements[k].value = s[k];
     });
     document.getElementById('spreadsheetLink').href = s.spreadsheetUrl;
-    document.getElementById('triggerStatus').textContent = s.dailyTriggerActive
-      ? '✅ เปิดใช้งานส่งรายงานอัตโนมัติทุกวันอยู่'
-      : '⚠️ ยังไม่ได้เปิดใช้งานส่งรายงานอัตโนมัติ';
+    var t = s.triggers || {};
+    document.getElementById('dailyTriggerStatus').textContent = t.daily ? '✅ เปิดใช้งานอยู่' : '⚠️ ยังไม่ได้เปิดใช้งาน';
+    document.getElementById('weeklyTriggerStatus').textContent = t.weekly ? '✅ เปิดใช้งานอยู่' : '⚠️ ยังไม่ได้เปิดใช้งาน';
+    document.getElementById('monthlyTriggerStatus').textContent = t.monthly ? '✅ เปิดใช้งานอยู่' : '⚠️ ยังไม่ได้เปิดใช้งาน';
   }).catch(function (e) { toast(e.message, true); });
 }
 document.getElementById('settingsForm').addEventListener('submit', function (e) {
@@ -922,12 +985,25 @@ document.getElementById('settingsForm').addEventListener('submit', function (e) 
   var data = Object.fromEntries(new FormData(e.target).entries());
   gsRun('saveSettings', data).then(function () { toast('บันทึกการตั้งค่าแล้ว'); }).catch(function (err) { toast(err.message, true); });
 });
-document.getElementById('enableTriggerBtn').addEventListener('click', function () {
-  var hour = document.getElementById('triggerHour').value;
-  gsRun('installDailyTrigger', hour).then(function () { toast('เปิดใช้งานแล้ว'); loadSettings(); }).catch(function (e) { toast(e.message, true); });
+document.getElementById('enableDailyBtn').addEventListener('click', function () {
+  gsRun('installDailyTrigger', document.getElementById('dailyHour').value).then(function () { toast('เปิดใช้งานแล้ว'); loadSettings(); }).catch(function (e) { toast(e.message, true); });
 });
-document.getElementById('disableTriggerBtn').addEventListener('click', function () {
+document.getElementById('disableDailyBtn').addEventListener('click', function () {
   gsRun('removeDailyTrigger').then(function () { toast('ปิดใช้งานแล้ว'); loadSettings(); }).catch(function (e) { toast(e.message, true); });
+});
+document.getElementById('enableWeeklyBtn').addEventListener('click', function () {
+  var day = document.getElementById('weeklyDay').value;
+  var hour = document.getElementById('weeklyHour').value;
+  gsRun('installWeeklyTrigger', day, hour).then(function () { toast('เปิดใช้งานแล้ว'); loadSettings(); }).catch(function (e) { toast(e.message, true); });
+});
+document.getElementById('disableWeeklyBtn').addEventListener('click', function () {
+  gsRun('removeWeeklyTrigger').then(function () { toast('ปิดใช้งานแล้ว'); loadSettings(); }).catch(function (e) { toast(e.message, true); });
+});
+document.getElementById('enableMonthlyBtn').addEventListener('click', function () {
+  gsRun('installMonthlyTrigger', document.getElementById('monthlyHour').value).then(function () { toast('เปิดใช้งานแล้ว'); loadSettings(); }).catch(function (e) { toast(e.message, true); });
+});
+document.getElementById('disableMonthlyBtn').addEventListener('click', function () {
+  gsRun('removeMonthlyTrigger').then(function () { toast('ปิดใช้งานแล้ว'); loadSettings(); }).catch(function (e) { toast(e.message, true); });
 });
 document.getElementById('sendReportNowBtn').addEventListener('click', function () {
   var el = document.getElementById('reportResult');

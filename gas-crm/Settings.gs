@@ -13,7 +13,7 @@ function getSettings() {
   var out = {};
   SETTINGS_KEYS.forEach(function (k) { out[k] = PROPS.getProperty(k) || ''; });
   out.spreadsheetUrl = getOrCreateSpreadsheet().getUrl();
-  out.dailyTriggerActive = isDailyTriggerActive();
+  out.triggers = getTriggerStatuses();
   return out;
 }
 

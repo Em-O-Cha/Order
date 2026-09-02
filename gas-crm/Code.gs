@@ -200,6 +200,9 @@ function getMeta() {
       { value: 'call', label: 'โทรศัพท์' },
       { value: 'email', label: 'อีเมล' },
       { value: 'meeting', label: 'นัดพบ/ประชุม' },
+      { value: 'line_oa', label: 'LINE Official' },
+      { value: 'messenger', label: 'Messenger (Facebook)' },
+      { value: 'tiktok', label: 'TikTok' },
       { value: 'note', label: 'บันทึกอื่น ๆ' },
     ],
   };
