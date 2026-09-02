@@ -119,6 +119,9 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 .section-card summary::before{content:'▸';color:var(--gm);transition:transform .15s ease;font-size:13px;}
 .section-card[open] summary::before{transform:rotate(90deg);}
 .section-body{padding-top:14px;}
+.confirm-modal{max-width:400px;text-align:center;}
+.confirm-icon{width:56px;height:56px;border-radius:50%;background:#fdecea;color:var(--red);
+  font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;}
 </style>
 </head>
 <body>
@@ -514,6 +517,18 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
   </div>
 </div>
 
+<div class="modal-overlay" id="confirmModalOverlay" hidden>
+  <div class="modal confirm-modal">
+    <div class="confirm-icon">⚠️</div>
+    <h3 id="confirmModalTitle" style="text-align:center">ยืนยันการลบ</h3>
+    <p id="confirmModalMessage" class="muted" style="text-align:center;margin-top:8px;font-size:14px"></p>
+    <div class="modal-actions" style="justify-content:center;margin-top:20px">
+      <button type="button" class="btn outline" id="confirmModalNo">ยกเลิก</button>
+      <button type="button" class="btn danger" id="confirmModalYes">ยืนยันลบ</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ============ ตัวช่วยเรียกฟังก์ชันฝั่งเซิร์ฟเวอร์ ============
 function gsRun(fnName) {
@@ -545,6 +560,28 @@ function toast(msg, isError) {
     activeToasts = activeToasts.filter(function (x) { return x !== el; });
     repositionToasts();
   }, 3500);
+}
+
+// ============ กล่องยืนยัน (แทน confirm() ของเบราว์เซอร์) ============
+function confirmDialog(message, title) {
+  var overlay = document.getElementById('confirmModalOverlay');
+  document.getElementById('confirmModalTitle').textContent = title || 'ยืนยันการลบ';
+  document.getElementById('confirmModalMessage').textContent = message;
+  overlay.hidden = false;
+  return new Promise(function (resolve) {
+    var yesBtn = document.getElementById('confirmModalYes');
+    var noBtn = document.getElementById('confirmModalNo');
+    function cleanup(result) {
+      overlay.hidden = true;
+      yesBtn.removeEventListener('click', onYes);
+      noBtn.removeEventListener('click', onNo);
+      resolve(result);
+    }
+    function onYes() { cleanup(true); }
+    function onNo() { cleanup(false); }
+    yesBtn.addEventListener('click', onYes);
+    noBtn.addEventListener('click', onNo);
+  });
 }
 
 function escapeHtml(str) {
@@ -812,8 +849,10 @@ function renderDeals(c) {
   });
   el.querySelectorAll('[data-del-deal]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      if (!confirm('ลบดีลนี้?')) return;
-      gsRun('deleteDeal', btn.dataset.delDeal).then(function () { openCustomerDetail(currentCustomerId); }).catch(function (e) { toast(e.message, true); });
+      confirmDialog('ต้องการลบดีลนี้ใช่หรือไม่?', 'ลบดีล').then(function (ok) {
+        if (!ok) return;
+        gsRun('deleteDeal', btn.dataset.delDeal).then(function () { openCustomerDetail(currentCustomerId); }).catch(function (e) { toast(e.message, true); });
+      });
     });
   });
 }
@@ -833,8 +872,10 @@ function renderDocs(c) {
   }).join('');
   el.querySelectorAll('[data-del-doc]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      if (!confirm('ลบเอกสารนี้?')) return;
-      gsRun('deleteDocument', btn.dataset.delDoc).then(function () { openCustomerDetail(currentCustomerId); }).catch(function (e) { toast(e.message, true); });
+      confirmDialog('ต้องการลบเอกสารนี้ใช่หรือไม่?', 'ลบเอกสาร').then(function (ok) {
+        if (!ok) return;
+        gsRun('deleteDocument', btn.dataset.delDoc).then(function () { openCustomerDetail(currentCustomerId); }).catch(function (e) { toast(e.message, true); });
+      });
     });
   });
 }
@@ -1107,11 +1148,13 @@ document.getElementById('editForm').addEventListener('submit', function (e) {
 });
 
 document.getElementById('deleteCustomerBtn').addEventListener('click', function () {
-  if (!confirm('ลบลูกค้ารายนี้และข้อมูลที่เกี่ยวข้องทั้งหมด?')) return;
-  gsRun('deleteCustomer', currentCustomerId).then(function () {
-    toast('ลบลูกค้าแล้ว');
-    showView('customers');
-  }).catch(function (err) { toast(err.message, true); });
+  confirmDialog('ต้องการลบลูกค้ารายนี้และข้อมูลที่เกี่ยวข้องทั้งหมด (ดีล/เอกสาร/การติดตาม) ใช่หรือไม่? การลบนี้ไม่สามารถย้อนกลับได้', 'ลบลูกค้า').then(function (ok) {
+    if (!ok) return;
+    gsRun('deleteCustomer', currentCustomerId).then(function () {
+      toast('ลบลูกค้าแล้ว');
+      showView('customers');
+    }).catch(function (err) { toast(err.message, true); });
+  });
 });
 
 // ============ SKUs ============
