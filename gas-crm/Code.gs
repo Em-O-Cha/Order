@@ -76,6 +76,17 @@ function getSheet(name) {
 
 // ===================== Sheet helper ทั่วไป =====================
 
+// Google Sheets แปลงข้อความที่หน้าตาเหมือนวันที่ (เช่น "2026-09-05" จาก <input type="date">)
+// ให้กลายเป็นเซลล์ชนิด Date ให้เองอัตโนมัติ ทำให้ตอนอ่านกลับมาได้ Date object แทนสตริง
+// ซึ่ง google.script.run บางครั้งส่งค่ากลับไปฝั่งหน้าเว็บไม่สำเร็จ (ได้ null แทน) จึงต้องแปลงกลับเป็น
+// ข้อความรูปแบบ yyyy-MM-dd เสมอก่อนส่งออกจากชั้นนี้
+function normalizeCellValue(v) {
+  if (v instanceof Date) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return v;
+}
+
 function sheetToObjects(sheet) {
   var data = sheet.getDataRange().getValues();
   if (data.length < 2) return [];
@@ -85,7 +96,7 @@ function sheetToObjects(sheet) {
     var row = data[r];
     if (row.every(function (c) { return c === '' || c === null; })) continue;
     var obj = {};
-    headers.forEach(function (h, i) { obj[h] = row[i]; });
+    headers.forEach(function (h, i) { obj[h] = normalizeCellValue(row[i]); });
     rows.push(obj);
   }
   return rows;
