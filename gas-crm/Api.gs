@@ -8,6 +8,7 @@ function apiCall(name, args) {
     listCustomers: listCustomers,
     createCustomer: createCustomer,
     updateCustomer: updateCustomer,
+    updateCustomerStatus: updateCustomerStatus,
     deleteCustomer: deleteCustomer,
     getCustomerDetail: getCustomerDetail,
     createDeal: createDeal,

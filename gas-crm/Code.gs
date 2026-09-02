@@ -15,7 +15,7 @@ var SHEETS = {
 };
 
 var HEADERS = {
-  Customers: ['ID', 'Type', 'Name', 'CompanyName', 'TaxID', 'ContactPerson', 'Phone', 'Email', 'LineID', 'Address', 'Country', 'ContactChannel', 'SourceDetail', 'Notes', 'CreatedAt', 'UpdatedAt'],
+  Customers: ['ID', 'Type', 'Status', 'Name', 'CompanyName', 'TaxID', 'ContactPerson', 'Phone', 'Email', 'LineID', 'Address', 'Country', 'ContactChannel', 'SourceDetail', 'Notes', 'CreatedAt', 'UpdatedAt'],
   Deals: ['ID', 'CustomerID', 'Title', 'Stage', 'ProductInterest', 'EstimatedValue', 'Currency', 'ExpectedCloseDate', 'DeliveryDate', 'Status', 'Notes', 'CreatedAt', 'UpdatedAt'],
   Documents: ['ID', 'CustomerID', 'DealID', 'DocType', 'DocNumber', 'FileUrl', 'FileName', 'IssueDate', 'ExpiryDate', 'DeliveryDate', 'Amount', 'Currency', 'Notes', 'CreatedAt'],
   Followups: ['ID', 'CustomerID', 'DealID', 'Type', 'Note', 'FollowUpDate', 'Done', 'CreatedAt'],
@@ -55,6 +55,14 @@ function ensureSheet(ss, name, headers) {
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
+    return sheet;
+  }
+  // ถ้าเคยสร้างชีตนี้ไว้แล้วแต่ยังขาดคอลัมน์ใหม่ (เช่นอัปเดตโค้ดภายหลัง) ให้เติมคอลัมน์ที่ขาดไปต่อท้าย
+  // โดยไม่แตะข้อมูลเดิม
+  var existingHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var missing = headers.filter(function (h) { return existingHeaders.indexOf(h) === -1; });
+  if (missing.length) {
+    sheet.getRange(1, existingHeaders.length + 1, 1, missing.length).setValues([missing]);
   }
   return sheet;
 }
@@ -201,11 +209,14 @@ function listCustomers(filter) {
   if (filter.country) customers = customers.filter(function (c) { return c.Country === filter.country; });
   if (filter.type) customers = customers.filter(function (c) { return c.Type === filter.type; });
 
+  var reminderCountByCustomer = {};
+  computeReminders().forEach(function (r) { reminderCountByCustomer[r.customerId] = (reminderCountByCustomer[r.customerId] || 0) + 1; });
+
   customers.forEach(function (c) {
     var cDeals = deals.filter(function (d) { return d.CustomerID === c.ID; });
-    var openDeal = cDeals.filter(function (d) { return d.Status === 'open'; })[0];
     c.dealCount = cDeals.length;
-    c.currentStage = openDeal ? openDeal.Stage : (cDeals[0] ? cDeals[0].Stage : 'new');
+    c.currentStage = c.Status || (cDeals[0] ? cDeals[0].Stage : 'new');
+    c.reminderCount = reminderCountByCustomer[c.ID] || 0;
   });
 
   customers.sort(function (a, b) { return (b.UpdatedAt || '').localeCompare(a.UpdatedAt || ''); });
@@ -217,6 +228,7 @@ function createCustomer(data) {
   var obj = {
     ID: Utilities.getUuid(),
     Type: data.Type,
+    Status: data.Status || 'new',
     Name: data.Name,
     CompanyName: data.CompanyName || '',
     TaxID: data.TaxID || '',
@@ -239,6 +251,22 @@ function createCustomer(data) {
 function updateCustomer(id, data) {
   data.UpdatedAt = nowIso();
   return updateObjectById(SHEETS.CUSTOMERS, id, data);
+}
+
+/**
+ * เปลี่ยน "สถานะลูกค้า" จุดเดียวจากหน้ารายชื่อ/รายละเอียดลูกค้า
+ * ถ้าลูกค้ามีดีลที่เปิดอยู่ จะอัปเดตสถานะของดีลนั้นให้ตรงกันอัตโนมัติ (เพื่อให้สถิติในแดชบอร์ดถูกต้อง)
+ */
+function updateCustomerStatus(customerId, status) {
+  updateObjectById(SHEETS.CUSTOMERS, customerId, { Status: status, UpdatedAt: nowIso() });
+  var openDeal = sheetToObjects(getSheet(SHEETS.DEALS))
+    .filter(function (d) { return d.CustomerID === customerId && d.Status === 'open'; })[0];
+  if (openDeal) {
+    var patch = { Stage: status, UpdatedAt: nowIso() };
+    if (status === 'won' || status === 'lost') patch.Status = status;
+    updateObjectById(SHEETS.DEALS, openDeal.ID, patch);
+  }
+  return getObjectById(SHEETS.CUSTOMERS, customerId);
 }
 
 function deleteCustomer(id) {
@@ -265,6 +293,7 @@ function getCustomerDetail(id) {
   customer.documents = documents;
   customer.followups = followups;
   customer.insights = insights;
+  customer.reminders = computeReminders().filter(function (r) { return r.customerId === id; });
   return customer;
 }
 

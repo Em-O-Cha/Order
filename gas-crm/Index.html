@@ -88,6 +88,19 @@ h2.section-title{font-size:16px;font-weight:600;margin:22px 0 10px;color:var(--g
   font-size:13px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.2);}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
+select.status-select{appearance:none;-webkit-appearance:none;-moz-appearance:none;border:none;outline:none;
+  padding:5px 22px 5px 10px;font-family:'Kanit',sans-serif;cursor:pointer;
+  background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3e%3cpath fill='%23555' d='M1 1l5 5 5-5'/%3e%3c/svg%3e");
+  background-repeat:no-repeat;background-position:right 8px center;background-size:9px;}
+select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size:10px;}
+.bell{display:inline-block;background:var(--urgent);color:#fff;font-size:10px;font-weight:700;border-radius:999px;
+  padding:1px 6px;margin-left:6px;vertical-align:middle;}
+.alert-banner{background:#fff3e0;border-left:4px solid var(--urgent);padding:10px 14px;border-radius:8px;
+  margin-top:12px;font-size:13px;color:#8a4b00;font-weight:500;line-height:1.6;}
+.quick-info{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #eee;}
+.quick-info span{font-size:13px;color:var(--g6);cursor:pointer;}
+.quick-info span:hover{color:var(--gd);text-decoration:underline;}
+.header-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 </style>
 </head>
 <body>
@@ -440,13 +453,13 @@ function renderReminders(reminders) {
 
 function renderKpis(data) {
   var items = [
-    { label: 'ลูกค้าทั้งหมด', value: data.totals.customers, sub: 'ใหม่ 30 วันล่าสุด: ' + data.totals.newCustomersLast30 },
-    { label: 'ดีลที่กำลังเปิด', value: data.totals.openDeals, sub: 'มูลค่ารวม ' + fmtMoney(data.revenue.pipelineValue) + ' บาท' },
-    { label: 'ปิดการขายสำเร็จ', value: data.totals.wonDeals, sub: 'เดือนนี้ ' + data.revenue.wonThisMonthCount + ' ดีล / ' + fmtMoney(data.revenue.revenueThisMonth) + ' บาท' },
-    { label: 'เอกสารทั้งหมด', value: data.totals.documents, sub: 'แจ้งเตือน ' + data.reminders.length + ' รายการ' },
+    { icon: '👥', label: 'ลูกค้าทั้งหมด', value: data.totals.customers, sub: 'ใหม่ 30 วันล่าสุด: ' + data.totals.newCustomersLast30 },
+    { icon: '💼', label: 'ดีลที่กำลังเปิด', value: data.totals.openDeals, sub: 'มูลค่ารวม ' + fmtMoney(data.revenue.pipelineValue) + ' บาท' },
+    { icon: '✅', label: 'ปิดการขายสำเร็จ', value: data.totals.wonDeals, sub: 'เดือนนี้ ' + data.revenue.wonThisMonthCount + ' ดีล / ' + fmtMoney(data.revenue.revenueThisMonth) + ' บาท' },
+    { icon: '🔔', label: 'ต้องติดตามตอนนี้', value: data.reminders.length, sub: 'เอกสารทั้งหมด ' + data.totals.documents + ' ฉบับ' },
   ];
   document.getElementById('kpis').innerHTML = items.map(function (i) {
-    return '<div class="card kpi"><div class="label">' + i.label + '</div><div class="value">' + i.value + '</div><div class="sub">' + i.sub + '</div></div>';
+    return '<div class="card kpi"><div class="label">' + i.icon + ' ' + i.label + '</div><div class="value">' + i.value + '</div><div class="sub">' + i.sub + '</div></div>';
   }).join('');
 }
 
@@ -470,13 +483,35 @@ document.addEventListener('click', function (e) {
 });
 
 // ============ Customers list ============
+function statusOptionsHtml(selected) {
+  return meta.dealStages.map(function (s) {
+    return '<option value="' + s.value + '"' + (s.value === selected ? ' selected' : '') + '>' + s.label + '</option>';
+  }).join('');
+}
+
+function bindStatusSelects(root) {
+  root.querySelectorAll('[data-status-customer]').forEach(function (sel) {
+    sel.classList.add('badge', 'stage-' + sel.value, 'status-select');
+    sel.addEventListener('click', function (e) { e.stopPropagation(); });
+    sel.addEventListener('change', function () {
+      var id = sel.dataset.statusCustomer;
+      gsRun('updateCustomerStatus', id, sel.value).then(function () {
+        toast('อัปเดตสถานะแล้ว');
+        sel.className = 'badge stage-' + sel.value + ' status-select' + (sel.classList.contains('lg') ? ' lg' : '');
+        if (currentCustomerId === id) openCustomerDetail(id); else loadCustomerList();
+      }).catch(function (e) { toast(e.message, true); });
+    });
+  });
+}
+
 function customerRowHtml(c) {
+  var name = escapeHtml(c.Type === 'company' ? (c.CompanyName || c.Name) : c.Name);
   return '<tr data-open-customer="' + c.ID + '" style="cursor:pointer">' +
-    '<td>' + escapeHtml(c.Type === 'company' ? (c.CompanyName || c.Name) : c.Name) + '</td>' +
+    '<td>' + name + (c.reminderCount ? '<span class="bell" title="ต้องติดตาม ' + c.reminderCount + ' รายการ">🔔 ' + c.reminderCount + '</span>' : '') + '</td>' +
     '<td><span class="badge type-' + c.Type + '">' + (c.Type === 'company' ? 'บริษัท' : 'บุคคลธรรมดา') + '</span></td>' +
     '<td>' + countryLabel(c.Country) + '</td>' +
     '<td>' + escapeHtml(c.ContactChannel || '-') + '</td>' +
-    '<td><span class="badge stage-' + c.currentStage + '">' + stageLabel(c.currentStage) + '</span></td>' +
+    '<td><select data-status-customer="' + c.ID + '">' + statusOptionsHtml(c.currentStage) + '</select></td>' +
     '<td>' + escapeHtml(c.Phone || c.Email || '-') + '</td></tr>';
 }
 
@@ -487,9 +522,11 @@ function loadCustomerList() {
     type: document.getElementById('typeFilter').value,
   };
   gsRun('listCustomers', filter).then(function (list) {
-    document.getElementById('customerRows').innerHTML = list.length
+    var el = document.getElementById('customerRows');
+    el.innerHTML = list.length
       ? list.map(customerRowHtml).join('')
       : '<tr><td colspan="6"><div class="empty-state">ยังไม่มีลูกค้า</div></td></tr>';
+    bindStatusSelects(el);
   }).catch(function (e) { toast(e.message, true); });
 }
 
@@ -514,13 +551,43 @@ document.getElementById('addCustomerForm').addEventListener('submit', function (
 // ============ Customer detail ============
 function renderCustomerHeader(c) {
   var displayName = c.Type === 'company' ? (c.CompanyName || c.Name) : c.Name;
+  var status = c.Status || c.currentStage || 'new';
+
+  var docCounts = {};
+  c.documents.forEach(function (d) { docCounts[d.DocType] = (docCounts[d.DocType] || 0) + 1; });
+  var docSummary = meta.documentTypes.map(function (t) { return t.label + ' ' + (docCounts[t.value] || 0); }).join(' · ');
+  var pendingFollowups = c.followups.filter(function (f) { return !f.Done; }).length;
+
+  var banner = '';
+  if (c.reminders && c.reminders.length) {
+    banner = '<div class="alert-banner">🔔 <b>ต้องติดตามลูกค้ารายนี้:</b> ' +
+      c.reminders.map(function (r) { return escapeHtml(r.message); }).join(' &nbsp;•&nbsp; ') + '</div>';
+  }
+
   document.getElementById('customerHeader').innerHTML =
+    '<div class="header-top">' +
     '<h2 style="font-size:20px">' + escapeHtml(displayName) + '</h2>' +
-    '<div class="muted" style="margin-top:6px"><span class="badge type-' + c.Type + '">' + (c.Type === 'company' ? 'บริษัท' : 'บุคคลธรรมดา') + '</span>' +
-    ' &nbsp; ประเทศ: ' + countryLabel(c.Country) + ' &nbsp;|&nbsp; ช่องทาง: ' + escapeHtml(c.ContactChannel || '-') + '</div>' +
+    '<select data-status-customer="' + c.ID + '" class="lg">' + statusOptionsHtml(status) + '</select>' +
+    '<span class="badge type-' + c.Type + '">' + (c.Type === 'company' ? 'บริษัท' : 'บุคคลธรรมดา') + '</span>' +
+    '</div>' +
+    banner +
+    '<div class="muted" style="margin-top:10px">ประเทศ: ' + countryLabel(c.Country) + ' &nbsp;|&nbsp; ช่องทาง: ' + escapeHtml(c.ContactChannel || '-') + '</div>' +
     '<div class="muted" style="margin-top:4px">' + (c.ContactPerson ? 'ผู้ติดต่อ: ' + escapeHtml(c.ContactPerson) + ' | ' : '') +
     'โทร: ' + escapeHtml(c.Phone || '-') + ' | อีเมล: ' + escapeHtml(c.Email || '-') + ' | Line: ' + escapeHtml(c.LineID || '-') + '</div>' +
-    (c.Notes ? '<div class="muted" style="margin-top:10px">หมายเหตุ: ' + escapeHtml(c.Notes) + '</div>' : '');
+    (c.Notes ? '<div class="muted" style="margin-top:10px">หมายเหตุ: ' + escapeHtml(c.Notes) + '</div>' : '') +
+    '<div class="quick-info">' +
+    '<span data-jump="documents">📄 เอกสาร: ' + docSummary + '</span>' +
+    '<span data-jump="followups">📌 นัดติดตามที่ยังไม่เสร็จ: ' + pendingFollowups + ' รายการ</span>' +
+    '<span data-jump="deals">💼 ดีลทั้งหมด: ' + c.deals.length + ' รายการ</span>' +
+    '</div>';
+
+  bindStatusSelects(document.getElementById('customerHeader'));
+  document.getElementById('customerHeader').querySelectorAll('[data-jump]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var btn = document.querySelector('[data-dtab="' + el.dataset.jump + '"]');
+      if (btn) btn.click();
+    });
+  });
 }
 
 function renderDeals(c) {
