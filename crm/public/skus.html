@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>สินค้า (SKU) - Export CRM</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<div class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <div>
+      <h2 class="section-title" style="margin:0">รายการสินค้า (SKU ส่งออก)</h2>
+      <div class="muted" id="lastSync"></div>
+    </div>
+    <button class="btn" id="syncBtn">ซิงก์จาก Google Sheet</button>
+  </div>
+  <div class="table-wrap" style="margin-top:14px">
+    <table class="table">
+      <thead><tr><th>สินค้า (ไทย)</th><th>สินค้า (Eng)</th><th>หมวด</th><th>ราคา</th><th>น้ำหนัก</th></tr></thead>
+      <tbody id="skuRows"></tbody>
+    </table>
+  </div>
+</div>
+<script src="js/api.js"></script>
+<script>
+document.getElementById('nav').innerHTML = renderNav('skus.html');
+
+async function load() {
+  const data = await API.get('/api/skus');
+  document.getElementById('lastSync').textContent = data.lastSyncedAt
+    ? `ซิงก์ล่าสุด: ${new Date(data.lastSyncedAt).toLocaleString('th-TH')}`
+    : 'ยังไม่เคยซิงก์จาก Google Sheet (ใช้ข้อมูลตั้งต้น)';
+  document.getElementById('skuRows').innerHTML = data.items.map((s) => `
+    <tr>
+      <td>${escapeHtml(s.productNameTh)}</td>
+      <td>${escapeHtml(s.productNameEn)}</td>
+      <td>${escapeHtml(s.category)}</td>
+      <td>${fmtMoney(s.price)}</td>
+      <td>${escapeHtml(s.weight || '-')}</td>
+    </tr>`).join('');
+}
+
+document.getElementById('syncBtn').addEventListener('click', async () => {
+  try {
+    const r = await API.post('/api/skus/sync');
+    toast(`ซิงก์สำเร็จ ${r.count} รายการ`);
+    await load();
+  } catch (e) { toast(e.message, true); }
+});
+
+load().catch((e) => toast(e.message, true));
+</script>
+</body>
+</html>

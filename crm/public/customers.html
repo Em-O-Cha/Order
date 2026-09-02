@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ลูกค้า - Export CRM</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<div class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <h2 class="section-title" style="margin:0">รายชื่อลูกค้า</h2>
+    <button class="btn" id="addBtn">+ เพิ่มลูกค้าใหม่</button>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="ค้นหาชื่อ / เบอร์โทร / อีเมล">
+    <select id="countryFilter"><option value="">ทุกประเทศ</option></select>
+    <select id="typeFilter">
+      <option value="">ทุกประเภท</option>
+      <option value="individual">บุคคลธรรมดา</option>
+      <option value="company">บริษัท</option>
+    </select>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr>
+        <th>ชื่อ</th><th>ประเภท</th><th>ประเทศ</th><th>ช่องทาง</th><th>สถานะดีลล่าสุด</th><th>โทร/อีเมล</th>
+      </tr></thead>
+      <tbody id="customerRows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-overlay" id="addModal" hidden>
+  <div class="modal">
+    <h3>เพิ่มลูกค้าใหม่</h3>
+    <form id="addForm">
+      <div class="form-grid">
+        <div class="field">
+          <label>ประเภทลูกค้า</label>
+          <select name="type" required>
+            <option value="individual">บุคคลธรรมดา</option>
+            <option value="company">บริษัท</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>ชื่อผู้ติดต่อ / ชื่อลูกค้า</label>
+          <input name="name" required placeholder="ชื่อ-นามสกุล หรือชื่อผู้ติดต่อ">
+        </div>
+        <div class="field">
+          <label>ชื่อบริษัท (ถ้ามี)</label>
+          <input name="companyName" placeholder="ชื่อบริษัท">
+        </div>
+        <div class="field">
+          <label>เลขผู้เสียภาษี</label>
+          <input name="taxId">
+        </div>
+        <div class="field">
+          <label>เบอร์โทร</label>
+          <input name="phone">
+        </div>
+        <div class="field">
+          <label>อีเมล</label>
+          <input name="email" type="email">
+        </div>
+        <div class="field">
+          <label>Line ID</label>
+          <input name="lineId">
+        </div>
+        <div class="field">
+          <label>ประเทศที่จะส่งไปขาย</label>
+          <select name="country" id="countrySelect" required></select>
+        </div>
+        <div class="field">
+          <label>ช่องทางที่ลูกค้าติดต่อเข้ามา</label>
+          <select name="contactChannel" id="channelSelect"></select>
+        </div>
+        <div class="field">
+          <label>รายละเอียดช่องทาง (เช่น ชื่อบูธงานแสดงสินค้า)</label>
+          <input name="sourceDetail">
+        </div>
+        <div class="field full">
+          <label>ที่อยู่</label>
+          <textarea name="address" rows="2"></textarea>
+        </div>
+        <div class="field full">
+          <label>หมายเหตุ</label>
+          <textarea name="notes" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn outline" id="cancelAdd">ยกเลิก</button>
+        <button type="submit" class="btn">บันทึก</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/customers.js"></script>
+</body>
+</html>

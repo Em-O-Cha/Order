@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>รายละเอียดลูกค้า - Export CRM</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<div class="wrap">
+  <a href="customers.html" class="muted">&larr; กลับไปรายชื่อลูกค้า</a>
+  <div class="card" id="customerHeader" style="margin-top:10px"></div>
+
+  <div class="tabs">
+    <button data-tab="deals" class="active">ดีล/โอกาสการขาย</button>
+    <button data-tab="documents">เอกสาร</button>
+    <button data-tab="followups">ติดตามลูกค้า</button>
+    <button data-tab="ai">AI วิเคราะห์</button>
+    <button data-tab="edit">แก้ไขข้อมูล</button>
+  </div>
+
+  <div id="tab-deals" class="tab-panel">
+    <button class="btn sm" id="addDealBtn">+ เพิ่มดีล</button>
+    <div id="dealsList" style="margin-top:10px"></div>
+  </div>
+
+  <div id="tab-documents" class="tab-panel" hidden>
+    <button class="btn sm" id="addDocBtn">+ อัปโหลดเอกสาร</button>
+    <div id="docsList" style="margin-top:10px"></div>
+  </div>
+
+  <div id="tab-followups" class="tab-panel" hidden>
+    <button class="btn sm" id="addFollowupBtn">+ เพิ่มการติดตาม</button>
+    <div id="followupsList" style="margin-top:10px"></div>
+  </div>
+
+  <div id="tab-ai" class="tab-panel" hidden>
+    <button class="btn sm" id="runAiBtn">วิเคราะห์ด้วย AI ตอนนี้</button>
+    <div id="aiList" style="margin-top:10px"></div>
+  </div>
+
+  <div id="tab-edit" class="tab-panel" hidden>
+    <form id="editForm" class="card">
+      <div class="form-grid" id="editFormGrid"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn danger outline" id="deleteCustomerBtn">ลบลูกค้านี้</button>
+        <button type="submit" class="btn">บันทึกการแก้ไข</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Deal modal -->
+<div class="modal-overlay" id="dealModal" hidden>
+  <div class="modal">
+    <h3>เพิ่มดีล/โอกาสการขาย</h3>
+    <form id="dealForm">
+      <div class="form-grid">
+        <div class="field full"><label>ชื่อดีล</label><input name="title" required></div>
+        <div class="field">
+          <label>สถานะ</label>
+          <select name="stage" id="dealStageSelect"></select>
+        </div>
+        <div class="field">
+          <label>สินค้าที่สนใจ</label>
+          <input name="productInterest">
+        </div>
+        <div class="field"><label>มูลค่าประมาณ</label><input name="estimatedValue" type="number" step="0.01"></div>
+        <div class="field"><label>สกุลเงิน</label><input name="currency" value="THB"></div>
+        <div class="field"><label>วันที่คาดว่าจะปิดดีล</label><input name="expectedCloseDate" type="date"></div>
+        <div class="field"><label>วันจัดส่งที่คาดไว้</label><input name="deliveryDate" type="date"></div>
+        <div class="field full"><label>หมายเหตุ</label><textarea name="notes" rows="2"></textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn outline" data-close="dealModal">ยกเลิก</button>
+        <button type="submit" class="btn">บันทึก</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Document modal -->
+<div class="modal-overlay" id="docModal" hidden>
+  <div class="modal">
+    <h3>อัปโหลดเอกสาร</h3>
+    <form id="docForm">
+      <div class="form-grid">
+        <div class="field">
+          <label>ประเภทเอกสาร</label>
+          <select name="docType" id="docTypeSelect"></select>
+        </div>
+        <div class="field"><label>เลขที่เอกสาร</label><input name="docNumber"></div>
+        <div class="field"><label>วันที่ออกเอกสาร</label><input name="issueDate" type="date"></div>
+        <div class="field"><label>วันหมดอายุ (สำหรับใบเสนอราคา)</label><input name="expiryDate" type="date"></div>
+        <div class="field"><label>วันที่จัดส่ง (สำหรับ PO/ใบส่งของ)</label><input name="deliveryDate" type="date"></div>
+        <div class="field"><label>มูลค่า</label><input name="amount" type="number" step="0.01"></div>
+        <div class="field full"><label>ไฟล์เอกสาร</label><input name="file" type="file"></div>
+        <div class="field full"><label>หมายเหตุ</label><textarea name="notes" rows="2"></textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn outline" data-close="docModal">ยกเลิก</button>
+        <button type="submit" class="btn">อัปโหลด</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Followup modal -->
+<div class="modal-overlay" id="followupModal" hidden>
+  <div class="modal">
+    <h3>เพิ่มการติดตามลูกค้า</h3>
+    <form id="followupForm">
+      <div class="form-grid">
+        <div class="field">
+          <label>ประเภท</label>
+          <select name="type" id="followupTypeSelect"></select>
+        </div>
+        <div class="field"><label>วันที่นัดติดตามครั้งถัดไป</label><input name="followUpDate" type="date"></div>
+        <div class="field full"><label>บันทึก</label><textarea name="note" rows="2"></textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn outline" data-close="followupModal">ยกเลิก</button>
+        <button type="submit" class="btn">บันทึก</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/customer.js"></script>
+</body>
+</html>

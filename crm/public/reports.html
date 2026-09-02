@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>รายงาน - Export CRM</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<div class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <h2 class="section-title" style="margin:0">ประวัติรายงานประจำวัน</h2>
+    <button class="btn" id="sendReportBtn">สร้าง/ส่งรายงานตอนนี้</button>
+  </div>
+  <div id="reportList" style="margin-top:14px"></div>
+</div>
+<script src="js/api.js"></script>
+<script>
+document.getElementById('nav').innerHTML = renderNav('reports.html');
+
+async function load() {
+  const reports = await API.get('/api/reports');
+  const el = document.getElementById('reportList');
+  if (!reports.length) { el.innerHTML = '<div class="empty-state">ยังไม่มีรายงาน</div>'; return; }
+  el.innerHTML = reports.map((r) => `
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <b>รายงานวันที่ ${r.reportDate}</b>
+        <span class="muted">${r.sent ? '✅ ส่งอีเมลแล้ว' : '⚠️ ไม่ได้ส่งอีเมล (ยังไม่ตั้งค่า SMTP)'}</span>
+      </div>
+      <div class="muted" style="margin-top:6px">
+        ลูกค้าใหม่: ${r.summary.newToday} | ดีลที่เปิดอยู่: ${r.summary.openDeals} | ปิดสำเร็จวันนี้: ${r.summary.wonToday} | แจ้งเตือน: ${r.summary.reminders}
+      </div>
+      <details style="margin-top:8px"><summary class="muted">ดูรายละเอียดรายงาน</summary>${r.html}</details>
+    </div>`).join('');
+}
+
+document.getElementById('sendReportBtn').addEventListener('click', async () => {
+  try {
+    await API.post('/api/reports/send-now');
+    toast('สร้าง/ส่งรายงานแล้ว');
+    await load();
+  } catch (e) { toast(e.message, true); }
+});
+
+load().catch((e) => toast(e.message, true));
+</script>
+</body>
+</html>

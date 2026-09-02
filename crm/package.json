@@ -1,0 +1,24 @@
+{
+  "name": "export-crm",
+  "version": "1.0.0",
+  "description": "ระบบ CRM สำหรับติดตามลูกค้าส่งออกสินค้าไปต่างประเทศ",
+  "private": true,
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "seed:sku": "node scripts/seed-skus.js",
+    "sync:sheet": "node scripts/sync-sku-sheet.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "lowdb": "^1.0.0",
+    "multer": "^2.0.1",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.14",
+    "dotenv": "^16.4.5",
+    "uuid": "^9.0.1",
+    "googleapis": "^140.0.1",
+    "@anthropic-ai/sdk": "^0.27.3"
+  }
+}

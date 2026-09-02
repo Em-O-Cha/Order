@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>แดชบอร์ด - Export CRM</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div id="nav"></div>
+<div class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <h2 class="section-title" style="margin:0">ภาพรวมวันนี้</h2>
+    <button class="btn" id="sendReportBtn">ส่งรายงานประจำวันตอนนี้</button>
+  </div>
+
+  <div class="grid grid-4" id="kpis" style="margin-top:10px"></div>
+
+  <h2 class="section-title">รายการที่ต้องแจ้งเตือน</h2>
+  <div id="reminders"></div>
+
+  <div class="grid grid-2" style="margin-top:10px">
+    <div class="card">
+      <h2 class="section-title" style="margin-top:0">ลูกค้าตามประเทศเป้าหมาย</h2>
+      <canvas id="countryChart" height="220"></canvas>
+    </div>
+    <div class="card">
+      <h2 class="section-title" style="margin-top:0">ดีลตามสถานะ</h2>
+      <canvas id="stageChart" height="220"></canvas>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/dashboard.js"></script>
+</body>
+</html>
