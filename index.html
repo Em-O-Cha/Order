@@ -337,6 +337,7 @@ var COPY_ICON_URL_ = 'https://raw.githubusercontent.com/Em-O-Cha/Order/main/copy
 var currentIdToken = null;
 var categories = [];
 var variantList = [];
+var variantBySku = {}; // ⚡ perf — lookup แบบ O(1) แทนการวนหา variantList.find() ทุกครั้ง
 var cart = {};
 var paymentInfo = null;
 var selectedPayment = 'promptpay';
@@ -613,6 +614,11 @@ function loadProducts(){
 
       categories = r.categories || [];
       activeAutoCoupons = (r.coupons || []).filter(function(c){ return c.autoApply; });
+      // ⚡ perf — แยกคำ keyword ของแต่ละคูปองครั้งเดียวตอนโหลด แทนที่จะ split(',') ซ้ำทุกครั้งที่คำนวณ
+      // ราคาโปรโมชั่นของสินค้าแต่ละชิ้น (เดิมมันวนซ้ำ O(จำนวนสินค้า x จำนวนคูปอง) ทุกครั้งที่ renderCatalog)
+      activeAutoCoupons.forEach(function(c){
+        c._keywords = (c.restriction || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      });
       renderCatalog();
       showState('catalogState');
       renderMyPrivileges_({ success: true, results: r.privileges || [] });
@@ -631,7 +637,7 @@ function getBestPromoPrice_(skuName, price){
   activeAutoCoupons.forEach(function(c){
     if (c.type === 'bogo' || c.type === 'ship_percent' || c.type === 'ship_fixed') return;
     if (!c.restriction) return;
-    var keywords = c.restriction.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    var keywords = c._keywords || [];
     var matches = keywords.some(function(kw){ return skuName.indexOf(kw) !== -1; });
     if (!matches) return;
     var discounted = c.type === 'percent' ? price * (1 - c.value / 100) : Math.max(0, price - c.value);
@@ -658,6 +664,7 @@ function loadMyPrivileges(){
 
 function renderCatalog(){
   variantList = [];
+  variantBySku = {};
   var h = '';
   categories.forEach(function(cat){
     h += '<div class="cat-card">';
@@ -668,6 +675,7 @@ function renderCatalog(){
     cat.variants.forEach(function(v){
       var idx = variantList.length;
       variantList.push(v);
+      variantBySku[v.skuName] = v;
       var promoPrice = getBestPromoPrice_(v.skuName, v.price);
       var priceHtml = promoPrice !== null
         ? '<span style="text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="color:#c62828;font-weight:700">฿' + Math.round(promoPrice).toLocaleString('th-TH') + '</span>'
@@ -688,7 +696,7 @@ function renderCatalog(){
 function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function findVariant(skuName){
-  return variantList.find(function(v){ return v.skuName === skuName; });
+  return variantBySku[skuName];
 }
 
 function changeQty(idx, delta){
