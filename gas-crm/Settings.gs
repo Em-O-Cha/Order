@@ -1,0 +1,24 @@
+/**
+ * หน้าตั้งค่า - เก็บค่าต่าง ๆ ไว้ใน Script Properties (ไม่ต้องเข้าไปแก้โค้ด)
+ */
+
+var SETTINGS_KEYS = [
+  'REPORT_EMAILS', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL',
+  'SKU_SHEET_ID', 'SKU_SHEET_TAB',
+  'QUOTATION_EXPIRY_WARN_DAYS', 'DELIVERY_WARN_DAYS',
+];
+
+function getSettings() {
+  var out = {};
+  SETTINGS_KEYS.forEach(function (k) { out[k] = PROPS.getProperty(k) || ''; });
+  out.spreadsheetUrl = getOrCreateSpreadsheet().getUrl();
+  out.dailyTriggerActive = isDailyTriggerActive();
+  return out;
+}
+
+function saveSettings(settings) {
+  SETTINGS_KEYS.forEach(function (k) {
+    if (settings.hasOwnProperty(k)) PROPS.setProperty(k, String(settings[k] || ''));
+  });
+  return getSettings();
+}

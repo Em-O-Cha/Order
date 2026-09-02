@@ -1,0 +1,330 @@
+/**
+ * Export CRM - Google Apps Script version
+ * ระบบ CRM สำหรับติดตามลูกค้าที่ติดต่อขอนำสินค้าไปขายต่างประเทศ
+ * ฐานข้อมูล: Google Sheet (สร้างอัตโนมัติเมื่อรัน setup() ครั้งแรก)
+ */
+
+var PROPS = PropertiesService.getScriptProperties();
+
+var SHEETS = {
+  CUSTOMERS: 'Customers',
+  DEALS: 'Deals',
+  DOCUMENTS: 'Documents',
+  FOLLOWUPS: 'Followups',
+  AI_INSIGHTS: 'AIInsights',
+};
+
+var HEADERS = {
+  Customers: ['ID', 'Type', 'Name', 'CompanyName', 'TaxID', 'ContactPerson', 'Phone', 'Email', 'LineID', 'Address', 'Country', 'ContactChannel', 'SourceDetail', 'Notes', 'CreatedAt', 'UpdatedAt'],
+  Deals: ['ID', 'CustomerID', 'Title', 'Stage', 'ProductInterest', 'EstimatedValue', 'Currency', 'ExpectedCloseDate', 'DeliveryDate', 'Status', 'Notes', 'CreatedAt', 'UpdatedAt'],
+  Documents: ['ID', 'CustomerID', 'DealID', 'DocType', 'DocNumber', 'FileUrl', 'FileName', 'IssueDate', 'ExpiryDate', 'DeliveryDate', 'Amount', 'Currency', 'Notes', 'CreatedAt'],
+  Followups: ['ID', 'CustomerID', 'DealID', 'Type', 'Note', 'FollowUpDate', 'Done', 'CreatedAt'],
+  AIInsights: ['ID', 'CustomerID', 'Approach', 'RecommendedProducts', 'RiskLevel', 'NextAction', 'CreatedAt'],
+};
+
+// ===================== ตั้งค่าเริ่มต้น =====================
+
+/**
+ * รันฟังก์ชันนี้ 1 ครั้งจากเมนู Run เพื่อสร้าง Google Sheet ฐานข้อมูล
+ * (ครั้งแรกจะขอสิทธิ์การเข้าถึง กด Allow ได้เลย)
+ */
+function setup() {
+  var ss = getOrCreateSpreadsheet();
+  Object.keys(HEADERS).forEach(function (name) {
+    ensureSheet(ss, name, HEADERS[name]);
+  });
+  var defaultSheet = ss.getSheetByName('Sheet1');
+  if (defaultSheet && ss.getSheets().length > 1) ss.deleteSheet(defaultSheet);
+  Logger.log('ตั้งค่าเสร็จแล้ว เปิดฐานข้อมูลได้ที่: ' + ss.getUrl());
+  return ss.getUrl();
+}
+
+function getOrCreateSpreadsheet() {
+  var id = PROPS.getProperty('SPREADSHEET_ID');
+  if (id) {
+    try { return SpreadsheetApp.openById(id); } catch (e) { /* fallthrough */ }
+  }
+  var ss = SpreadsheetApp.create('Export CRM Database');
+  PROPS.setProperty('SPREADSHEET_ID', ss.getId());
+  return ss;
+}
+
+function ensureSheet(ss, name, headers) {
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) sheet = ss.insertSheet(name);
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function getSheet(name) {
+  var ss = getOrCreateSpreadsheet();
+  return ensureSheet(ss, name, HEADERS[name]);
+}
+
+// ===================== Sheet helper ทั่วไป =====================
+
+function sheetToObjects(sheet) {
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+  var headers = data[0];
+  var rows = [];
+  for (var r = 1; r < data.length; r++) {
+    var row = data[r];
+    if (row.every(function (c) { return c === '' || c === null; })) continue;
+    var obj = {};
+    headers.forEach(function (h, i) { obj[h] = row[i]; });
+    rows.push(obj);
+  }
+  return rows;
+}
+
+function appendObject(sheet, obj) {
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var row = headers.map(function (h) { return obj[h] !== undefined ? obj[h] : ''; });
+  sheet.appendRow(row);
+}
+
+function findRowById(sheet, id) {
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var idCol = headers.indexOf('ID');
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][idCol]) === String(id)) return r + 1; // 1-based sheet row
+  }
+  return -1;
+}
+
+function updateObjectById(sheetName, id, patch) {
+  var sheet = getSheet(sheetName);
+  var row = findRowById(sheet, id);
+  if (row === -1) throw new Error('ไม่พบข้อมูล id=' + id + ' ใน ' + sheetName);
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  headers.forEach(function (h, i) {
+    if (patch.hasOwnProperty(h)) sheet.getRange(row, i + 1).setValue(patch[h]);
+  });
+  return getObjectById(sheetName, id);
+}
+
+function deleteObjectById(sheetName, id) {
+  var sheet = getSheet(sheetName);
+  var row = findRowById(sheet, id);
+  if (row !== -1) sheet.deleteRow(row);
+  return { ok: true };
+}
+
+function getObjectById(sheetName, id) {
+  var list = sheetToObjects(getSheet(sheetName));
+  for (var i = 0; i < list.length; i++) if (String(list[i].ID) === String(id)) return list[i];
+  return null;
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function todayStr() {
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+// ===================== Web app entry =====================
+
+function doGet(e) {
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('Export CRM')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// ===================== Meta / dropdown =====================
+
+function getMeta() {
+  return {
+    countries: COUNTRIES,
+    channels: CONTACT_CHANNELS,
+    customerTypes: [
+      { value: 'individual', label: 'บุคคลธรรมดา' },
+      { value: 'company', label: 'บริษัท' },
+    ],
+    dealStages: DEAL_STAGES,
+    documentTypes: [
+      { value: 'quotation', label: 'ใบเสนอราคา' },
+      { value: 'po', label: 'ใบสั่งซื้อ (PO)' },
+      { value: 'delivery_note', label: 'ใบส่งของ' },
+      { value: 'receipt', label: 'ใบเสร็จ' },
+    ],
+    followupTypes: [
+      { value: 'call', label: 'โทรศัพท์' },
+      { value: 'email', label: 'อีเมล' },
+      { value: 'meeting', label: 'นัดพบ/ประชุม' },
+      { value: 'note', label: 'บันทึกอื่น ๆ' },
+    ],
+  };
+}
+
+var OPEN_STAGES = ['new', 'contacted', 'quoted', 'negotiating', 'po_received'];
+
+var DEAL_STAGES = [
+  { value: 'new', label: 'ลูกค้าใหม่' },
+  { value: 'contacted', label: 'ติดต่อแล้ว' },
+  { value: 'quoted', label: 'ส่งใบเสนอราคาแล้ว' },
+  { value: 'negotiating', label: 'กำลังเจรจา' },
+  { value: 'po_received', label: 'ได้รับ PO แล้ว' },
+  { value: 'won', label: 'ปิดการขายสำเร็จ' },
+  { value: 'lost', label: 'ปิดดีลไม่สำเร็จ' },
+];
+
+var CONTACT_CHANNELS = [
+  'Facebook', 'Line', 'Line Shop', 'Website', 'Email', 'โทรศัพท์',
+  'Shopee', 'TikTok', 'Google', '7-Eleven',
+  'Alibaba.com', 'LinkedIn', 'WhatsApp', 'WeChat',
+  'งานแสดงสินค้า (Trade Show)', 'เพื่อนแนะนำ (Referral)', 'อื่น ๆ',
+];
+
+// ===================== Customers =====================
+
+function listCustomers(filter) {
+  filter = filter || {};
+  var customers = sheetToObjects(getSheet(SHEETS.CUSTOMERS));
+  var deals = sheetToObjects(getSheet(SHEETS.DEALS));
+
+  if (filter.query) {
+    var q = filter.query.toLowerCase();
+    customers = customers.filter(function (c) {
+      return [c.Name, c.CompanyName, c.ContactPerson, c.Phone, c.Email].some(function (v) {
+        return v && String(v).toLowerCase().indexOf(q) !== -1;
+      });
+    });
+  }
+  if (filter.country) customers = customers.filter(function (c) { return c.Country === filter.country; });
+  if (filter.type) customers = customers.filter(function (c) { return c.Type === filter.type; });
+
+  customers.forEach(function (c) {
+    var cDeals = deals.filter(function (d) { return d.CustomerID === c.ID; });
+    var openDeal = cDeals.filter(function (d) { return d.Status === 'open'; })[0];
+    c.dealCount = cDeals.length;
+    c.currentStage = openDeal ? openDeal.Stage : (cDeals[0] ? cDeals[0].Stage : 'new');
+  });
+
+  customers.sort(function (a, b) { return (b.UpdatedAt || '').localeCompare(a.UpdatedAt || ''); });
+  return customers;
+}
+
+function createCustomer(data) {
+  if (!data.Type || !data.Name) throw new Error('ต้องระบุประเภทลูกค้าและชื่อ');
+  var obj = {
+    ID: Utilities.getUuid(),
+    Type: data.Type,
+    Name: data.Name,
+    CompanyName: data.CompanyName || '',
+    TaxID: data.TaxID || '',
+    ContactPerson: data.ContactPerson || '',
+    Phone: data.Phone || '',
+    Email: data.Email || '',
+    LineID: data.LineID || '',
+    Address: data.Address || '',
+    Country: data.Country || '',
+    ContactChannel: data.ContactChannel || '',
+    SourceDetail: data.SourceDetail || '',
+    Notes: data.Notes || '',
+    CreatedAt: nowIso(),
+    UpdatedAt: nowIso(),
+  };
+  appendObject(getSheet(SHEETS.CUSTOMERS), obj);
+  return obj;
+}
+
+function updateCustomer(id, data) {
+  data.UpdatedAt = nowIso();
+  return updateObjectById(SHEETS.CUSTOMERS, id, data);
+}
+
+function deleteCustomer(id) {
+  deleteObjectById(SHEETS.CUSTOMERS, id);
+  ['Deals', 'Documents', 'Followups', 'AIInsights'].forEach(function (sheetName) {
+    var sheet = getSheet(sheetName);
+    var rows = sheetToObjects(sheet);
+    rows.forEach(function (row) {
+      if (row.CustomerID === id) deleteObjectById(sheetName, row.ID);
+    });
+  });
+  return { ok: true };
+}
+
+function getCustomerDetail(id) {
+  var customer = getObjectById(SHEETS.CUSTOMERS, id);
+  if (!customer) throw new Error('ไม่พบลูกค้า');
+  var deals = sheetToObjects(getSheet(SHEETS.DEALS)).filter(function (d) { return d.CustomerID === id; });
+  var documents = sheetToObjects(getSheet(SHEETS.DOCUMENTS)).filter(function (d) { return d.CustomerID === id; });
+  var followups = sheetToObjects(getSheet(SHEETS.FOLLOWUPS)).filter(function (f) { return f.CustomerID === id; });
+  var insights = sheetToObjects(getSheet(SHEETS.AI_INSIGHTS)).filter(function (i) { return i.CustomerID === id; })
+    .sort(function (a, b) { return b.CreatedAt.localeCompare(a.CreatedAt); });
+  customer.deals = deals;
+  customer.documents = documents;
+  customer.followups = followups;
+  customer.insights = insights;
+  return customer;
+}
+
+// ===================== Deals =====================
+
+function createDeal(customerId, data) {
+  var customer = getObjectById(SHEETS.CUSTOMERS, customerId);
+  if (!customer) throw new Error('ไม่พบลูกค้า');
+  var obj = {
+    ID: Utilities.getUuid(),
+    CustomerID: customerId,
+    Title: data.Title || ('ดีล ' + customer.Name),
+    Stage: data.Stage || 'new',
+    ProductInterest: data.ProductInterest || '',
+    EstimatedValue: Number(data.EstimatedValue) || 0,
+    Currency: data.Currency || 'THB',
+    ExpectedCloseDate: data.ExpectedCloseDate || '',
+    DeliveryDate: data.DeliveryDate || '',
+    Status: data.Status || 'open',
+    Notes: data.Notes || '',
+    CreatedAt: nowIso(),
+    UpdatedAt: nowIso(),
+  };
+  appendObject(getSheet(SHEETS.DEALS), obj);
+  updateObjectById(SHEETS.CUSTOMERS, customerId, { UpdatedAt: nowIso() });
+  return obj;
+}
+
+function updateDeal(id, data) {
+  data.UpdatedAt = nowIso();
+  return updateObjectById(SHEETS.DEALS, id, data);
+}
+
+function deleteDeal(id) {
+  return deleteObjectById(SHEETS.DEALS, id);
+}
+
+// ===================== Followups =====================
+
+function createFollowup(customerId, data) {
+  var customer = getObjectById(SHEETS.CUSTOMERS, customerId);
+  if (!customer) throw new Error('ไม่พบลูกค้า');
+  var obj = {
+    ID: Utilities.getUuid(),
+    CustomerID: customerId,
+    DealID: data.DealID || '',
+    Type: data.Type || 'note',
+    Note: data.Note || '',
+    FollowUpDate: data.FollowUpDate || '',
+    Done: false,
+    CreatedAt: nowIso(),
+  };
+  appendObject(getSheet(SHEETS.FOLLOWUPS), obj);
+  return obj;
+}
+
+function updateFollowup(id, data) {
+  return updateObjectById(SHEETS.FOLLOWUPS, id, data);
+}
+
+function deleteFollowup(id) {
+  return deleteObjectById(SHEETS.FOLLOWUPS, id);
+}

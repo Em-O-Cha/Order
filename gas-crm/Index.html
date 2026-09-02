@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Export CRM</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&display=swap');
+:root{
+  --gd:#1a5c2a; --gm:#2e7d32; --gp:#e8f5e9; --gb:#c8e6c9;
+  --g6:#5f5555; --g8:#332525; --td:#302121;
+  --red:#a50d0c; --bg:#f5f5f5; --card:#fff;
+  --warn:#f9a825; --urgent:#e4504d; --overdue:#a50d0c;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Kanit',sans-serif;background:var(--bg);color:var(--td);min-height:100vh;}
+a{color:inherit;text-decoration:none;}
+.topbar{background:linear-gradient(135deg,#a50d0c,#d85d5c);color:#fff;padding:14px 20px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:50;}
+.topbar h1{font-size:18px;font-weight:600;margin-right:auto;}
+.topbar nav{display:flex;gap:6px;flex-wrap:wrap;}
+.topbar nav button{background:none;border:none;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;opacity:.9;cursor:pointer;font-family:'Kanit',sans-serif;}
+.topbar nav button.active,.topbar nav button:hover{background:rgba(255,255,255,.2);opacity:1;}
+.wrap{max-width:1100px;margin:0 auto;padding:20px;}
+.view{display:none;}
+.view.active{display:block;}
+.grid{display:grid;gap:16px;}
+.grid-4{grid-template-columns:repeat(4,1fr);}
+.grid-2{grid-template-columns:1fr 1fr;}
+@media (max-width:900px){.grid-4{grid-template-columns:repeat(2,1fr);} .grid-2{grid-template-columns:1fr;}}
+.card{background:var(--card);border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.06);padding:18px;}
+.kpi .label{font-size:12px;color:var(--g6);margin-bottom:6px;}
+.kpi .value{font-size:26px;font-weight:700;color:var(--gd);}
+.kpi .sub{font-size:11px;color:var(--g6);margin-top:4px;}
+h2.section-title{font-size:16px;font-weight:600;margin:22px 0 10px;color:var(--g8);}
+.btn{padding:10px 18px;border:none;border-radius:10px;background:var(--gm);color:#fff;
+  font-size:14px;font-weight:600;font-family:'Kanit',sans-serif;cursor:pointer;}
+.btn:hover{opacity:.92;}
+.btn.outline{background:#fff;color:var(--gm);border:1.5px solid var(--gm);}
+.btn.danger{background:var(--red);}
+.btn.sm{padding:6px 12px;font-size:12px;border-radius:8px;}
+.table{width:100%;border-collapse:collapse;font-size:13px;}
+.table th{text-align:left;padding:10px;background:var(--gp);color:var(--gd);font-weight:600;}
+.table td{padding:10px;border-bottom:1px solid #eee;}
+.table tr:hover td{background:#fafafa;}
+.table-wrap{overflow-x:auto;background:var(--card);border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.06);}
+.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;}
+.badge.stage-new{background:#e3f2fd;color:#1565c0;}
+.badge.stage-contacted{background:#fff3e0;color:#ef6c00;}
+.badge.stage-quoted{background:#f3e5f5;color:#7b1fa2;}
+.badge.stage-negotiating{background:#fffde7;color:#9e8b00;}
+.badge.stage-po_received{background:#e0f2f1;color:#00695c;}
+.badge.stage-won{background:var(--gp);color:var(--gd);}
+.badge.stage-lost{background:#ffebee;color:var(--red);}
+.badge.type-company{background:#e8eaf6;color:#3949ab;}
+.badge.type-individual{background:#fce4ec;color:#ad1457;}
+.severity-overdue{border-left:4px solid var(--overdue);}
+.severity-urgent{border-left:4px solid var(--urgent);}
+.severity-warning{border-left:4px solid var(--warn);}
+.reminder-item{padding:10px 14px;background:#fff;border-radius:8px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.06);
+  display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:13px;}
+.reminder-item .msg{font-weight:500;}
+.reminder-item .customer{font-size:12px;color:var(--g6);}
+.reminder-item .due{font-size:11px;color:var(--g6);white-space:nowrap;}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media (max-width:640px){.form-grid{grid-template-columns:1fr;}}
+.field{display:flex;flex-direction:column;gap:4px;}
+.field label{font-size:12px;color:var(--g6);font-weight:500;}
+.field input,.field select,.field textarea{padding:10px 12px;border:1.5px solid #ddd;border-radius:8px;font-family:'Kanit',sans-serif;font-size:14px;}
+.field.full{grid-column:1/-1;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;}
+.modal{background:#fff;border-radius:16px;max-width:640px;width:100%;max-height:90vh;overflow:auto;padding:22px;}
+.modal h3{margin-bottom:14px;font-size:16px;color:var(--g8);}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;}
+[hidden]{display:none!important;}
+.search-bar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.search-bar input,.search-bar select{padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-family:'Kanit',sans-serif;}
+.tabs{display:flex;gap:6px;margin:16px 0;border-bottom:1.5px solid #eee;flex-wrap:wrap;}
+.tabs button{background:none;border:none;padding:10px 16px;font-family:'Kanit',sans-serif;font-size:13px;
+  font-weight:500;color:var(--g6);cursor:pointer;border-bottom:2px solid transparent;}
+.tabs button.active{color:var(--gd);border-bottom-color:var(--gd);}
+.doc-item,.followup-item,.insight-item{background:#fafafa;border-radius:10px;padding:12px 14px;margin-bottom:8px;font-size:13px;}
+.doc-item a{color:var(--gm);font-weight:600;}
+.muted{color:var(--g6);font-size:12px;}
+.empty-state{text-align:center;padding:30px;color:var(--g6);font-size:13px;}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--g8);color:#fff;padding:12px 18px;border-radius:10px;
+  font-size:13px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.2);}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>🌏 Export CRM</h1>
+  <nav id="mainNav"></nav>
+</div>
+
+<div class="wrap">
+
+  <!-- ================= Dashboard ================= -->
+  <div class="view" id="view-dashboard">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <h2 class="section-title" style="margin:0">ภาพรวมวันนี้</h2>
+      <button class="btn" id="sendReportBtn">ส่งรายงานประจำวันตอนนี้</button>
+    </div>
+    <div class="grid grid-4" id="kpis" style="margin-top:10px"></div>
+    <h2 class="section-title">รายการที่ต้องแจ้งเตือน</h2>
+    <div id="reminders"></div>
+  </div>
+
+  <!-- ================= Customers ================= -->
+  <div class="view" id="view-customers">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <h2 class="section-title" style="margin:0">รายชื่อลูกค้า</h2>
+      <button class="btn" id="addCustomerBtn">+ เพิ่มลูกค้าใหม่</button>
+    </div>
+    <div class="search-bar">
+      <input type="text" id="searchInput" placeholder="ค้นหาชื่อ / เบอร์โทร / อีเมล">
+      <select id="countryFilter"><option value="">ทุกประเทศ</option></select>
+      <select id="typeFilter">
+        <option value="">ทุกประเภท</option>
+        <option value="individual">บุคคลธรรมดา</option>
+        <option value="company">บริษัท</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>ชื่อ</th><th>ประเภท</th><th>ประเทศ</th><th>ช่องทาง</th><th>สถานะ</th><th>โทร/อีเมล</th></tr></thead>
+        <tbody id="customerRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ================= Customer Detail ================= -->
+  <div class="view" id="view-detail">
+    <button class="btn sm outline" id="backToListBtn">&larr; กลับไปรายชื่อลูกค้า</button>
+    <div class="card" id="customerHeader" style="margin-top:10px"></div>
+    <div class="tabs">
+      <button data-dtab="deals" class="active">ดีล/โอกาสการขาย</button>
+      <button data-dtab="documents">เอกสาร</button>
+      <button data-dtab="followups">ติดตามลูกค้า</button>
+      <button data-dtab="ai">AI วิเคราะห์</button>
+      <button data-dtab="edit">แก้ไขข้อมูล</button>
+    </div>
+    <div id="dtab-deals" class="dtab-panel">
+      <button class="btn sm" id="addDealBtn">+ เพิ่มดีล</button>
+      <div id="dealsList" style="margin-top:10px"></div>
+    </div>
+    <div id="dtab-documents" class="dtab-panel" hidden>
+      <button class="btn sm" id="addDocBtn">+ อัปโหลดเอกสาร</button>
+      <div id="docsList" style="margin-top:10px"></div>
+    </div>
+    <div id="dtab-followups" class="dtab-panel" hidden>
+      <button class="btn sm" id="addFollowupBtn">+ เพิ่มการติดตาม</button>
+      <div id="followupsList" style="margin-top:10px"></div>
+    </div>
+    <div id="dtab-ai" class="dtab-panel" hidden>
+      <button class="btn sm" id="runAiBtn">วิเคราะห์ด้วย AI ตอนนี้</button>
+      <div id="aiList" style="margin-top:10px"></div>
+    </div>
+    <div id="dtab-edit" class="dtab-panel" hidden>
+      <form id="editForm" class="card">
+        <div class="form-grid" id="editFormGrid"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn danger outline" id="deleteCustomerBtn">ลบลูกค้านี้</button>
+          <button type="submit" class="btn">บันทึกการแก้ไข</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= Reports ================= -->
+  <div class="view" id="view-reports">
+    <h2 class="section-title" style="margin-top:0">ส่งรายงานประจำวัน</h2>
+    <div class="card">
+      <p class="muted">กดปุ่มนี้เพื่อส่งรายงานสรุปประจำวันไปยังอีเมลที่ตั้งไว้ในหน้า "ตั้งค่า" ทันที</p>
+      <button class="btn" id="sendReportBtn2" style="margin-top:10px">ส่งรายงานตอนนี้</button>
+      <div id="reportResult" style="margin-top:14px"></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin-bottom:8px">ส่งอัตโนมัติทุกวัน</h3>
+      <p class="muted" id="triggerStatus"></p>
+      <div class="field" style="max-width:200px;margin-top:10px">
+        <label>ส่งเวลา (ตามเวลาในเครื่อง 0-23 น.)</label>
+        <input type="number" id="triggerHour" min="0" max="23" value="8">
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button class="btn sm" id="enableTriggerBtn">เปิดใช้งาน</button>
+        <button class="btn sm outline" id="disableTriggerBtn">ปิดใช้งาน</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= SKUs ================= -->
+  <div class="view" id="view-skus">
+    <h2 class="section-title" style="margin-top:0">รายการสินค้า (SKU ส่งออก)</h2>
+    <p class="muted">อ่านข้อมูลสดจากชีต "Master Data Sales" โดยตรง (ตั้งค่า Sheet ID / ชื่อแท็บได้ที่หน้า "ตั้งค่า")</p>
+    <div class="table-wrap" style="margin-top:14px">
+      <table class="table">
+        <thead><tr><th>สินค้า (ไทย)</th><th>สินค้า (Eng)</th><th>หมวด</th><th>ราคา</th><th>น้ำหนัก</th></tr></thead>
+        <tbody id="skuRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ================= Settings ================= -->
+  <div class="view" id="view-settings">
+    <h2 class="section-title" style="margin-top:0">ตั้งค่า</h2>
+    <form id="settingsForm" class="card">
+      <div class="form-grid">
+        <div class="field full">
+          <label>อีเมลรับรายงาน/แจ้งเตือน (คั่นด้วย , ถ้ามีหลายคน)</label>
+          <input name="REPORT_EMAILS" placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label>Anthropic API Key (สำหรับ AI วิเคราะห์ลูกค้า)</label>
+          <input name="ANTHROPIC_API_KEY" type="password">
+        </div>
+        <div class="field">
+          <label>โมเดลที่ใช้</label>
+          <input name="ANTHROPIC_MODEL" placeholder="claude-sonnet-5">
+        </div>
+        <div class="field">
+          <label>Google Sheet ID ของข้อมูลสินค้า (Master Data Sales)</label>
+          <input name="SKU_SHEET_ID">
+        </div>
+        <div class="field">
+          <label>ชื่อแท็บสินค้า</label>
+          <input name="SKU_SHEET_TAB" placeholder="SKU ส่งออก">
+        </div>
+        <div class="field">
+          <label>แจ้งเตือนใบเสนอราคาก่อนหมดอายุ (วัน)</label>
+          <input name="QUOTATION_EXPIRY_WARN_DAYS" type="number">
+        </div>
+        <div class="field">
+          <label>แจ้งเตือนก่อนวันจัดส่ง (วัน)</label>
+          <input name="DELIVERY_WARN_DAYS" type="number">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn">บันทึกการตั้งค่า</button>
+      </div>
+    </form>
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin-bottom:8px">ฐานข้อมูล (Google Sheet)</h3>
+      <p class="muted">ข้อมูลลูกค้า/ดีล/เอกสารทั้งหมดเก็บอยู่ใน Google Sheet นี้ เปิดดู/แก้ไขตรง ๆ ได้เช่นกัน</p>
+      <a id="spreadsheetLink" href="#" target="_blank" class="btn sm outline" style="display:inline-block;margin-top:10px">เปิด Google Sheet ฐานข้อมูล</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ Modals ============ -->
+<div class="modal-overlay" id="addCustomerModal" hidden>
+  <div class="modal">
+    <h3>เพิ่มลูกค้าใหม่</h3>
+    <form id="addCustomerForm">
+      <div class="form-grid">
+        <div class="field">
+          <label>ประเภทลูกค้า</label>
+          <select name="Type" required>
+            <option value="individual">บุคคลธรรมดา</option>
+            <option value="company">บริษัท</option>
+          </select>
+        </div>
+        <div class="field"><label>ชื่อผู้ติดต่อ / ชื่อลูกค้า</label><input name="Name" required></div>
+        <div class="field"><label>ชื่อบริษัท (ถ้ามี)</label><input name="CompanyName"></div>
+        <div class="field"><label>เลขผู้เสียภาษี</label><input name="TaxID"></div>
+        <div class="field"><label>เบอร์โทร</label><input name="Phone"></div>
+        <div class="field"><label>อีเมล</label><input name="Email" type="email"></div>
+        <div class="field"><label>Line ID</label><input name="LineID"></div>
+        <div class="field"><label>ประเทศที่จะส่งไปขาย</label><select name="Country" id="countrySelect" required></select></div>
+        <div class="field"><label>ช่องทางที่ลูกค้าติดต่อเข้ามา</label><select name="ContactChannel" id="channelSelect"></select></div>
+        <div class="field"><label>รายละเอียดช่องทาง</label><input name="SourceDetail"></div>
+        <div class="field full"><label>ที่อยู่</label><textarea name="Address" rows="2"></textarea></div>
+        <div class="field full"><label>หมายเหตุ</label><textarea name="Notes" rows="2"></textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn outline" data-close="addCustomerModal">ยกเลิก</button>
+        <button type="submit" class="btn">บันทึก</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dealModal" hidden>
+  <div class="modal">
+    <h3>เพิ่มดีล/โอกาสการขาย</h3>
+    <form id="dealForm">
+      <div class="form-grid">
+        <div class="field full"><label>ชื่อดีล</label><input name="Title" required></div>
+        <div class="field"><label>สถานะ</label><select name="Stage" id="dealStageSelect"></select></div>
+        <div class="field"><label>สินค้าที่สนใจ</label><input name="ProductInterest"></div>
+        <div class="field"><label>มูลค่าประมาณ</label><input name="EstimatedValue" type="number" step="0.01"></div>
+        <div class="field"><label>สกุลเงิน</label><input name="Currency" value="THB"></div>
+        <div class="field"><label>วันที่คาดว่าจะปิดดีล</label><input name="ExpectedCloseDate" type="date"></div>
+        <div class="field"><label>วันจัดส่งที่คาดไว้</label><input name="DeliveryDate" type="date"></div>
+        <div class="field full"><label>หมายเหตุ</label><textarea name="Notes" rows="2"></textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn outline" data-close="dealModal">ยกเลิก</button>
+        <button type="submit" class="btn">บันทึก</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="docModal" hidden>
+  <div class="modal">
+    <h3>อัปโหลดเอกสาร</h3>
+    <form id="docForm">
+      <div class="form-grid">
+        <div class="field"><label>ประเภทเอกสาร</label><select name="DocType" id="docTypeSelect"></select></div>
+        <div class="field"><label>เลขที่เอกสาร</label><input name="DocNumber"></div>
+        <div class="field"><label>วันที่ออกเอกสาร</label><input name="IssueDate" type="date"></div>
+        <div class="field"><label>วันหมดอายุ (สำหรับใบเสนอราคา)</label><input name="ExpiryDate" type="date"></div>
+        <div class="field"><label>วันที่จัดส่ง (สำหรับ PO/ใบส่งของ)</label><input name="DeliveryDate" type="date"></div>
+        <div class="field"><label>มูลค่า</label><input name="Amount" type="number" step="0.01"></div>
+        <div class="field full"><label>ไฟล์เอกสาร</label><input type="file" id="docFileInput"></div>
+        <div class="field full"><label>หมายเหตุ</label><textarea name="Notes" rows="2"></textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn outline" data-close="docModal">ยกเลิก</button>
+        <button type="submit" class="btn" id="docSubmitBtn">อัปโหลด</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="followupModal" hidden>
+  <div class="modal">
+    <h3>เพิ่มการติดตามลูกค้า</h3>
+    <form id="followupForm">
+      <div class="form-grid">
+        <div class="field"><label>ประเภท</label><select name="Type" id="followupTypeSelect"></select></div>
+        <div class="field"><label>วันที่นัดติดตามครั้งถัดไป</label><input name="FollowUpDate" type="date"></div>
+        <div class="field full"><label>บันทึก</label><textarea name="Note" rows="2"></textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn outline" data-close="followupModal">ยกเลิก</button>
+        <button type="submit" class="btn">บันทึก</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// ============ ตัวช่วยเรียกฟังก์ชันฝั่งเซิร์ฟเวอร์ ============
+function gsRun(fnName) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function (resolve, reject) {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(function (err) { reject(new Error(err.message || String(err))); })
+      .apiCall(fnName, args);
+  });
+}
+
+function toast(msg, isError) {
+  var el = document.createElement('div');
+  el.className = 'toast';
+  if (isError) el.style.background = '#a50d0c';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(function () { el.remove(); }, 3000);
+}
+
+function escapeHtml(str) {
+  return String(str || '').replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function fmtMoney(n) { return Number(n || 0).toLocaleString('th-TH'); }
+function fmtDate(d) { return d ? String(d).slice(0, 10) : '-'; }
+
+var meta = null;
+var currentCustomerId = null;
+
+function stageLabel(stage) {
+  var found = (meta.dealStages || []).find(function (s) { return s.value === stage; });
+  return found ? found.label : stage;
+}
+function docTypeLabel(t) {
+  var found = (meta.documentTypes || []).find(function (d) { return d.value === t; });
+  return found ? found.label : t;
+}
+function followupTypeLabel(t) {
+  var found = (meta.followupTypes || []).find(function (f) { return f.value === t; });
+  return found ? found.label : t;
+}
+function countryLabel(code) {
+  var c = (meta.countries || []).find(function (x) { return x.code === code; });
+  return c ? c.th : (code || '-');
+}
+
+// ============ Navigation ============
+var VIEWS = [
+  { id: 'dashboard', label: 'แดชบอร์ด' },
+  { id: 'customers', label: 'ลูกค้า' },
+  { id: 'reports', label: 'รายงาน' },
+  { id: 'skus', label: 'สินค้า (SKU)' },
+  { id: 'settings', label: 'ตั้งค่า' },
+];
+
+function renderNav(active) {
+  document.getElementById('mainNav').innerHTML = VIEWS.map(function (v) {
+    return '<button data-view="' + v.id + '" class="' + (active === v.id ? 'active' : '') + '">' + v.label + '</button>';
+  }).join('');
+}
+
+function showView(id) {
+  document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+  document.getElementById('view-' + id).classList.add('active');
+  document.querySelectorAll('#mainNav button').forEach(function (b) { b.classList.toggle('active', b.dataset.view === id); });
+  if (id === 'dashboard') loadDashboard();
+  if (id === 'customers') loadCustomerList();
+  if (id === 'reports') loadReportsView();
+  if (id === 'skus') loadSkus();
+  if (id === 'settings') loadSettings();
+}
+
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-view]');
+  if (btn) showView(btn.dataset.view);
+});
+
+// ============ Dashboard ============
+function renderReminders(reminders) {
+  var el = document.getElementById('reminders');
+  if (!reminders.length) { el.innerHTML = '<div class="empty-state">ไม่มีรายการแจ้งเตือนตอนนี้ 🎉</div>'; return; }
+  el.innerHTML = reminders.map(function (r) {
+    return '<div class="reminder-item severity-' + r.severity + '">' +
+      '<div><div class="msg">' + escapeHtml(r.message) + '</div>' +
+      '<div class="customer"><a href="#" data-open-customer="' + r.customerId + '">' + escapeHtml(r.customerName) + '</a></div></div>' +
+      '<div class="due">' + fmtDate(r.dueDate) + '</div></div>';
+  }).join('');
+}
+
+function renderKpis(data) {
+  var items = [
+    { label: 'ลูกค้าทั้งหมด', value: data.totals.customers, sub: 'ใหม่ 30 วันล่าสุด: ' + data.totals.newCustomersLast30 },
+    { label: 'ดีลที่กำลังเปิด', value: data.totals.openDeals, sub: 'มูลค่ารวม ' + fmtMoney(data.revenue.pipelineValue) + ' บาท' },
+    { label: 'ปิดการขายสำเร็จ', value: data.totals.wonDeals, sub: 'เดือนนี้ ' + data.revenue.wonThisMonthCount + ' ดีล / ' + fmtMoney(data.revenue.revenueThisMonth) + ' บาท' },
+    { label: 'เอกสารทั้งหมด', value: data.totals.documents, sub: 'แจ้งเตือน ' + data.reminders.length + ' รายการ' },
+  ];
+  document.getElementById('kpis').innerHTML = items.map(function (i) {
+    return '<div class="card kpi"><div class="label">' + i.label + '</div><div class="value">' + i.value + '</div><div class="sub">' + i.sub + '</div></div>';
+  }).join('');
+}
+
+function loadDashboard() {
+  gsRun('getDashboard').then(function (data) {
+    renderKpis(data);
+    renderReminders(data.reminders);
+  }).catch(function (e) { toast(e.message, true); });
+}
+
+document.getElementById('sendReportBtn').addEventListener('click', function () {
+  toast('กำลังส่งรายงาน...');
+  gsRun('sendDailyReportNow').then(function (r) {
+    toast(r.sent ? 'ส่งรายงานแล้ว' : 'สร้างรายงานแล้ว แต่ยังไม่ได้ตั้งอีเมลผู้รับ (ไปตั้งค่าได้ที่หน้าตั้งค่า)');
+  }).catch(function (e) { toast(e.message, true); });
+});
+
+document.addEventListener('click', function (e) {
+  var link = e.target.closest('[data-open-customer]');
+  if (link) { e.preventDefault(); openCustomerDetail(link.dataset.openCustomer); }
+});
+
+// ============ Customers list ============
+function customerRowHtml(c) {
+  return '<tr data-open-customer="' + c.ID + '" style="cursor:pointer">' +
+    '<td>' + escapeHtml(c.Type === 'company' ? (c.CompanyName || c.Name) : c.Name) + '</td>' +
+    '<td><span class="badge type-' + c.Type + '">' + (c.Type === 'company' ? 'บริษัท' : 'บุคคลธรรมดา') + '</span></td>' +
+    '<td>' + countryLabel(c.Country) + '</td>' +
+    '<td>' + escapeHtml(c.ContactChannel || '-') + '</td>' +
+    '<td><span class="badge stage-' + c.currentStage + '">' + stageLabel(c.currentStage) + '</span></td>' +
+    '<td>' + escapeHtml(c.Phone || c.Email || '-') + '</td></tr>';
+}
+
+function loadCustomerList() {
+  var filter = {
+    query: document.getElementById('searchInput').value.trim(),
+    country: document.getElementById('countryFilter').value,
+    type: document.getElementById('typeFilter').value,
+  };
+  gsRun('listCustomers', filter).then(function (list) {
+    document.getElementById('customerRows').innerHTML = list.length
+      ? list.map(customerRowHtml).join('')
+      : '<tr><td colspan="6"><div class="empty-state">ยังไม่มีลูกค้า</div></td></tr>';
+  }).catch(function (e) { toast(e.message, true); });
+}
+
+['searchInput', 'countryFilter', 'typeFilter'].forEach(function (id) {
+  document.getElementById(id).addEventListener('input', loadCustomerList);
+  document.getElementById(id).addEventListener('change', loadCustomerList);
+});
+
+document.getElementById('addCustomerBtn').addEventListener('click', function () { document.getElementById('addCustomerModal').hidden = false; });
+
+document.getElementById('addCustomerForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var data = Object.fromEntries(new FormData(e.target).entries());
+  gsRun('createCustomer', data).then(function (created) {
+    document.getElementById('addCustomerModal').hidden = true;
+    e.target.reset();
+    toast('เพิ่มลูกค้าเรียบร้อย');
+    openCustomerDetail(created.ID);
+  }).catch(function (err) { toast(err.message, true); });
+});
+
+// ============ Customer detail ============
+function renderCustomerHeader(c) {
+  var displayName = c.Type === 'company' ? (c.CompanyName || c.Name) : c.Name;
+  document.getElementById('customerHeader').innerHTML =
+    '<h2 style="font-size:20px">' + escapeHtml(displayName) + '</h2>' +
+    '<div class="muted" style="margin-top:6px"><span class="badge type-' + c.Type + '">' + (c.Type === 'company' ? 'บริษัท' : 'บุคคลธรรมดา') + '</span>' +
+    ' &nbsp; ประเทศ: ' + countryLabel(c.Country) + ' &nbsp;|&nbsp; ช่องทาง: ' + escapeHtml(c.ContactChannel || '-') + '</div>' +
+    '<div class="muted" style="margin-top:4px">' + (c.ContactPerson ? 'ผู้ติดต่อ: ' + escapeHtml(c.ContactPerson) + ' | ' : '') +
+    'โทร: ' + escapeHtml(c.Phone || '-') + ' | อีเมล: ' + escapeHtml(c.Email || '-') + ' | Line: ' + escapeHtml(c.LineID || '-') + '</div>' +
+    (c.Notes ? '<div class="muted" style="margin-top:10px">หมายเหตุ: ' + escapeHtml(c.Notes) + '</div>' : '');
+}
+
+function renderDeals(c) {
+  var el = document.getElementById('dealsList');
+  if (!c.deals.length) { el.innerHTML = '<div class="empty-state">ยังไม่มีดีล</div>'; return; }
+  el.innerHTML = c.deals.map(function (d) {
+    return '<div class="doc-item">' +
+      '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;"><b>' + escapeHtml(d.Title) + '</b>' +
+      '<span class="badge stage-' + d.Stage + '">' + stageLabel(d.Stage) + '</span></div>' +
+      '<div class="muted" style="margin-top:6px">สินค้าที่สนใจ: ' + escapeHtml(d.ProductInterest || '-') + ' | มูลค่า: ' + fmtMoney(d.EstimatedValue) + ' ' + escapeHtml(d.Currency) +
+      ' | คาดปิดดีล: ' + fmtDate(d.ExpectedCloseDate) + ' | วันจัดส่ง: ' + fmtDate(d.DeliveryDate) + '</div>' +
+      '<div style="margin-top:8px;display:flex;gap:8px;">' +
+      '<select data-deal-status="' + d.ID + '">' +
+      '<option value="open"' + (d.Status === 'open' ? ' selected' : '') + '>เปิดอยู่</option>' +
+      '<option value="won"' + (d.Status === 'won' ? ' selected' : '') + '>ปิดสำเร็จ</option>' +
+      '<option value="lost"' + (d.Status === 'lost' ? ' selected' : '') + '>ปิดไม่สำเร็จ</option>' +
+      '</select><button class="btn sm danger outline" data-del-deal="' + d.ID + '">ลบ</button></div></div>';
+  }).join('');
+
+  el.querySelectorAll('[data-deal-status]').forEach(function (sel) {
+    sel.addEventListener('change', function () {
+      gsRun('updateDeal', sel.dataset.dealStatus, { Status: sel.value }).then(function () {
+        toast('อัปเดตสถานะดีลแล้ว');
+        openCustomerDetail(currentCustomerId);
+      }).catch(function (e) { toast(e.message, true); });
+    });
+  });
+  el.querySelectorAll('[data-del-deal]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (!confirm('ลบดีลนี้?')) return;
+      gsRun('deleteDeal', btn.dataset.delDeal).then(function () { openCustomerDetail(currentCustomerId); }).catch(function (e) { toast(e.message, true); });
+    });
+  });
+}
+
+function renderDocs(c) {
+  var el = document.getElementById('docsList');
+  if (!c.documents.length) { el.innerHTML = '<div class="empty-state">ยังไม่มีเอกสาร</div>'; return; }
+  el.innerHTML = c.documents.map(function (d) {
+    return '<div class="doc-item"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+      '<b>' + docTypeLabel(d.DocType) + (d.DocNumber ? ' #' + escapeHtml(d.DocNumber) : '') + '</b>' +
+      '<button class="btn sm danger outline" data-del-doc="' + d.ID + '">ลบ</button></div>' +
+      '<div class="muted" style="margin-top:6px">วันที่ออก: ' + fmtDate(d.IssueDate) +
+      (d.ExpiryDate ? ' | หมดอายุ: ' + fmtDate(d.ExpiryDate) : '') +
+      (d.DeliveryDate ? ' | วันจัดส่ง: ' + fmtDate(d.DeliveryDate) : '') +
+      (d.Amount ? ' | มูลค่า: ' + fmtMoney(d.Amount) + ' ' + escapeHtml(d.Currency) : '') + '</div>' +
+      (d.FileUrl ? '<a href="' + d.FileUrl + '" target="_blank">📎 ' + escapeHtml(d.FileName || 'เปิดไฟล์') + '</a>' : '') + '</div>';
+  }).join('');
+  el.querySelectorAll('[data-del-doc]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (!confirm('ลบเอกสารนี้?')) return;
+      gsRun('deleteDocument', btn.dataset.delDoc).then(function () { openCustomerDetail(currentCustomerId); }).catch(function (e) { toast(e.message, true); });
+    });
+  });
+}
+
+function renderFollowups(c) {
+  var el = document.getElementById('followupsList');
+  if (!c.followups.length) { el.innerHTML = '<div class="empty-state">ยังไม่มีประวัติการติดตาม</div>'; return; }
+  var sorted = c.followups.slice().sort(function (a, b) { return String(b.FollowUpDate || '').localeCompare(String(a.FollowUpDate || '')); });
+  el.innerHTML = sorted.map(function (f) {
+    return '<div class="followup-item"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+      '<b>' + followupTypeLabel(f.Type) + '</b>' +
+      '<label class="muted"><input type="checkbox" data-done="' + f.ID + '"' + (f.Done ? ' checked' : '') + '> เสร็จแล้ว</label></div>' +
+      '<div style="margin-top:4px">' + escapeHtml(f.Note || '') + '</div>' +
+      '<div class="muted" style="margin-top:4px">นัดติดตาม: ' + fmtDate(f.FollowUpDate) + '</div></div>';
+  }).join('');
+  el.querySelectorAll('[data-done]').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      gsRun('updateFollowup', cb.dataset.done, { Done: cb.checked }).then(function () { openCustomerDetail(currentCustomerId); }).catch(function (e) { toast(e.message, true); });
+    });
+  });
+}
+
+function renderAi(c) {
+  var el = document.getElementById('aiList');
+  if (!c.insights.length) { el.innerHTML = '<div class="empty-state">ยังไม่มีผลวิเคราะห์ AI - กดปุ่มด้านบนเพื่อวิเคราะห์</div>'; return; }
+  el.innerHTML = c.insights.map(function (i) {
+    var products = [];
+    try { products = JSON.parse(i.RecommendedProducts || '[]'); } catch (e) {}
+    return '<div class="insight-item"><div class="muted">' + new Date(i.CreatedAt).toLocaleString('th-TH') +
+      (i.RiskLevel ? ' | ความเสี่ยง: ' + escapeHtml(i.RiskLevel) : '') + '</div>' +
+      '<div style="margin-top:6px"><b>แนวทางการนำเสนอ:</b> ' + escapeHtml(i.Approach || '-') + '</div>' +
+      (products.length ? '<div style="margin-top:6px"><b>สินค้าที่ควรเสนอ:</b> ' + products.map(escapeHtml).join(', ') + '</div>' : '') +
+      (i.NextAction ? '<div style="margin-top:6px"><b>ขั้นตอนถัดไป:</b> ' + escapeHtml(i.NextAction) + '</div>' : '') + '</div>';
+  }).join('');
+}
+
+function renderEditForm(c) {
+  var countryOptions = meta.countries.map(function (x) { return '<option value="' + x.code + '"' + (c.Country === x.code ? ' selected' : '') + '>' + x.th + '</option>'; }).join('');
+  var channelOptions = meta.channels.map(function (x) { return '<option value="' + x + '"' + (c.ContactChannel === x ? ' selected' : '') + '>' + x + '</option>'; }).join('');
+  document.getElementById('editFormGrid').innerHTML =
+    '<div class="field"><label>ประเภทลูกค้า</label><select name="Type">' +
+    '<option value="individual"' + (c.Type === 'individual' ? ' selected' : '') + '>บุคคลธรรมดา</option>' +
+    '<option value="company"' + (c.Type === 'company' ? ' selected' : '') + '>บริษัท</option></select></div>' +
+    '<div class="field"><label>ชื่อ</label><input name="Name" value="' + escapeHtml(c.Name) + '"></div>' +
+    '<div class="field"><label>ชื่อบริษัท</label><input name="CompanyName" value="' + escapeHtml(c.CompanyName || '') + '"></div>' +
+    '<div class="field"><label>เลขผู้เสียภาษี</label><input name="TaxID" value="' + escapeHtml(c.TaxID || '') + '"></div>' +
+    '<div class="field"><label>ผู้ติดต่อ</label><input name="ContactPerson" value="' + escapeHtml(c.ContactPerson || '') + '"></div>' +
+    '<div class="field"><label>เบอร์โทร</label><input name="Phone" value="' + escapeHtml(c.Phone || '') + '"></div>' +
+    '<div class="field"><label>อีเมล</label><input name="Email" value="' + escapeHtml(c.Email || '') + '"></div>' +
+    '<div class="field"><label>Line ID</label><input name="LineID" value="' + escapeHtml(c.LineID || '') + '"></div>' +
+    '<div class="field"><label>ประเทศ</label><select name="Country">' + countryOptions + '</select></div>' +
+    '<div class="field"><label>ช่องทาง</label><select name="ContactChannel">' + channelOptions + '</select></div>' +
+    '<div class="field full"><label>ที่อยู่</label><textarea name="Address" rows="2">' + escapeHtml(c.Address || '') + '</textarea></div>' +
+    '<div class="field full"><label>หมายเหตุ</label><textarea name="Notes" rows="2">' + escapeHtml(c.Notes || '') + '</textarea></div>';
+}
+
+function openCustomerDetail(id) {
+  currentCustomerId = id;
+  showView('detail');
+  gsRun('getCustomerDetail', id).then(function (c) {
+    renderCustomerHeader(c);
+    renderDeals(c);
+    renderDocs(c);
+    renderFollowups(c);
+    renderAi(c);
+    renderEditForm(c);
+  }).catch(function (e) { toast(e.message, true); });
+}
+
+document.getElementById('backToListBtn').addEventListener('click', function () { showView('customers'); });
+
+document.querySelectorAll('[data-dtab]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('[data-dtab]').forEach(function (b) { b.classList.remove('active'); });
+    document.querySelectorAll('.dtab-panel').forEach(function (p) { p.hidden = true; });
+    btn.classList.add('active');
+    document.getElementById('dtab-' + btn.dataset.dtab).hidden = false;
+  });
+});
+
+document.querySelectorAll('[data-close]').forEach(function (btn) {
+  btn.addEventListener('click', function () { document.getElementById(btn.dataset.close).hidden = true; });
+});
+
+document.getElementById('addDealBtn').addEventListener('click', function () { document.getElementById('dealModal').hidden = false; });
+document.getElementById('addDocBtn').addEventListener('click', function () { document.getElementById('docModal').hidden = false; });
+document.getElementById('addFollowupBtn').addEventListener('click', function () { document.getElementById('followupModal').hidden = false; });
+
+document.getElementById('dealForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var data = Object.fromEntries(new FormData(e.target).entries());
+  gsRun('createDeal', currentCustomerId, data).then(function () {
+    document.getElementById('dealModal').hidden = true;
+    e.target.reset();
+    toast('เพิ่มดีลแล้ว');
+    openCustomerDetail(currentCustomerId);
+  }).catch(function (err) { toast(err.message, true); });
+});
+
+document.getElementById('docForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var data = Object.fromEntries(new FormData(e.target).entries());
+  data.CustomerID = currentCustomerId;
+  var fileInput = document.getElementById('docFileInput');
+  var submitBtn = document.getElementById('docSubmitBtn');
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<span class="spinner"></span> กำลังอัปโหลด...';
+
+  function finish() {
+    gsRun('uploadDocument', data).then(function () {
+      document.getElementById('docModal').hidden = true;
+      e.target.reset();
+      toast('อัปโหลดเอกสารแล้ว');
+      openCustomerDetail(currentCustomerId);
+    }).catch(function (err) { toast(err.message, true); })
+    .finally(function () { submitBtn.disabled = false; submitBtn.textContent = 'อัปโหลด'; });
+  }
+
+  if (fileInput.files && fileInput.files[0]) {
+    var file = fileInput.files[0];
+    var reader = new FileReader();
+    reader.onload = function () {
+      data.fileBase64 = reader.result.split(',')[1];
+      data.fileName = file.name;
+      data.mimeType = file.type;
+      finish();
+    };
+    reader.readAsDataURL(file);
+  } else {
+    finish();
+  }
+});
+
+document.getElementById('followupForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var data = Object.fromEntries(new FormData(e.target).entries());
+  gsRun('createFollowup', currentCustomerId, data).then(function () {
+    document.getElementById('followupModal').hidden = true;
+    e.target.reset();
+    toast('เพิ่มการติดตามแล้ว');
+    openCustomerDetail(currentCustomerId);
+  }).catch(function (err) { toast(err.message, true); });
+});
+
+document.getElementById('runAiBtn').addEventListener('click', function () {
+  toast('กำลังวิเคราะห์ด้วย AI...');
+  gsRun('analyzeCustomerAI', currentCustomerId).then(function () {
+    toast('วิเคราะห์เสร็จแล้ว');
+    openCustomerDetail(currentCustomerId);
+  }).catch(function (err) { toast(err.message, true); });
+});
+
+document.getElementById('editForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var data = Object.fromEntries(new FormData(e.target).entries());
+  gsRun('updateCustomer', currentCustomerId, data).then(function () {
+    toast('บันทึกการแก้ไขแล้ว');
+    openCustomerDetail(currentCustomerId);
+  }).catch(function (err) { toast(err.message, true); });
+});
+
+document.getElementById('deleteCustomerBtn').addEventListener('click', function () {
+  if (!confirm('ลบลูกค้ารายนี้และข้อมูลที่เกี่ยวข้องทั้งหมด?')) return;
+  gsRun('deleteCustomer', currentCustomerId).then(function () {
+    toast('ลบลูกค้าแล้ว');
+    showView('customers');
+  }).catch(function (err) { toast(err.message, true); });
+});
+
+// ============ Reports ============
+function loadReportsView() {
+  gsRun('getSettings').then(function (s) {
+    document.getElementById('triggerStatus').textContent = s.dailyTriggerActive
+      ? '✅ เปิดใช้งานส่งรายงานอัตโนมัติทุกวันอยู่'
+      : '⚠️ ยังไม่ได้เปิดใช้งานส่งรายงานอัตโนมัติ';
+  });
+}
+function sendReport() {
+  var el = document.getElementById('reportResult');
+  el.textContent = 'กำลังส่ง...';
+  gsRun('sendDailyReportNow').then(function (r) {
+    el.innerHTML = r.sent
+      ? '✅ ส่งอีเมลแล้ว (ลูกค้าใหม่ ' + r.summary.newToday + ', ดีลเปิดอยู่ ' + r.summary.openDeals + ', แจ้งเตือน ' + r.summary.reminders + ' รายการ)'
+      : '⚠️ สร้างรายงานแล้ว แต่ยังไม่มีอีเมลผู้รับ กรุณาตั้งค่าที่หน้า "ตั้งค่า"';
+  }).catch(function (e) { toast(e.message, true); });
+}
+document.getElementById('sendReportBtn2').addEventListener('click', sendReport);
+document.getElementById('enableTriggerBtn').addEventListener('click', function () {
+  var hour = document.getElementById('triggerHour').value;
+  gsRun('installDailyTrigger', hour).then(function () { toast('เปิดใช้งานแล้ว'); loadReportsView(); }).catch(function (e) { toast(e.message, true); });
+});
+document.getElementById('disableTriggerBtn').addEventListener('click', function () {
+  gsRun('removeDailyTrigger').then(function () { toast('ปิดใช้งานแล้ว'); loadReportsView(); }).catch(function (e) { toast(e.message, true); });
+});
+
+// ============ SKUs ============
+function loadSkus() {
+  gsRun('getSkus').then(function (items) {
+    document.getElementById('skuRows').innerHTML = items.length ? items.map(function (s) {
+      return '<tr><td>' + escapeHtml(s.productNameTh) + '</td><td>' + escapeHtml(s.productNameEn) + '</td><td>' + escapeHtml(s.category) + '</td><td>' + fmtMoney(s.price) + '</td><td>' + escapeHtml(s.weight || '-') + '</td></tr>';
+    }).join('') : '<tr><td colspan="5"><div class="empty-state">ยังไม่พบข้อมูลสินค้า ตรวจสอบ Sheet ID ในหน้าตั้งค่า</div></td></tr>';
+  }).catch(function (e) { toast(e.message, true); });
+}
+
+// ============ Settings ============
+function loadSettings() {
+  gsRun('getSettings').then(function (s) {
+    var form = document.getElementById('settingsForm');
+    Object.keys(s).forEach(function (k) {
+      if (form.elements[k]) form.elements[k].value = s[k];
+    });
+    document.getElementById('spreadsheetLink').href = s.spreadsheetUrl;
+  }).catch(function (e) { toast(e.message, true); });
+}
+document.getElementById('settingsForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var data = Object.fromEntries(new FormData(e.target).entries());
+  gsRun('saveSettings', data).then(function () { toast('บันทึกการตั้งค่าแล้ว'); }).catch(function (err) { toast(err.message, true); });
+});
+
+// ============ Init ============
+function populateSelectOptions() {
+  var countryFilter = document.getElementById('countryFilter');
+  var countrySelect = document.getElementById('countrySelect');
+  meta.countries.forEach(function (c) {
+    countryFilter.insertAdjacentHTML('beforeend', '<option value="' + c.code + '">' + c.th + '</option>');
+    countrySelect.insertAdjacentHTML('beforeend', '<option value="' + c.code + '">' + c.th + ' (' + c.en + ')</option>');
+  });
+  var channelSelect = document.getElementById('channelSelect');
+  meta.channels.forEach(function (ch) { channelSelect.insertAdjacentHTML('beforeend', '<option value="' + ch + '">' + ch + '</option>'); });
+  document.getElementById('dealStageSelect').innerHTML = meta.dealStages.map(function (s) { return '<option value="' + s.value + '">' + s.label + '</option>'; }).join('');
+  document.getElementById('docTypeSelect').innerHTML = meta.documentTypes.map(function (s) { return '<option value="' + s.value + '">' + s.label + '</option>'; }).join('');
+  document.getElementById('followupTypeSelect').innerHTML = meta.followupTypes.map(function (s) { return '<option value="' + s.value + '">' + s.label + '</option>'; }).join('');
+}
+
+renderNav('dashboard');
+gsRun('getMeta').then(function (m) {
+  meta = m;
+  populateSelectOptions();
+  showView('dashboard');
+}).catch(function (e) { toast('โหลดข้อมูลเริ่มต้นไม่สำเร็จ: ' + e.message, true); });
+</script>
+</body>
+</html>
