@@ -30,6 +30,7 @@ function apiCall(name, args) {
     analyzeCustomerAI: analyzeCustomerAI,
     analyzeAllOpenCustomers: analyzeAllOpenCustomers,
     getSkus: getSkus,
+    testExportDealToRevenue: testExportDealToRevenue,
     getSettings: getSettings,
     saveSettings: saveSettings,
   };

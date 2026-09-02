@@ -16,7 +16,7 @@ var SHEETS = {
 
 var HEADERS = {
   Customers: ['ID', 'Type', 'Status', 'Name', 'CompanyName', 'TaxID', 'ContactPerson', 'Phone', 'Email', 'LineID', 'Address', 'Country', 'ContactChannel', 'SourceDetail', 'Notes', 'CreatedAt', 'UpdatedAt'],
-  Deals: ['ID', 'CustomerID', 'Title', 'Stage', 'ProductInterest', 'EstimatedValue', 'Currency', 'ExpectedCloseDate', 'DeliveryDate', 'Status', 'Notes', 'CreatedAt', 'UpdatedAt'],
+  Deals: ['ID', 'CustomerID', 'Title', 'Stage', 'ProductInterest', 'EstimatedValue', 'Currency', 'ExpectedCloseDate', 'DeliveryDate', 'Status', 'Notes', 'RevenueExported', 'CreatedAt', 'UpdatedAt'],
   Documents: ['ID', 'CustomerID', 'DealID', 'DocType', 'DocNumber', 'FileUrl', 'FileName', 'IssueDate', 'ExpiryDate', 'DeliveryDate', 'Amount', 'Currency', 'Notes', 'CreatedAt'],
   Followups: ['ID', 'CustomerID', 'DealID', 'Type', 'Note', 'FollowUpDate', 'Done', 'CreatedAt'],
   AIInsights: ['ID', 'CustomerID', 'Approach', 'RecommendedProducts', 'RiskLevel', 'NextAction', 'CreatedAt'],
@@ -300,7 +300,8 @@ function updateCustomerStatus(customerId, status) {
   if (openDeal) {
     var patch = { Stage: status, UpdatedAt: nowIso() };
     if (status === 'won' || status === 'lost') patch.Status = status;
-    updateObjectById(SHEETS.DEALS, openDeal.ID, patch);
+    var updatedDeal = updateObjectById(SHEETS.DEALS, openDeal.ID, patch);
+    maybeExportWonDealToRevenue(openDeal, updatedDeal);
   }
   return getObjectById(SHEETS.CUSTOMERS, customerId);
 }
@@ -359,8 +360,11 @@ function createDeal(customerId, data) {
 }
 
 function updateDeal(id, data) {
+  var before = getObjectById(SHEETS.DEALS, id);
   data.UpdatedAt = nowIso();
-  return updateObjectById(SHEETS.DEALS, id, data);
+  var updated = updateObjectById(SHEETS.DEALS, id, data);
+  maybeExportWonDealToRevenue(before, updated);
+  return updated;
 }
 
 function deleteDeal(id) {
