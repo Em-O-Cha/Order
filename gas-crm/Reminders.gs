@@ -158,9 +158,9 @@ function getDashboard() {
   };
 }
 
-// ===================== รายงานประจำวัน =====================
+// ===================== รายงานประจำวัน (ส่งเข้ากลุ่ม LINE) =====================
 
-function buildDailyReportHtml() {
+function buildDailyReportText() {
   var customers = sheetToObjects(getSheet(SHEETS.CUSTOMERS));
   var deals = sheetToObjects(getSheet(SHEETS.DEALS));
   var today = todayStr();
@@ -170,32 +170,57 @@ function buildDailyReportHtml() {
   var wonToday = deals.filter(function (d) { return d.Status === 'won' && String(d.UpdatedAt).slice(0, 10) === today; });
   var reminders = computeReminders();
 
-  function rows(arr, fn) {
-    if (!arr.length) return '<tr><td colspan="3" style="color:#888">- ไม่มีรายการ -</td></tr>';
-    return arr.map(fn).join('');
+  var lines = [];
+  lines.push('📊 รายงานประจำวัน CRM ส่งออกสินค้า');
+  lines.push('วันที่ ' + today);
+  lines.push('');
+  lines.push('ลูกค้าใหม่วันนี้: ' + newToday.length + ' ราย');
+  lines.push('ดีลที่กำลังเปิดอยู่: ' + openDeals.length + ' ดีล');
+  lines.push('ปิดการขายสำเร็จวันนี้: ' + wonToday.length + ' ดีล');
+  lines.push('ต้องติดตามด่วน: ' + reminders.length + ' รายการ');
+
+  if (reminders.length) {
+    lines.push('');
+    lines.push('🔔 รายการที่ต้องติดตาม:');
+    reminders.slice(0, 15).forEach(function (r) {
+      lines.push('- ' + r.customerName + ': ' + r.message);
+    });
+    if (reminders.length > 15) lines.push('...และอีก ' + (reminders.length - 15) + ' รายการ');
   }
 
-  var html = '' +
-    '<div style="font-family:sans-serif;max-width:640px;margin:0 auto">' +
-    '<h2 style="color:#a50d0c">รายงานประจำวัน CRM ส่งออกสินค้า - ' + today + '</h2>' +
-    '<ul>' +
-    '<li>ลูกค้าใหม่วันนี้: <b>' + newToday.length + '</b> ราย</li>' +
-    '<li>ดีลที่กำลังเปิดอยู่ทั้งหมด: <b>' + openDeals.length + '</b> ดีล</li>' +
-    '<li>ปิดการขายสำเร็จวันนี้: <b>' + wonToday.length + '</b> ดีล</li>' +
-    '<li>รายการที่ต้องแจ้งเตือน/ติดตามด่วน: <b>' + reminders.length + '</b> รายการ</li>' +
-    '</ul>' +
-    '<h3>รายการแจ้งเตือนที่ต้องติดตาม</h3>' +
-    '<table style="width:100%;border-collapse:collapse" border="1" cellpadding="6">' +
-    '<tr style="background:#f5f5f5"><th>ลูกค้า</th><th>เรื่อง</th><th>กำหนด</th></tr>' +
-    rows(reminders.slice(0, 20), function (r) { return '<tr><td>' + r.customerName + '</td><td>' + r.message + '</td><td>' + (r.dueDate || '-') + '</td></tr>'; }) +
-    '</table>' +
-    '<h3>ลูกค้าใหม่วันนี้</h3>' +
-    '<table style="width:100%;border-collapse:collapse" border="1" cellpadding="6">' +
-    '<tr style="background:#f5f5f5"><th>ชื่อ</th><th>ประเทศ</th><th>ช่องทาง</th></tr>' +
-    rows(newToday, function (c) { return '<tr><td>' + (c.Type === 'company' ? c.CompanyName : c.Name) + '</td><td>' + (c.Country || '-') + '</td><td>' + (c.ContactChannel || '-') + '</td></tr>'; }) +
-    '</table></div>';
+  if (newToday.length) {
+    lines.push('');
+    lines.push('👥 ลูกค้าใหม่วันนี้:');
+    newToday.forEach(function (c) {
+      lines.push('- ' + (c.Type === 'company' ? c.CompanyName : c.Name) + ' (' + (c.Country || '-') + ')');
+    });
+  }
 
-  return { html: html, summary: { newToday: newToday.length, openDeals: openDeals.length, wonToday: wonToday.length, reminders: reminders.length } };
+  return {
+    text: lines.join('\n'),
+    summary: { newToday: newToday.length, openDeals: openDeals.length, wonToday: wonToday.length, reminders: reminders.length },
+  };
+}
+
+/** ส่งข้อความเข้ากลุ่ม LINE ผ่าน Messaging API (ต้องตั้งค่า Channel Access Token + Group ID ในหน้าตั้งค่าก่อน) */
+function sendLinePush(text) {
+  var token = PROPS.getProperty('LINE_CHANNEL_ACCESS_TOKEN');
+  var groupId = PROPS.getProperty('LINE_GROUP_ID');
+  if (!token || !groupId) return { sent: false, reason: 'line_not_configured' };
+
+  var response = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + token },
+    payload: JSON.stringify({ to: groupId, messages: [{ type: 'text', text: text.slice(0, 4900) }] }),
+    muteHttpExceptions: true,
+  });
+  var code = response.getResponseCode();
+  if (code !== 200) {
+    Logger.log('ส่งข้อความ LINE ไม่สำเร็จ (' + code + '): ' + response.getContentText());
+    return { sent: false, reason: 'line_error_' + code };
+  }
+  return { sent: true };
 }
 
 /** เรียกจากปุ่มในหน้าเว็บ เพื่อส่งรายงานทันที */
@@ -209,18 +234,9 @@ function dailyReportTrigger() {
 }
 
 function sendDailyReportInternal() {
-  var built = buildDailyReportHtml();
-  var recipients = (PROPS.getProperty('REPORT_EMAILS') || Session.getActiveUser().getEmail() || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-  var sent = false;
-  if (recipients.length) {
-    MailApp.sendEmail({
-      to: recipients.join(','),
-      subject: '[CRM] รายงานประจำวัน ' + todayStr(),
-      htmlBody: built.html,
-    });
-    sent = true;
-  }
-  return { sent: sent, summary: built.summary, reportDate: todayStr() };
+  var built = buildDailyReportText();
+  var result = sendLinePush(built.text);
+  return { sent: result.sent, reason: result.reason || null, summary: built.summary, reportDate: todayStr() };
 }
 
 /** ตั้งค่า Time-driven Trigger ให้ส่งรายงานอัตโนมัติทุกวัน ตามชั่วโมงที่กำหนด (0-23) */

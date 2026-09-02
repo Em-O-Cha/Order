@@ -55,6 +55,7 @@ function ensureSheet(ss, name, headers) {
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
+    SpreadsheetApp.flush();
     return sheet;
   }
   // ถ้าเคยสร้างชีตนี้ไว้แล้วแต่ยังขาดคอลัมน์ใหม่ (เช่นอัปเดตโค้ดภายหลัง) ให้เติมคอลัมน์ที่ขาดไปต่อท้าย
@@ -63,6 +64,7 @@ function ensureSheet(ss, name, headers) {
   var missing = headers.filter(function (h) { return existingHeaders.indexOf(h) === -1; });
   if (missing.length) {
     sheet.getRange(1, existingHeaders.length + 1, 1, missing.length).setValues([missing]);
+    SpreadsheetApp.flush();
   }
   return sheet;
 }
@@ -93,6 +95,7 @@ function appendObject(sheet, obj) {
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var row = headers.map(function (h) { return obj[h] !== undefined ? obj[h] : ''; });
   sheet.appendRow(row);
+  SpreadsheetApp.flush();
 }
 
 function findRowById(sheet, id) {
@@ -113,6 +116,7 @@ function updateObjectById(sheetName, id, patch) {
   headers.forEach(function (h, i) {
     if (patch.hasOwnProperty(h)) sheet.getRange(row, i + 1).setValue(patch[h]);
   });
+  SpreadsheetApp.flush();
   return getObjectById(sheetName, id);
 }
 
@@ -120,6 +124,7 @@ function deleteObjectById(sheetName, id) {
   var sheet = getSheet(sheetName);
   var row = findRowById(sheet, id);
   if (row !== -1) sheet.deleteRow(row);
+  SpreadsheetApp.flush();
   return { ok: true };
 }
 
@@ -140,16 +145,33 @@ function todayStr() {
 // ===================== Web app entry =====================
 
 function doGet(e) {
-  return HtmlService.createHtmlOutputFromFile('Index')
+  var template = HtmlService.createTemplateFromFile('Index');
+  template.logoDataUri = getLogoDataUri();
+  return template.evaluate()
     .setTitle('Export CRM')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+/** โหลดโลโก้บริษัทจาก Google Drive มาฝังในหน้าเว็บโดยตรง (แปลงเป็น base64) */
+function getLogoDataUri() {
+  var fileId = PROPS.getProperty('LOGO_FILE_ID') || '19swmOZR5ClYcKqzUuMJLo7kkIaZ-vK7u';
+  try {
+    var blob = DriveApp.getFileById(fileId).getBlob();
+    return 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes());
+  } catch (e) {
+    Logger.log('โหลดโลโก้ไม่สำเร็จ: ' + e.message);
+    return '';
+  }
+}
+
 // ===================== Meta / dropdown =====================
 
 function getMeta() {
+  var currentUser = '';
+  try { currentUser = Session.getActiveUser().getEmail(); } catch (e) { /* ไม่มีสิทธิ์อ่าน ก็ข้ามได้ */ }
   return {
+    currentUser: currentUser || 'ผู้ใช้งาน',
     countries: COUNTRIES,
     channels: CONTACT_CHANNELS,
     customerTypes: [
