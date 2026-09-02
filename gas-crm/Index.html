@@ -122,6 +122,13 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 .confirm-modal{max-width:400px;text-align:center;}
 .confirm-icon{width:56px;height:56px;border-radius:50%;background:#fdecea;color:var(--red);
   font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;}
+.checklist{max-height:220px;overflow-y:auto;border:1.5px solid #ddd;border-radius:8px;padding:6px 12px;background:#fff;}
+.checklist label{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:7px 0;font-size:13px;cursor:pointer;border-bottom:1px solid #f2f2f2;}
+.checklist label:last-child{border-bottom:none;}
+.checklist label span.name{flex:1;}
+.checklist label span.price{color:var(--g6);font-size:12px;white-space:nowrap;}
+.checklist input[type=checkbox]{margin-right:10px;width:16px;height:16px;accent-color:var(--gm);cursor:pointer;}
 </style>
 </head>
 <body>
@@ -424,15 +431,15 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
         <div class="field full"><label>ชื่อดีล</label><input name="Title" required></div>
         <div class="field"><label>สถานะ</label><select name="Stage" id="dealStageSelect"></select></div>
         <div class="field full">
-          <label>สินค้าที่สนใจ (เลือกจากรายการสินค้า SKU ได้หลายรายการ — กด Ctrl หรือ Cmd ค้างไว้เพื่อเลือกหลายอัน)</label>
-          <select id="productInterestSelect" multiple size="6"></select>
+          <label>สินค้าที่สนใจ (ติ๊กเลือกได้หลายรายการ — ระบบจะคำนวณมูลค่าประมาณให้อัตโนมัติจากราคาสินค้า)</label>
+          <div id="productInterestChecklist" class="checklist"></div>
           <div class="muted" id="productInterestEmptyHint" hidden>⚠️ ยังไม่พบรายการสินค้าจาก Master Data Sales ลองตรวจสอบที่หน้า "ตั้งค่า" หรือพิมพ์ชื่อสินค้าเองด้านล่างแทนได้</div>
         </div>
         <div class="field full">
           <label>หรือพิมพ์ชื่อสินค้าเอง (ถ้าไม่มีในรายการด้านบน — จะต่อท้ายรายการที่เลือกไว้)</label>
           <input id="productInterestManual" placeholder="เช่น น้ำพริกสูตรพิเศษ">
         </div>
-        <div class="field"><label>มูลค่าประมาณ</label><input name="EstimatedValue" type="number" step="0.01"></div>
+        <div class="field"><label>มูลค่าประมาณ (คำนวณอัตโนมัติจากสินค้าที่ติ๊ก แก้ไขเพิ่มเติมเองได้)</label><input name="EstimatedValue" id="dealEstimatedValueInput" type="number" step="0.01"></div>
         <div class="field"><label>สกุลเงิน</label><input name="Currency" value="THB"></div>
         <div class="field"><label>วันที่คาดว่าจะปิดดีล</label><input name="ExpectedCloseDate" type="date"></div>
         <div class="field"><label>วันจัดส่งที่คาดไว้</label><input name="DeliveryDate" type="date"></div>
@@ -974,18 +981,32 @@ document.getElementById('addDocBtn').addEventListener('click', function () { doc
 document.getElementById('addFollowupBtn').addEventListener('click', function () { document.getElementById('followupModal').hidden = false; });
 
 function populateProductInterestSelect() {
-  var sel = document.getElementById('productInterestSelect');
-  sel.innerHTML = skus.map(function (s) {
+  var box = document.getElementById('productInterestChecklist');
+  box.innerHTML = skus.map(function (s, i) {
     var label = s.productNameTh + (s.category ? ' (' + s.category + ')' : '');
-    return '<option value="' + escapeHtml(s.productNameTh) + '">' + escapeHtml(label) + '</option>';
+    return '<label>' +
+      '<span style="display:flex;align-items:center;"><input type="checkbox" data-product-checkbox value="' + escapeHtml(s.productNameTh) + '" data-price="' + (Number(s.price) || 0) + '">' +
+      '<span class="name">' + escapeHtml(label) + '</span></span>' +
+      '<span class="price">' + fmtMoney(s.price) + ' บาท</span></label>';
   }).join('');
   document.getElementById('productInterestEmptyHint').hidden = skus.length > 0;
+  recalcEstimatedValueFromChecklist();
 }
+
+function recalcEstimatedValueFromChecklist() {
+  var checked = document.querySelectorAll('#productInterestChecklist input[data-product-checkbox]:checked');
+  var sum = Array.from(checked).reduce(function (total, cb) { return total + Number(cb.dataset.price || 0); }, 0);
+  document.getElementById('dealEstimatedValueInput').value = sum || '';
+}
+
+document.getElementById('productInterestChecklist').addEventListener('change', function (e) {
+  if (e.target.matches('[data-product-checkbox]')) recalcEstimatedValueFromChecklist();
+});
 
 document.getElementById('dealForm').addEventListener('submit', function (e) {
   e.preventDefault();
   var data = Object.fromEntries(new FormData(e.target).entries());
-  var selectedProducts = Array.from(document.getElementById('productInterestSelect').selectedOptions).map(function (o) { return o.value; });
+  var selectedProducts = Array.from(document.querySelectorAll('#productInterestChecklist input[data-product-checkbox]:checked')).map(function (cb) { return cb.value; });
   var manualProduct = document.getElementById('productInterestManual').value.trim();
   if (manualProduct) selectedProducts.push(manualProduct);
   data.ProductInterest = selectedProducts.join(', ');
