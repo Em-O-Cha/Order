@@ -197,12 +197,17 @@ function testLogoConnection() {
   try {
     var file = DriveApp.getFileById(fileId);
     var blob = file.getBlob();
+    var byteCount = blob.getBytes().length;
+    var okData = byteCount > 0 && String(blob.getContentType() || '').indexOf('image/') === 0;
     return {
-      ok: true,
+      ok: okData,
       fileId: fileId,
       fileName: file.getName ? file.getName() : '',
       contentType: blob.getContentType(),
-      message: 'โหลดโลโก้สำเร็จ (' + (file.getName ? file.getName() : fileId) + ')'
+      byteCount: byteCount,
+      message: okData
+        ? 'โหลดโลโก้สำเร็จ (' + (file.getName ? file.getName() : fileId) + ', ' + blob.getContentType() + ', ' + byteCount + ' bytes)'
+        : 'เปิดไฟล์ได้ แต่ไฟล์นี้ไม่ใช่รูปภาพที่ใช้งานได้ (ประเภทไฟล์: ' + blob.getContentType() + ', ขนาด: ' + byteCount + ' bytes) — ลองอัปโหลดไฟล์ PNG/JPG ใหม่แทนไฟล์เดิม'
     };
   } catch (e) {
     return {

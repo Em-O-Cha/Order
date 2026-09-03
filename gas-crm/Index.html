@@ -155,7 +155,9 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
   <div class="topbar-row1">
     <div class="brand">
       <? if (logoDataUri) { ?>
-        <img src="<?= logoDataUri ?>" class="brand-logo" alt="logo">
+        <img src="<?= logoDataUri ?>" class="brand-logo" alt="logo"
+          onerror="this.style.display='none';document.getElementById('logoFallback').style.display='inline';">
+        <span id="logoFallback" style="display:none;font-size:26px">🌏</span>
       <? } else { ?>
         <span style="font-size:26px">🌏</span>
       <? } ?>
