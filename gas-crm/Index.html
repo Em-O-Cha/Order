@@ -599,11 +599,16 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 </div>
 
 <script>
+// ============ ตั้งค่า Web App URL ตรงนี้ได้เลย (ใส่ไว้ล่วงหน้าจะได้ไม่ต้องพิมพ์ทุกครั้งตอนเชื่อมต่อ) ============
+// ปลอดภัยที่จะใส่/commit ค่านี้ไว้ตรง ๆ เพราะไม่ใช่ความลับ (ตัว API Token ต่างหากที่เป็นความลับ ห้ามใส่ตรงนี้หรือ commit ขึ้น GitHub)
+// ตัวอย่าง: 'https://script.google.com/macros/s/xxxxxxxxxxxxxxxxxxxx/exec'
+var DEFAULT_API_URL = '';
+
 // ============ ตัวช่วยเรียกฟังก์ชันฝั่งเซิร์ฟเวอร์ (ผ่าน HTTP API ของ Apps Script, ใช้ได้ทั้งเปิดตรงและฝากไว้ที่อื่น เช่น GitHub Pages) ============
 var API_URL_KEY = 'crm_api_url';
 var API_TOKEN_KEY = 'crm_api_token';
 
-function getApiUrl() { return localStorage.getItem(API_URL_KEY) || ''; }
+function getApiUrl() { return localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL || ''; }
 function getApiToken() { return localStorage.getItem(API_TOKEN_KEY) || ''; }
 
 function rawApiCall(url, token, fnName, args) {
