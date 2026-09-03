@@ -4,7 +4,7 @@
 <base target="_top">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Export CRM</title>
+<title>CRM Spunky Food</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&display=swap');
 :root{
@@ -15,7 +15,7 @@
   --topbar:linear-gradient(135deg,#00a67e,#007a5c);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Kanit',sans-serif;background:var(--bg);color:var(--td);min-height:100vh;}
+body{font-family:'Kanit',sans-serif;background:var(--bg);color:var(--td);min-height:100vh;overflow-x:hidden;}
 a{color:inherit;text-decoration:none;}
 .topbar{background:#fff;position:sticky;top:0;z-index:50;box-shadow:0 2px 10px rgba(0,150,120,.1);}
 .topbar-row1{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
@@ -41,6 +41,18 @@ a{color:inherit;text-decoration:none;}
 .grid-4{grid-template-columns:repeat(4,1fr);}
 .grid-2{grid-template-columns:1fr 1fr;}
 @media (max-width:900px){.grid-4{grid-template-columns:repeat(2,1fr);} .grid-2{grid-template-columns:1fr;}}
+@media (max-width:480px){
+  .wrap{padding:12px;}
+  .grid-4{grid-template-columns:1fr;}
+  .topbar-row1{padding:10px 12px;}
+  .topbar h1{font-size:15px;}
+  .brand-logo{height:32px;width:32px;}
+  .topbar-meta{gap:10px;font-size:11px;}
+  .topbar nav{padding:0 4px;}
+  .topbar nav button{padding:10px 10px;font-size:12px;}
+  .card{padding:14px;}
+  .modal{padding:16px;border-radius:12px;}
+}
 .card{background:var(--card);border-radius:16px;box-shadow:0 2px 12px rgba(0,150,120,.08);padding:18px;}
 .kpi .label{font-size:12px;color:var(--g6);margin-bottom:6px;}
 .kpi .value{font-size:26px;font-weight:700;color:var(--gd);}
@@ -107,7 +119,7 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
   padding:1px 6px;margin-left:6px;vertical-align:middle;}
 .alert-banner{background:#fff3e0;border-left:4px solid var(--urgent);padding:10px 14px;border-radius:8px;
   margin-top:12px;font-size:13px;color:#8a4b00;font-weight:500;line-height:1.6;}
-.quick-info{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #eee;}
+.quick-info{display:flex;flex-direction:column;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #eee;}
 .quick-info span{font-size:13px;color:var(--g6);cursor:pointer;}
 .quick-info span:hover{color:var(--gd);text-decoration:underline;}
 .header-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
@@ -142,8 +154,8 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
         <span style="font-size:26px">🌏</span>
       <? } ?>
       <div>
-        <h1>Export CRM</h1>
-        <div class="brand-sub">ระบบติดตามลูกค้าส่งออกสินค้าต่างประเทศ</div>
+        <h1>CRM Spunky Food</h1>
+        <div class="brand-sub">ระบบติดตามลูกค้า บริษัท สปังกี้ ฟู้ด จำกัด</div>
       </div>
     </div>
     <div class="topbar-meta">
@@ -307,6 +319,10 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
           <label>แจ้งเตือนก่อนวันจัดส่ง (วัน)</label>
           <input name="DELIVERY_WARN_DAYS" type="number">
         </div>
+        <div class="field">
+          <label>Google Drive File ID ของโลโก้บริษัท</label>
+          <input name="LOGO_FILE_ID" placeholder="เช่น 19swmOZR5ClYcKqzUuMJLo7kkIaZ-vK7u">
+        </div>
       </div>
       <div class="modal-actions">
         <button type="submit" class="btn">บันทึกการตั้งค่า</button>
@@ -379,6 +395,13 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
       <p class="muted">กดเพื่อดูว่าอ่านชีตสินค้า/รายการโฆษณา/วิธีชำระเงินได้จริงหรือไม่ และเจอกี่รายการ</p>
       <button class="btn sm outline" id="testMasterDataBtn" style="margin-top:10px">ทดสอบการเชื่อมต่อ</button>
       <div id="masterDataTestResult" style="margin-top:10px;font-size:13px"></div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin-bottom:4px">ทดสอบโลโก้บริษัท</h3>
+      <p class="muted">ถ้าโลโก้ไม่ขึ้นบนหน้าเว็บ กดทดสอบเพื่อดูสาเหตุที่แท้จริง (เช่น ยังไม่ได้แชร์ไฟล์ หรือ File ID ผิด)</p>
+      <button class="btn sm outline" id="testLogoBtn" style="margin-top:10px">ทดสอบโหลดโลโก้</button>
+      <div id="logoTestResult" style="margin-top:10px;font-size:13px"></div>
     </div>
 
     <div class="card" style="margin-top:14px">
@@ -788,7 +811,10 @@ function renderCustomerHeader(c) {
 
   var docCounts = {};
   c.documents.forEach(function (d) { docCounts[d.DocType] = (docCounts[d.DocType] || 0) + 1; });
-  var docSummary = meta.documentTypes.map(function (t) { return t.label + ' ' + (docCounts[t.value] || 0); }).join(' · ');
+  var docSummary = meta.documentTypes
+    .filter(function (t) { return docCounts[t.value]; })
+    .map(function (t) { return t.label + ' ' + docCounts[t.value]; })
+    .join(' · ') || 'ยังไม่มีเอกสาร';
   var pendingFollowups = c.followups.filter(function (f) { return !f.Done; }).length;
 
   var banner = '';
@@ -1239,6 +1265,17 @@ document.getElementById('testMasterDataBtn').addEventListener('click', function 
       'สินค้าที่อ่านได้: <b>' + r.skuCount + '</b> รายการ' + (r.skuCount ? ' (ตัวอย่าง: ' + escapeHtml(r.skus[0].productNameTh) + ')' : '') + '<br>' +
       'รายการช่องทางโฆษณา (Ad): ' + (r.adOptions.length ? r.adOptions.map(escapeHtml).join(', ') : '<span style="color:#b3261e">ไม่พบ - ตรวจสอบชื่อแท็บด้านบน</span>') + '<br>' +
       'รายการวิธีชำระเงิน (Payment): ' + (r.paymentOptions.length ? r.paymentOptions.map(escapeHtml).join(', ') : '<span style="color:#b3261e">ไม่พบ</span>');
+  }).catch(function (e) { el.innerHTML = '⚠️ ' + escapeHtml(e.message); });
+});
+document.getElementById('testLogoBtn').addEventListener('click', function () {
+  var el = document.getElementById('logoTestResult');
+  el.textContent = 'กำลังทดสอบ...';
+  gsRun('testLogoConnection').then(function (r) {
+    if (r.ok) {
+      el.innerHTML = '✅ ' + escapeHtml(r.message);
+    } else {
+      el.innerHTML = '⚠️ ' + escapeHtml(r.message) + '<br>File ID ที่ใช้อยู่: <code>' + escapeHtml(r.fileId) + '</code>';
+    }
   }).catch(function (e) { el.innerHTML = '⚠️ ' + escapeHtml(e.message); });
 });
 document.getElementById('sendReportNowBtn').addEventListener('click', function () {

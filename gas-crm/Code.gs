@@ -1,5 +1,5 @@
 /**
- * Export CRM - Google Apps Script version
+ * CRM Spunky Food - Google Apps Script version
  * ระบบ CRM สำหรับติดตามลูกค้าที่ติดต่อขอนำสินค้าไปขายต่างประเทศ
  * ฐานข้อมูล: Google Sheet (สร้างอัตโนมัติเมื่อรัน setup() ครั้งแรก)
  */
@@ -39,13 +39,25 @@ function setup() {
   return ss.getUrl();
 }
 
+// แคชไว้ในตัวแปรระดับสคริปต์ เพื่อไม่ต้องเปิดสเปรดชีตซ้ำหลายรอบในคำขอเดียวกัน (แต่ละคำขอ/แต่ละครั้งที่เว็บเรียกมา
+// จะเริ่มบริบทการทำงานใหม่อยู่แล้ว ตัวแปรนี้จึงไม่มีข้อมูลค้างข้ามคำขอ) การเปิดสเปรดชีตคือส่วนที่ช้าที่สุด
+// (ต้องติดต่อ Google ผ่านเน็ตเวิร์ก) ในขณะที่ getCustomerDetail/getDashboard เรียก getSheet() หลายสิบครั้งต่อครั้ง
+// ถ้าเปิดใหม่ทุกครั้งจะทำให้เว็บหน่วงมากแม้ข้อมูลจะยังน้อยก็ตาม
+var _cachedSpreadsheet = null;
+var _cachedSheets = {};
+
 function getOrCreateSpreadsheet() {
+  if (_cachedSpreadsheet) return _cachedSpreadsheet;
   var id = PROPS.getProperty('SPREADSHEET_ID');
   if (id) {
-    try { return SpreadsheetApp.openById(id); } catch (e) { /* fallthrough */ }
+    try {
+      _cachedSpreadsheet = SpreadsheetApp.openById(id);
+      return _cachedSpreadsheet;
+    } catch (e) { /* fallthrough */ }
   }
-  var ss = SpreadsheetApp.create('Export CRM Database');
+  var ss = SpreadsheetApp.create('CRM Spunky Food Database');
   PROPS.setProperty('SPREADSHEET_ID', ss.getId());
+  _cachedSpreadsheet = ss;
   return ss;
 }
 
@@ -70,8 +82,11 @@ function ensureSheet(ss, name, headers) {
 }
 
 function getSheet(name) {
+  if (_cachedSheets[name]) return _cachedSheets[name];
   var ss = getOrCreateSpreadsheet();
-  return ensureSheet(ss, name, HEADERS[name]);
+  var sheet = ensureSheet(ss, name, HEADERS[name]);
+  _cachedSheets[name] = sheet;
+  return sheet;
 }
 
 // ===================== Sheet helper ทั่วไป =====================
@@ -159,7 +174,7 @@ function doGet(e) {
   var template = HtmlService.createTemplateFromFile('Index');
   template.logoDataUri = getLogoDataUri();
   return template.evaluate()
-    .setTitle('Export CRM')
+    .setTitle('CRM Spunky Food')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
@@ -173,6 +188,28 @@ function getLogoDataUri() {
   } catch (e) {
     Logger.log('โหลดโลโก้ไม่สำเร็จ: ' + e.message);
     return '';
+  }
+}
+
+/** ทดสอบว่าโหลดโลโก้จาก Google Drive ได้จริงหรือไม่ พร้อมข้อความ error ที่ชัดเจนสำหรับผู้ใช้ */
+function testLogoConnection() {
+  var fileId = PROPS.getProperty('LOGO_FILE_ID') || '19swmOZR5ClYcKqzUuMJLo7kkIaZ-vK7u';
+  try {
+    var file = DriveApp.getFileById(fileId);
+    var blob = file.getBlob();
+    return {
+      ok: true,
+      fileId: fileId,
+      fileName: file.getName ? file.getName() : '',
+      contentType: blob.getContentType(),
+      message: 'โหลดโลโก้สำเร็จ (' + (file.getName ? file.getName() : fileId) + ')'
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      fileId: fileId,
+      message: 'โหลดโลโก้ไม่สำเร็จ: ' + e.message + ' — ตรวจสอบว่า Share ไฟล์นี้ให้บัญชีที่รัน Apps Script นี้เห็น (อย่างน้อยระดับ "ดูได้"/Viewer) และ File ID ถูกต้อง'
+    };
   }
 }
 

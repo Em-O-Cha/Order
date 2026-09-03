@@ -1,6 +1,6 @@
 /**
  * จัดเก็บเอกสาร (ใบเสนอราคา / PO / ใบส่งของ / ใบเสร็จ) เป็นไฟล์ใน Google Drive
- * โฟลเดอร์ทั้งหมดจะถูกสร้างอัตโนมัติชื่อ "Export CRM Documents"
+ * โฟลเดอร์ทั้งหมดจะถูกสร้างอัตโนมัติชื่อ "CRM Spunky Food Documents"
  */
 
 function getOrCreateDocsFolder() {
@@ -8,8 +8,8 @@ function getOrCreateDocsFolder() {
   if (folderId) {
     try { return DriveApp.getFolderById(folderId); } catch (e) { /* fallthrough */ }
   }
-  var it = DriveApp.getFoldersByName('Export CRM Documents');
-  var folder = it.hasNext() ? it.next() : DriveApp.createFolder('Export CRM Documents');
+  var it = DriveApp.getFoldersByName('CRM Spunky Food Documents');
+  var folder = it.hasNext() ? it.next() : DriveApp.createFolder('CRM Spunky Food Documents');
   PROPS.setProperty('DOCS_FOLDER_ID', folder.getId());
   return folder;
 }

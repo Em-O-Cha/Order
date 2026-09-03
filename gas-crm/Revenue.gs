@@ -189,7 +189,7 @@ function exportDealToRevenue(deal, overrides) {
     'Slip1': slipUrl,
     'Customer Name': customerName,
     'Phone Number': customer.Phone || '',
-    'Sales Name': (function () { try { return Session.getActiveUser().getEmail() || 'Export CRM'; } catch (e) { return 'Export CRM'; } })(),
+    'Sales Name': (function () { try { return Session.getActiveUser().getEmail() || 'CRM Spunky Food'; } catch (e) { return 'CRM Spunky Food'; } })(),
     'Ad': overrides.ad || '',
     'Campaign': 'Export',
     'CustomerType': 'ลูกค้าส่งออกต่างประเทศ',
