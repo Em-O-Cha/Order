@@ -228,6 +228,11 @@ function sendDailyReportNow() {
   return sendDailyReportInternal();
 }
 
+/** สร้างข้อความรายงานตัวอย่างให้ดูในหน้าตั้งค่า โดยไม่ส่งเข้ากลุ่ม LINE จริง (เป็นข้อความเดียวกับที่ตารางเวลาส่งจริงจะส่ง) */
+function previewDailyReport() {
+  return buildDailyReportText();
+}
+
 function sendDailyReportInternal() {
   var built = buildDailyReportText();
   var result = sendLinePush(built.text);

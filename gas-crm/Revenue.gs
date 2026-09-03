@@ -137,8 +137,13 @@ function closeDealWon(dealId, extra) {
   var revenueResult = null;
   if (!updated.RevenueExported) {
     try {
+      var subtotalOverride = (extra.Subtotal !== undefined && extra.Subtotal !== '')
+        ? extra.Subtotal
+        : extra.BillTotal; // เผื่อกรณีเรียกแบบเก่าที่ส่งมาแค่ยอดรวมเดียว (ไม่มี VAT/ค่าขนส่งแยก)
       revenueResult = exportDealToRevenue(updated, {
-        billTotal: extra.BillTotal,
+        subtotal: subtotalOverride,
+        vat: extra.Vat,
+        shipping: extra.ShippingCost,
         ad: extra.Ad,
         payment: extra.Payment,
         slipFileUrl: slipFileUrl,
@@ -163,8 +168,12 @@ function exportDealToRevenue(deal, overrides) {
   var timestamp = Utilities.formatDate(new Date(), tz, 'dd/MM/yyyy HH:mm:ss');
   var customerName = customer.Type === 'company' ? (customer.CompanyName || customer.Name) : customer.Name;
   var countryLabel = countryLabelFor(customer.Country);
-  var hasBillTotal = overrides.billTotal !== undefined && overrides.billTotal !== null && overrides.billTotal !== '';
-  var amount = hasBillTotal ? Number(overrides.billTotal) : (Number(deal.EstimatedValue) || 0);
+  var hasSubtotal = overrides.subtotal !== undefined && overrides.subtotal !== null && overrides.subtotal !== '';
+  var subtotal = hasSubtotal ? Number(overrides.subtotal) : (Number(deal.EstimatedValue) || 0);
+  var vat = Number(overrides.vat || 0);
+  var shipping = Number(overrides.shipping || 0);
+  var amountAfterVat = subtotal + vat;
+  var billTotal = amountAfterVat + shipping;
 
   var slipUrl = overrides.slipFileUrl || '';
   if (!slipUrl) {
@@ -180,11 +189,11 @@ function exportDealToRevenue(deal, overrides) {
     'Timestamp': timestamp,
     'ProductName': deal.ProductInterest || deal.Title,
     'Qty': 1,
-    'Price': amount,
+    'Price': subtotal,
     'Discount': 0,
-    'Amount': amount,
-    'Delivery': 0,
-    'Bill Total': amount,
+    'Amount': amountAfterVat,
+    'Delivery': shipping,
+    'Bill Total': billTotal,
     'Payment': overrides.payment || '',
     'Slip1': slipUrl,
     'Customer Name': customerName,

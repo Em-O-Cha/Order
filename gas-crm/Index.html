@@ -57,6 +57,12 @@ a{color:inherit;text-decoration:none;}
 .kpi .label{font-size:12px;color:var(--g6);margin-bottom:6px;}
 .kpi .value{font-size:26px;font-weight:700;color:var(--gd);}
 .kpi .sub{font-size:11px;color:var(--g6);margin-top:4px;}
+.kpi{border-left:4px solid transparent;}
+.kpi.kpi-danger{border-left-color:var(--overdue);}
+.kpi.kpi-danger .value{color:var(--overdue);}
+.kpi.kpi-warn{border-left-color:var(--warn);}
+.kpi.kpi-warn .value{color:var(--warn);}
+.kpi.kpi-good{border-left-color:var(--gm);}
 h2.section-title{font-size:16px;font-weight:600;margin:22px 0 10px;color:var(--g8);}
 .btn{padding:10px 18px;border:none;border-radius:10px;background:var(--gm);color:#fff;
   font-size:14px;font-weight:600;font-family:'Kanit',sans-serif;cursor:pointer;}
@@ -172,7 +178,6 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
   <div class="view" id="view-dashboard">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h2 class="section-title" style="margin:0">ภาพรวมวันนี้</h2>
-      <button class="btn" id="sendReportBtn">ส่งรายงานประจำวันตอนนี้</button>
     </div>
     <div class="grid grid-4" id="kpis" style="margin-top:10px"></div>
     <h2 class="section-title">รายการที่ต้องแจ้งเตือน</h2>
@@ -331,7 +336,9 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 
     <div class="card" style="margin-top:14px">
       <h3 style="margin-bottom:4px">ตารางส่งรายงานสรุปเข้ากลุ่ม LINE</h3>
-      <p class="muted">เปิดได้พร้อมกันหลายเงื่อนไข เช่น ส่งทุกวันเสาร์ 10 โมงเช้า และส่งอีกครั้งทุกสิ้นเดือน</p>
+      <p class="muted">เปิดได้พร้อมกันหลายเงื่อนไข เช่น ส่งทุกวันเสาร์ 10 โมงเช้า และส่งอีกครั้งทุกสิ้นเดือน — รายงานนี้เป็นสรุปลูกค้า/ดีล/รายการที่ต้องติดตามในระบบ CRM คนละอันกับชีต Revenue ที่บันทึกยอดขายที่ปิดสำเร็จแล้วแต่ละรายการ</p>
+      <button type="button" class="btn sm outline" id="previewReportBtn" style="margin-top:6px">ดูตัวอย่างรายงาน</button>
+      <pre id="reportPreviewBox" hidden style="margin-top:10px;background:var(--gp);border-radius:10px;padding:12px;font-size:12px;white-space:pre-wrap;font-family:inherit;"></pre>
 
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid #eee;">
         <b style="font-size:13px">📆 ทุกวัน</b>
@@ -448,7 +455,7 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 
 <div class="modal-overlay" id="dealModal" hidden>
   <div class="modal">
-    <h3>เพิ่มดีล/โอกาสการขาย</h3>
+    <h3 id="dealModalTitle">เพิ่มดีล/โอกาสการขาย</h3>
     <form id="dealForm">
       <div class="form-grid">
         <div class="field full"><label>ชื่อดีล</label><input name="Title" required></div>
@@ -482,7 +489,13 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
     <p class="muted">ข้อมูลนี้จะถูกบันทึกเป็นแถวใหม่ในชีต Revenue โดยอัตโนมัติ</p>
     <form id="closeWonForm">
       <div class="form-grid">
-        <div class="field full"><label>ยอดขายจริง (Bill Total) *</label><input name="BillTotal" type="number" step="0.01" required></div>
+        <div class="field"><label>ยอดขายสินค้า (ก่อน VAT) *</label><input name="Subtotal" id="closeWonSubtotalInput" type="number" step="0.01" required></div>
+        <div class="field">
+          <label><input type="checkbox" id="closeWonVatCheck" checked> คิด VAT 7%</label>
+          <input name="Vat" id="closeWonVatInput" type="number" step="0.01" readonly>
+        </div>
+        <div class="field"><label>ค่าขนส่ง</label><input name="ShippingCost" id="closeWonShippingInput" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>ยอดรวมทั้งหมด (Bill Total)</label><input id="closeWonTotalDisplay" type="number" step="0.01" readonly></div>
         <div class="field">
           <label>ช่องทางโฆษณา (Ad)</label>
           <select name="Ad" id="closeWonAdSelect"><option value="">- ไม่ระบุ -</option></select>
@@ -532,7 +545,7 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 
 <div class="modal-overlay" id="followupModal" hidden>
   <div class="modal">
-    <h3>เพิ่มการติดตามลูกค้า</h3>
+    <h3 id="followupModalTitle">เพิ่มการติดตามลูกค้า</h3>
     <form id="followupForm">
       <div class="form-grid">
         <div class="field"><label>ประเภท</label><select name="Type" id="followupTypeSelect"></select></div>
@@ -700,14 +713,17 @@ function renderReminders(reminders) {
 }
 
 function renderKpis(data) {
+  var hasOverdue = data.reminders.some(function (r) { return r.severity === 'overdue'; });
+  var hasUrgent = data.reminders.some(function (r) { return r.severity === 'urgent'; });
+  var reminderClass = hasOverdue ? 'kpi-danger' : (data.reminders.length ? 'kpi-warn' : 'kpi-good');
   var items = [
-    { icon: '👥', label: 'ลูกค้าทั้งหมด', value: data.totals.customers, sub: 'ใหม่ 30 วันล่าสุด: ' + data.totals.newCustomersLast30 },
-    { icon: '💼', label: 'ดีลที่กำลังเปิด', value: data.totals.openDeals, sub: 'มูลค่ารวม ' + fmtMoney(data.revenue.pipelineValue) + ' บาท' },
-    { icon: '✅', label: 'ปิดการขายสำเร็จ', value: data.totals.wonDeals, sub: 'เดือนนี้ ' + data.revenue.wonThisMonthCount + ' ดีล / ' + fmtMoney(data.revenue.revenueThisMonth) + ' บาท' },
-    { icon: '🔔', label: 'ต้องติดตามตอนนี้', value: data.reminders.length, sub: 'เอกสารทั้งหมด ' + data.totals.documents + ' ฉบับ' },
+    { icon: '👥', label: 'ลูกค้าทั้งหมด', value: data.totals.customers, sub: 'ใหม่ 30 วันล่าสุด: ' + data.totals.newCustomersLast30, cls: '' },
+    { icon: '💼', label: 'ดีลที่กำลังเปิด', value: data.totals.openDeals, sub: 'มูลค่ารวม ' + fmtMoney(data.revenue.pipelineValue) + ' บาท', cls: '' },
+    { icon: '✅', label: 'ปิดการขายสำเร็จ', value: data.totals.wonDeals, sub: 'เดือนนี้ ' + data.revenue.wonThisMonthCount + ' ดีล / ' + fmtMoney(data.revenue.revenueThisMonth) + ' บาท', cls: 'kpi-good' },
+    { icon: hasOverdue ? '🚨' : (hasUrgent ? '⚠️' : '🔔'), label: 'ต้องติดตามตอนนี้', value: data.reminders.length, sub: 'เอกสารทั้งหมด ' + data.totals.documents + ' ฉบับ', cls: reminderClass },
   ];
   document.getElementById('kpis').innerHTML = items.map(function (i) {
-    return '<div class="card kpi"><div class="label">' + i.icon + ' ' + i.label + '</div><div class="value">' + i.value + '</div><div class="sub">' + i.sub + '</div></div>';
+    return '<div class="card kpi ' + i.cls + '"><div class="label">' + i.icon + ' ' + i.label + '</div><div class="value">' + i.value + '</div><div class="sub">' + i.sub + '</div></div>';
   }).join('');
 }
 
@@ -717,13 +733,6 @@ function loadDashboard() {
     renderReminders(data.reminders);
   }).catch(function (e) { toast(e.message, true); });
 }
-
-document.getElementById('sendReportBtn').addEventListener('click', function () {
-  toast('กำลังส่งรายงาน...');
-  gsRun('sendDailyReportNow').then(function (r) {
-    toast(r.sent ? 'ส่งรายงานเข้ากลุ่ม LINE แล้ว' : 'ยังไม่ได้ตั้งค่า LINE Token/Group ID (ไปตั้งค่าได้ที่หน้าตั้งค่า)');
-  }).catch(function (e) { toast(e.message, true); });
-});
 
 document.addEventListener('click', function (e) {
   var link = e.target.closest('[data-open-customer]');
@@ -859,6 +868,7 @@ function renderDeals(c) {
       ' | คาดปิดดีล: ' + fmtDate(d.ExpectedCloseDate) + ' | วันจัดส่ง: ' + fmtDate(d.DeliveryDate) + '</div>' +
       (d.RevenueExported ? '<div class="muted" style="margin-top:4px">✅ บันทึกยอดขายเข้า Revenue แล้ว (' + escapeHtml(d.RevenueExported) + ')</div>' : '') +
       '<div style="margin-top:8px;display:flex;gap:8px;">' +
+      '<button class="btn sm outline" data-edit-deal="' + d.ID + '">แก้ไข</button>' +
       '<button class="btn sm danger outline" data-del-deal="' + d.ID + '">ลบดีลนี้</button></div></div>';
   }).join('');
 
@@ -888,6 +898,37 @@ function renderDeals(c) {
       });
     });
   });
+  el.querySelectorAll('[data-edit-deal]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var deal = c.deals.find(function (x) { return x.ID === btn.dataset.editDeal; });
+      if (deal) openEditDealModal(deal);
+    });
+  });
+}
+
+var editingDealId = null;
+
+function openEditDealModal(deal) {
+  editingDealId = deal.ID;
+  document.getElementById('dealModalTitle').textContent = 'แก้ไขดีล';
+  var form = document.getElementById('dealForm');
+  form.Title.value = deal.Title || '';
+  form.Stage.value = deal.Stage || 'new';
+  form.EstimatedValue.value = deal.EstimatedValue || '';
+  form.Currency.value = deal.Currency || 'THB';
+  form.ExpectedCloseDate.value = deal.ExpectedCloseDate || '';
+  form.DeliveryDate.value = deal.DeliveryDate || '';
+  form.Notes.value = deal.Notes || '';
+  document.getElementById('productInterestManual').value = '';
+  var selectedNames = (deal.ProductInterest || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  document.querySelectorAll('#productInterestChecklist input[data-product-checkbox]').forEach(function (cb) {
+    cb.checked = selectedNames.indexOf(cb.value) !== -1;
+  });
+  var extras = selectedNames.filter(function (name) {
+    return !document.querySelector('#productInterestChecklist input[data-product-checkbox][value="' + CSS.escape(name) + '"]');
+  });
+  if (extras.length) document.getElementById('productInterestManual').value = extras.join(', ');
+  document.getElementById('dealModal').hidden = false;
 }
 
 function renderDocs(c) {
@@ -922,13 +963,42 @@ function renderFollowups(c) {
       '<b>' + followupTypeLabel(f.Type) + '</b>' +
       '<label class="muted"><input type="checkbox" data-done="' + f.ID + '"' + (f.Done ? ' checked' : '') + '> เสร็จแล้ว</label></div>' +
       '<div style="margin-top:4px">' + escapeHtml(f.Note || '') + '</div>' +
-      '<div class="muted" style="margin-top:4px">นัดติดตาม: ' + fmtDate(f.FollowUpDate) + '</div></div>';
+      '<div class="muted" style="margin-top:4px">นัดติดตาม: ' + fmtDate(f.FollowUpDate) + '</div>' +
+      '<div style="margin-top:8px;display:flex;gap:8px;">' +
+      '<button class="btn sm outline" data-edit-followup="' + f.ID + '">แก้ไข</button>' +
+      '<button class="btn sm danger outline" data-del-followup="' + f.ID + '">ลบ</button></div></div>';
   }).join('');
   el.querySelectorAll('[data-done]').forEach(function (cb) {
     cb.addEventListener('change', function () {
       gsRun('updateFollowup', cb.dataset.done, { Done: cb.checked }).then(function () { openCustomerDetail(currentCustomerId); }).catch(function (e) { toast(e.message, true); });
     });
   });
+  el.querySelectorAll('[data-edit-followup]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var f = c.followups.find(function (x) { return x.ID === btn.dataset.editFollowup; });
+      if (f) openEditFollowupModal(f);
+    });
+  });
+  el.querySelectorAll('[data-del-followup]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      confirmDialog('ต้องการลบการติดตามนี้ใช่หรือไม่?', 'ลบการติดตาม').then(function (ok) {
+        if (!ok) return;
+        gsRun('deleteFollowup', btn.dataset.delFollowup).then(function () { openCustomerDetail(currentCustomerId); }).catch(function (e) { toast(e.message, true); });
+      });
+    });
+  });
+}
+
+var editingFollowupId = null;
+
+function openEditFollowupModal(f) {
+  editingFollowupId = f.ID;
+  document.getElementById('followupModalTitle').textContent = 'แก้ไขการติดตามลูกค้า';
+  var form = document.getElementById('followupForm');
+  form.Type.value = f.Type || 'call';
+  form.FollowUpDate.value = f.FollowUpDate || '';
+  form.Note.value = f.Note || '';
+  document.getElementById('followupModal').hidden = false;
 }
 
 function renderAi(c) {
@@ -999,12 +1069,29 @@ function openCustomerDetail(id) {
 document.getElementById('backToListBtn').addEventListener('click', function () { showView('customers'); });
 
 document.querySelectorAll('[data-close]').forEach(function (btn) {
-  btn.addEventListener('click', function () { document.getElementById(btn.dataset.close).hidden = true; });
+  btn.addEventListener('click', function () {
+    document.getElementById(btn.dataset.close).hidden = true;
+    if (btn.dataset.close === 'dealModal') editingDealId = null;
+    if (btn.dataset.close === 'followupModal') editingFollowupId = null;
+  });
 });
 
-document.getElementById('addDealBtn').addEventListener('click', function () { document.getElementById('dealModal').hidden = false; });
+document.getElementById('addDealBtn').addEventListener('click', function () {
+  editingDealId = null;
+  document.getElementById('dealModalTitle').textContent = 'เพิ่มดีล/โอกาสการขาย';
+  document.getElementById('dealForm').reset();
+  document.getElementById('productInterestManual').value = '';
+  document.querySelectorAll('#productInterestChecklist input[data-product-checkbox]').forEach(function (cb) { cb.checked = false; });
+  recalcEstimatedValueFromChecklist();
+  document.getElementById('dealModal').hidden = false;
+});
 document.getElementById('addDocBtn').addEventListener('click', function () { document.getElementById('docModal').hidden = false; });
-document.getElementById('addFollowupBtn').addEventListener('click', function () { document.getElementById('followupModal').hidden = false; });
+document.getElementById('addFollowupBtn').addEventListener('click', function () {
+  editingFollowupId = null;
+  document.getElementById('followupModalTitle').textContent = 'เพิ่มการติดตามลูกค้า';
+  document.getElementById('followupForm').reset();
+  document.getElementById('followupModal').hidden = false;
+});
 
 function populateProductInterestSelect() {
   var box = document.getElementById('productInterestChecklist');
@@ -1036,11 +1123,15 @@ document.getElementById('dealForm').addEventListener('submit', function (e) {
   var manualProduct = document.getElementById('productInterestManual').value.trim();
   if (manualProduct) selectedProducts.push(manualProduct);
   data.ProductInterest = selectedProducts.join(', ');
-  gsRun('createDeal', currentCustomerId, data).then(function () {
+  var savePromise = editingDealId
+    ? gsRun('updateDeal', editingDealId, data)
+    : gsRun('createDeal', currentCustomerId, data);
+  savePromise.then(function () {
     document.getElementById('dealModal').hidden = true;
     document.getElementById('productInterestManual').value = '';
     e.target.reset();
-    toast('เพิ่มดีลแล้ว');
+    toast(editingDealId ? 'แก้ไขดีลแล้ว' : 'เพิ่มดีลแล้ว');
+    editingDealId = null;
     openCustomerDetail(currentCustomerId);
   }).catch(function (err) { toast(err.message, true); });
 });
@@ -1062,11 +1153,27 @@ function ensureAdPaymentOptionsLoaded() {
   });
 }
 
+function recalcCloseWonTotals() {
+  var subtotal = Number(document.getElementById('closeWonSubtotalInput').value) || 0;
+  var vatChecked = document.getElementById('closeWonVatCheck').checked;
+  var vat = vatChecked ? Math.round(subtotal * 0.07 * 100) / 100 : 0;
+  var shipping = Number(document.getElementById('closeWonShippingInput').value) || 0;
+  document.getElementById('closeWonVatInput').value = vat;
+  document.getElementById('closeWonTotalDisplay').value = Math.round((subtotal + vat + shipping) * 100) / 100;
+}
+
+document.getElementById('closeWonSubtotalInput').addEventListener('input', recalcCloseWonTotals);
+document.getElementById('closeWonVatCheck').addEventListener('change', recalcCloseWonTotals);
+document.getElementById('closeWonShippingInput').addEventListener('input', recalcCloseWonTotals);
+
 function openCloseWonModal(dealId, deal, selEl) {
   pendingCloseWonDealId = dealId;
   pendingCloseWonSelectEl = selEl;
-  document.querySelector('#closeWonForm input[name=BillTotal]').value = deal ? (deal.EstimatedValue || '') : '';
+  document.getElementById('closeWonSubtotalInput').value = deal ? (deal.EstimatedValue || '') : '';
+  document.getElementById('closeWonVatCheck').checked = true;
+  document.getElementById('closeWonShippingInput').value = 0;
   document.getElementById('closeWonSlipInput').value = '';
+  recalcCloseWonTotals();
   ensureAdPaymentOptionsLoaded().catch(function (e) { toast(e.message, true); });
   document.getElementById('closeWonModal').hidden = false;
 }
@@ -1169,10 +1276,14 @@ document.getElementById('docForm').addEventListener('submit', function (e) {
 document.getElementById('followupForm').addEventListener('submit', function (e) {
   e.preventDefault();
   var data = Object.fromEntries(new FormData(e.target).entries());
-  gsRun('createFollowup', currentCustomerId, data).then(function () {
+  var savePromise = editingFollowupId
+    ? gsRun('updateFollowup', editingFollowupId, data)
+    : gsRun('createFollowup', currentCustomerId, data);
+  savePromise.then(function () {
     document.getElementById('followupModal').hidden = true;
     e.target.reset();
-    toast('เพิ่มการติดตามแล้ว');
+    toast(editingFollowupId ? 'แก้ไขการติดตามแล้ว' : 'เพิ่มการติดตามแล้ว');
+    editingFollowupId = null;
     openCustomerDetail(currentCustomerId);
   }).catch(function (err) { toast(err.message, true); });
 });
@@ -1266,6 +1377,14 @@ document.getElementById('testMasterDataBtn').addEventListener('click', function 
       'รายการช่องทางโฆษณา (Ad): ' + (r.adOptions.length ? r.adOptions.map(escapeHtml).join(', ') : '<span style="color:#b3261e">ไม่พบ - ตรวจสอบชื่อแท็บด้านบน</span>') + '<br>' +
       'รายการวิธีชำระเงิน (Payment): ' + (r.paymentOptions.length ? r.paymentOptions.map(escapeHtml).join(', ') : '<span style="color:#b3261e">ไม่พบ</span>');
   }).catch(function (e) { el.innerHTML = '⚠️ ' + escapeHtml(e.message); });
+});
+document.getElementById('previewReportBtn').addEventListener('click', function () {
+  var box = document.getElementById('reportPreviewBox');
+  box.hidden = false;
+  box.textContent = 'กำลังสร้างตัวอย่าง...';
+  gsRun('previewDailyReport').then(function (r) {
+    box.textContent = r.text;
+  }).catch(function (e) { box.textContent = 'สร้างตัวอย่างไม่สำเร็จ: ' + e.message; });
 });
 document.getElementById('testLogoBtn').addEventListener('click', function () {
   var el = document.getElementById('logoTestResult');

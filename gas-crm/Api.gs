@@ -33,6 +33,7 @@ function apiCall(name, args) {
     testExportDealToRevenue: testExportDealToRevenue,
     testMasterDataConnection: testMasterDataConnection,
     testLogoConnection: testLogoConnection,
+    previewDailyReport: previewDailyReport,
     getAdOptions: getAdOptions,
     getPaymentOptions: getPaymentOptions,
     closeDealWon: closeDealWon,
