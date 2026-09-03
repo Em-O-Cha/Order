@@ -611,18 +611,63 @@ var API_TOKEN_KEY = 'crm_api_token';
 function getApiUrl() { return localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL || ''; }
 function getApiToken() { return localStorage.getItem(API_TOKEN_KEY) || ''; }
 
+// Apps Script Web App ไม่ส่ง Access-Control-Allow-Origin กลับมาให้เชื่อถือได้เวลาถูกเรียกข้ามโดเมน
+// (ยืนยันจาก error จริงในเบราว์เซอร์ ไม่ใช่แค่คาดเดา) จึงเลี่ยงปัญหานี้ทั้งหมดด้วยการไม่ใช้ fetch() เลย
+// แต่ส่งข้อมูลผ่าน <form method="POST"> ที่ target เป็น <iframe> ซ่อนไว้แทน (ฟอร์ม/iframe ไม่ถูกจำกัดโดย CORS)
+// แล้วให้ฝั่งเซิร์ฟเวอร์ตอบกลับด้วยหน้า HTML เล็ก ๆ ที่เรียก postMessage() ส่งผลลัพธ์กลับมาที่หน้านี้แทน
+var pendingApiRequests = {};
+var apiRequestCounter = 0;
+
+window.addEventListener('message', function (event) {
+  var data = event.data;
+  if (!data || !data.__crmApiResponse || !pendingApiRequests[data.requestId]) return;
+  var pending = pendingApiRequests[data.requestId];
+  if (data.ok) pending.resolve(data.result);
+  else pending.reject(new Error(data.error || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ'));
+});
+
 function rawApiCall(url, token, fnName, args) {
-  // ส่งเป็น application/x-www-form-urlencoded (ไม่ใช่ JSON ตรง ๆ) เพราะ Apps Script Web App เวลาถูกเรียกข้ามโดเมน
-  // (เช่นจาก GitHub Pages) จะ redirect ไปยัง script.googleusercontent.com ภายใน ซึ่งพบว่ารูปแบบนี้เท่านั้น
-  // ที่รอดจาก redirect แบบ CORS ได้แน่นอน ส่วน JSON แบบ text/plain มักโดนเบราว์เซอร์บล็อกเป็น "Failed to fetch"
-  var params = new URLSearchParams();
-  params.set('payload', JSON.stringify({ token: token, fn: fnName, args: args }));
-  return fetch(url, {
-    method: 'POST',
-    body: params,
-  }).then(function (r) { return r.json(); }).then(function (data) {
-    if (!data.ok) throw new Error(data.error || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ');
-    return data.result;
+  return new Promise(function (resolve, reject) {
+    var requestId = 'req' + (++apiRequestCounter) + '_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    var iframeName = 'apiFrame_' + requestId;
+
+    var iframe = document.createElement('iframe');
+    iframe.name = iframeName;
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = url;
+    form.target = iframeName;
+    form.style.display = 'none';
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'payload';
+    input.value = JSON.stringify({ token: token, fn: fnName, args: args, requestId: requestId, viaIframe: true });
+    form.appendChild(input);
+    document.body.appendChild(form);
+
+    var timeoutId = setTimeout(function () {
+      finish(false, null, 'การเชื่อมต่อหมดเวลา (30 วินาที) ลองใหม่อีกครั้ง');
+    }, 30000);
+
+    function finish(ok, result, error) {
+      clearTimeout(timeoutId);
+      delete pendingApiRequests[requestId];
+      setTimeout(function () {
+        if (form.parentNode) form.parentNode.removeChild(form);
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      }, 0);
+      if (ok) resolve(result); else reject(new Error(error));
+    }
+
+    pendingApiRequests[requestId] = {
+      resolve: function (r) { finish(true, r); },
+      reject: function (e) { finish(false, null, e.message); },
+    };
+
+    form.submit();
   });
 }
 

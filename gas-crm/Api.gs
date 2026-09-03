@@ -49,19 +49,19 @@ function apiCall(name, args) {
 }
 
 /**
- * จุดเข้าถึงแบบ HTTP API สำหรับหน้าเว็บที่ฝากไว้ที่อื่น (เช่น GitHub Pages) เรียกเข้ามาผ่าน fetch()
- * ต้องส่ง JSON แบบ POST มาเป็น { token, fn, args } — token ต้องตรงกับ API_TOKEN ที่ตั้งไว้ในหน้าตั้งค่า
- * ใช้ content-type "text/plain" ฝั่ง client เพื่อเลี่ยง CORS preflight (ตัว Apps Script เองไม่รองรับ custom header ใน OPTIONS)
+ * จุดเข้าถึงแบบ HTTP API สำหรับหน้าเว็บที่ฝากไว้ที่อื่น (เช่น GitHub Pages)
+ * ต้องส่งมาเป็น form field ชื่อ "payload" ที่เป็น JSON string ของ { token, fn, args } — token ต้องตรงกับ API_TOKEN ที่ตั้งไว้ในหน้าตั้งค่า
+ * ถ้ามี viaIframe: true และ requestId มาด้วย จะตอบกลับเป็นหน้า HTML เล็ก ๆ ที่เรียก parent.postMessage() แทนการตอบ JSON ตรง ๆ
+ * (ใช้แก้ปัญหา Apps Script Web App ไม่ส่ง CORS header ที่เชื่อถือได้เวลาเรียกข้ามโดเมนด้วย fetch — ฟอร์ม/iframe/postMessage ไม่ถูกจำกัดโดย CORS)
  */
 function doPost(e) {
   var response;
+  var body = {};
   try {
-    // รองรับทั้งสองแบบ: ส่งเป็น form field ชื่อ "payload" (ใช้เมื่อเรียกข้ามโดเมน เช่นจาก GitHub Pages
-    // เพื่อเลี่ยงปัญหา CORS ตอน Apps Script redirect ภายใน) หรือส่ง JSON ดิบมาตรง ๆ ใน request body
     var rawPayload = (e && e.parameter && e.parameter.payload)
       ? e.parameter.payload
       : ((e && e.postData && e.postData.contents) || '{}');
-    var body = JSON.parse(rawPayload);
+    body = JSON.parse(rawPayload);
     var storedToken = PROPS.getProperty('API_TOKEN');
     if (body.fn === 'generateApiToken') {
       // สร้าง Token ครั้งแรกได้โดยไม่ต้องมี Token เดิม แต่ถ้ามีอยู่แล้วต้องยืนยันด้วย Token เดิมก่อน กันคนอื่นมาสร้างทับ
@@ -74,6 +74,15 @@ function doPost(e) {
   } catch (err) {
     response = { ok: false, error: err.message };
   }
+
+  if (body.viaIframe) {
+    var messageObj = { __crmApiResponse: true, requestId: body.requestId, ok: response.ok, result: response.result, error: response.error };
+    // กัน payload ที่มี "</script" อยู่ข้างในทำลาย HTML ก่อนถึง JS parser (เช่น หมายเหตุลูกค้าที่พิมพ์คำนี้ไว้)
+    var safeJson = JSON.stringify(messageObj).replace(/<\/script/gi, '<\\/script');
+    var html = '<script>parent.postMessage(' + safeJson + ", '*');<\/script>";
+    return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
   return ContentService.createTextOutput(JSON.stringify(response)).setMimeType(ContentService.MimeType.JSON);
 }
 
