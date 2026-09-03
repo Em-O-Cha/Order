@@ -24,6 +24,7 @@ function customerDisplayName(customer) {
 function computeReminders() {
   var quotationWarnDays = getSettingNumber('QUOTATION_EXPIRY_WARN_DAYS', 3);
   var deliveryWarnDays = getSettingNumber('DELIVERY_WARN_DAYS', 2);
+  var poActionWarnDays = getSettingNumber('PO_ACTION_WARN_DAYS', 3);
 
   var customers = sheetToObjects(getSheet(SHEETS.CUSTOMERS));
   var customerById = {};
@@ -38,9 +39,12 @@ function computeReminders() {
   // ลูกค้าที่มีสลิปการโอนเงิน หรือใบเสร็จแล้ว = จบกระบวนการเอกสารทั้งหมดแล้ว ไม่ต้องเตือนเรื่องเอกสารใด ๆ อีก (เหลือแค่วันจัดส่งของดีล/การติดตาม)
   var hasPOByCustomer = {};
   var hasReceiptByCustomer = {};
+  var hasPostPOByCustomer = {}; // มีเอกสารขั้นถัดจาก PO แล้ว (ถือว่า PO ได้รับการดำเนินการต่อแล้ว)
+  var postPOTypes = { invoice: true, payment_slip: true, delivery_note: true, goods_receipt: true, receipt: true };
   documents.forEach(function (doc) {
     if (doc.DocType === 'po') hasPOByCustomer[doc.CustomerID] = true;
     if (doc.DocType === 'receipt' || doc.DocType === 'payment_slip') hasReceiptByCustomer[doc.CustomerID] = true;
+    if (postPOTypes[doc.DocType]) hasPostPOByCustomer[doc.CustomerID] = true;
   });
 
   documents.forEach(function (doc) {
@@ -73,6 +77,20 @@ function computeReminders() {
             ? 'กำหนดจัดส่งของเอกสาร ' + (doc.DocNumber || '') + ' เลยกำหนดแล้ว ' + Math.abs(d2) + ' วัน'
             : 'ใกล้ถึงกำหนดจัดส่ง (' + (doc.DocNumber || '') + ') ในอีก ' + d2 + ' วัน',
           dueDate: doc.DeliveryDate,
+        });
+      }
+    }
+    // เตือนถ้าได้รับ PO มาแล้วเกินกำหนด (ค่าเริ่มต้น 3 วัน) แต่ยังไม่ได้ดำเนินการต่อ (ยังไม่มีใบแจ้งหนี้/สลิป/ใบส่งของ ฯลฯ)
+    if (doc.DocType === 'po' && doc.IssueDate && !hasPostPOByCustomer[doc.CustomerID]) {
+      var daysSinceReceived = -daysUntil(doc.IssueDate);
+      if (daysSinceReceived !== null && daysSinceReceived >= poActionWarnDays) {
+        reminders.push({
+          type: 'po_pending',
+          severity: daysSinceReceived >= poActionWarnDays * 2 ? 'overdue' : 'urgent',
+          customerId: doc.CustomerID,
+          customerName: customerDisplayName(customerById[doc.CustomerID]),
+          message: 'ได้รับ PO ' + (doc.DocNumber || '') + ' มาแล้ว ' + daysSinceReceived + ' วัน ยังไม่ได้ดำเนินการต่อ (ออกใบแจ้งหนี้/สลิป/ใบส่งของ)',
+          dueDate: doc.IssueDate,
         });
       }
     }
