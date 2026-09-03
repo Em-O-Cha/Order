@@ -524,11 +524,13 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
         <div class="field"><label>ยอดรวมทั้งหมด (Bill Total)</label><input id="closeWonTotalDisplay" type="number" step="0.01" readonly></div>
         <div class="field">
           <label>ช่องทางโฆษณา (Ad)</label>
-          <select name="Ad" id="closeWonAdSelect"><option value="">- ไม่ระบุ -</option></select>
+          <select id="closeWonAdSelect"><option value="">- ไม่ระบุ -</option></select>
+          <input id="closeWonAdCustomInput" placeholder="พิมพ์ช่องทางเอง" hidden style="margin-top:6px">
         </div>
         <div class="field">
           <label>วิธีการชำระเงิน (Payment)</label>
-          <select name="Payment" id="closeWonPaymentSelect"><option value="">- ไม่ระบุ -</option></select>
+          <select id="closeWonPaymentSelect"><option value="">- ไม่ระบุ -</option></select>
+          <input id="closeWonPaymentCustomInput" placeholder="พิมพ์วิธีชำระเงินเอง" hidden style="margin-top:6px">
         </div>
         <div class="field full">
           <label>แนบสลิปการโอนเงิน (ถ้ายังไม่เคยอัปโหลดไว้ในเอกสารของลูกค้ารายนี้)</label>
@@ -1306,9 +1308,26 @@ function ensureAdPaymentOptionsLoaded() {
   return Promise.all([adPromise, paymentPromise]).then(function (results) {
     var adSel = document.getElementById('closeWonAdSelect');
     var paySel = document.getElementById('closeWonPaymentSelect');
-    adSel.innerHTML = '<option value="">- ไม่ระบุ -</option>' + results[0].map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
-    paySel.innerHTML = '<option value="">- ไม่ระบุ -</option>' + results[1].map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+    var customOpt = '<option value="__custom__">อื่น ๆ (พิมพ์เอง)</option>';
+    adSel.innerHTML = '<option value="">- ไม่ระบุ -</option>' + results[0].map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('') + customOpt;
+    paySel.innerHTML = '<option value="">- ไม่ระบุ -</option>' + results[1].map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('') + customOpt;
   });
+}
+
+function toggleCustomInput(selectId, inputId) {
+  var sel = document.getElementById(selectId);
+  var input = document.getElementById(inputId);
+  var isCustom = sel.value === '__custom__';
+  input.hidden = !isCustom;
+  if (isCustom) input.focus();
+}
+document.getElementById('closeWonAdSelect').addEventListener('change', function () { toggleCustomInput('closeWonAdSelect', 'closeWonAdCustomInput'); });
+document.getElementById('closeWonPaymentSelect').addEventListener('change', function () { toggleCustomInput('closeWonPaymentSelect', 'closeWonPaymentCustomInput'); });
+
+function resolveSelectOrCustom(selectId, customInputId) {
+  var sel = document.getElementById(selectId);
+  if (sel.value === '__custom__') return document.getElementById(customInputId).value.trim();
+  return sel.value;
 }
 
 function recalcCloseWonTotals() {
@@ -1331,6 +1350,10 @@ function openCloseWonModal(dealId, deal, selEl) {
   document.getElementById('closeWonVatCheck').checked = true;
   document.getElementById('closeWonShippingInput').value = 0;
   document.getElementById('closeWonSlipInput').value = '';
+  document.getElementById('closeWonAdCustomInput').value = '';
+  document.getElementById('closeWonAdCustomInput').hidden = true;
+  document.getElementById('closeWonPaymentCustomInput').value = '';
+  document.getElementById('closeWonPaymentCustomInput').hidden = true;
   recalcCloseWonTotals();
   ensureAdPaymentOptionsLoaded().catch(function (e) { toast(e.message, true); });
   document.getElementById('closeWonModal').hidden = false;
@@ -1347,6 +1370,8 @@ document.getElementById('cancelCloseWonBtn').addEventListener('click', function 
 document.getElementById('closeWonForm').addEventListener('submit', function (e) {
   e.preventDefault();
   var data = Object.fromEntries(new FormData(e.target).entries());
+  data.Ad = resolveSelectOrCustom('closeWonAdSelect', 'closeWonAdCustomInput');
+  data.Payment = resolveSelectOrCustom('closeWonPaymentSelect', 'closeWonPaymentCustomInput');
   var submitBtn = document.getElementById('closeWonSubmitBtn');
   submitBtn.disabled = true;
   submitBtn.innerHTML = '<span class="spinner"></span> กำลังบันทึก...';
