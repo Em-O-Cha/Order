@@ -898,8 +898,13 @@ function bindStatusSelects(root) {
     sel.addEventListener('change', function () {
       var id = sel.dataset.statusCustomer;
       if (sel.value === 'won') {
-        toast('เปิดหน้าลูกค้าเพื่อกรอกรายละเอียดปิดการขาย (ยอดขาย/การชำระเงิน/Ad) ก่อนบันทึกเข้า Revenue', true);
+        var hasDeal = Number(sel.dataset.dealCount || 0) > 0;
         sel.value = sel.dataset.prevValue;
+        if (!hasDeal) {
+          toast('ลูกค้ารายนี้ยังไม่มีดีล ต้องกด "+ เพิ่มดีล" ที่หน้ารายละเอียดลูกค้าก่อน แล้วค่อยเปลี่ยนสถานะของดีลนั้นเป็น "ปิดการขายสำเร็จ"', true);
+        } else {
+          toast('เปิดหน้าลูกค้าเพื่อกรอกรายละเอียดปิดการขาย (ยอดขาย/การชำระเงิน/Ad) ก่อนบันทึกเข้า Revenue — เลื่อนลงไปที่ดีลแล้วเปลี่ยนสถานะของดีลนั้นแทน', true);
+        }
         openCustomerDetail(id);
         return;
       }
@@ -920,7 +925,7 @@ function customerRowHtml(c) {
     '<td><span class="badge type-' + c.Type + '">' + (c.Type === 'company' ? 'บริษัท' : 'บุคคลธรรมดา') + '</span></td>' +
     '<td>' + countryLabel(c.Country) + '</td>' +
     '<td>' + escapeHtml(c.ContactChannel || '-') + '</td>' +
-    '<td><select data-status-customer="' + c.ID + '">' + statusOptionsHtml(c.currentStage) + '</select></td>' +
+    '<td><select data-status-customer="' + c.ID + '" data-deal-count="' + (c.dealCount || 0) + '">' + statusOptionsHtml(c.currentStage) + '</select></td>' +
     '<td>' + escapeHtml(c.Phone || c.Email || '-') + '</td></tr>';
 }
 
