@@ -36,15 +36,12 @@ function computeReminders() {
   var reminders = [];
 
   // ลูกค้าที่มี PO แล้ว = จบขั้นตอนใบเสนอราคาแล้ว ไม่ต้องเตือนใบเสนอราคาหมดอายุอีก
-  // ลูกค้าที่มีสลิปการโอนเงิน หรือใบเสร็จแล้ว = จบกระบวนการเอกสารทั้งหมดแล้ว ไม่ต้องเตือนเรื่องเอกสารใด ๆ อีก (เหลือแค่วันจัดส่งของดีล/การติดตาม)
+  // ลูกค้าที่มีสลิปการโอนเงิน หรือใบเสร็จแล้ว = จบกระบวนการเอกสารทั้งหมดแล้ว (รวมถึง PO ที่ต้องดำเนินการ) ไม่ต้องเตือนเรื่องเอกสารใด ๆ อีก (เหลือแค่วันจัดส่งของดีล/การติดตาม)
   var hasPOByCustomer = {};
   var hasReceiptByCustomer = {};
-  var hasPostPOByCustomer = {}; // มีเอกสารขั้นถัดจาก PO แล้ว (ถือว่า PO ได้รับการดำเนินการต่อแล้ว)
-  var postPOTypes = { invoice: true, payment_slip: true, delivery_note: true, goods_receipt: true, receipt: true };
   documents.forEach(function (doc) {
     if (doc.DocType === 'po') hasPOByCustomer[doc.CustomerID] = true;
     if (doc.DocType === 'receipt' || doc.DocType === 'payment_slip') hasReceiptByCustomer[doc.CustomerID] = true;
-    if (postPOTypes[doc.DocType]) hasPostPOByCustomer[doc.CustomerID] = true;
   });
 
   documents.forEach(function (doc) {
@@ -81,7 +78,7 @@ function computeReminders() {
       }
     }
     // เตือนถ้าได้รับ PO มาแล้วเกินกำหนด (ค่าเริ่มต้น 3 วัน) แต่ยังไม่ได้ดำเนินการต่อ (ยังไม่มีใบแจ้งหนี้/สลิป/ใบส่งของ ฯลฯ)
-    if (doc.DocType === 'po' && doc.IssueDate && !hasPostPOByCustomer[doc.CustomerID]) {
+    if (doc.DocType === 'po' && doc.IssueDate) {
       var daysSinceReceived = -daysUntil(doc.IssueDate);
       if (daysSinceReceived !== null && daysSinceReceived >= poActionWarnDays) {
         reminders.push({
