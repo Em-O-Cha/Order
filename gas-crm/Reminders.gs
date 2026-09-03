@@ -25,6 +25,7 @@ function computeReminders() {
   var quotationWarnDays = getSettingNumber('QUOTATION_EXPIRY_WARN_DAYS', 3);
   var deliveryWarnDays = getSettingNumber('DELIVERY_WARN_DAYS', 2);
   var poActionWarnDays = getSettingNumber('PO_ACTION_WARN_DAYS', 3);
+  var invoiceActionWarnDays = getSettingNumber('INVOICE_ACTION_WARN_DAYS', 3);
 
   var customers = sheetToObjects(getSheet(SHEETS.CUSTOMERS));
   var customerById = {};
@@ -35,12 +36,16 @@ function computeReminders() {
   var followups = sheetToObjects(getSheet(SHEETS.FOLLOWUPS));
   var reminders = [];
 
-  // ลูกค้าที่มี PO แล้ว = จบขั้นตอนใบเสนอราคาแล้ว ไม่ต้องเตือนใบเสนอราคาหมดอายุอีก
-  // ลูกค้าที่มีสลิปการโอนเงิน หรือใบเสร็จแล้ว = จบกระบวนการเอกสารทั้งหมดแล้ว (รวมถึง PO ที่ต้องดำเนินการ) ไม่ต้องเตือนเรื่องเอกสารใด ๆ อีก (เหลือแค่วันจัดส่งของดีล/การติดตาม)
+  // ลำดับขั้นเอกสาร: ใบเสนอราคา -> PO -> ใบแจ้งหนี้ -> สลิป/ใบเสร็จ
+  // 1. มี PO แล้ว = จบขั้นตอนใบเสนอราคาแล้ว ไม่ต้องเตือนใบเสนอราคาหมดอายุอีก
+  // 2. มีใบแจ้งหนี้แล้ว = จบขั้นตอน PO แล้ว ไม่ต้องเตือนว่า PO ค้างดำเนินการอีก
+  // 3. มีสลิปการโอนเงิน หรือใบเสร็จแล้ว = จบกระบวนการเอกสารทั้งหมด (ทั้ง PO และใบแจ้งหนี้ที่ต้องดำเนินการ) ไม่ต้องเตือนเรื่องเอกสารใด ๆ อีก (เหลือแค่วันจัดส่งของดีล/การติดตาม)
   var hasPOByCustomer = {};
+  var hasInvoiceByCustomer = {};
   var hasReceiptByCustomer = {};
   documents.forEach(function (doc) {
     if (doc.DocType === 'po') hasPOByCustomer[doc.CustomerID] = true;
+    if (doc.DocType === 'invoice') hasInvoiceByCustomer[doc.CustomerID] = true;
     if (doc.DocType === 'receipt' || doc.DocType === 'payment_slip') hasReceiptByCustomer[doc.CustomerID] = true;
   });
 
@@ -77,8 +82,8 @@ function computeReminders() {
         });
       }
     }
-    // เตือนถ้าได้รับ PO มาแล้วเกินกำหนด (ค่าเริ่มต้น 3 วัน) แต่ยังไม่ได้ดำเนินการต่อ (ยังไม่มีใบแจ้งหนี้/สลิป/ใบส่งของ ฯลฯ)
-    if (doc.DocType === 'po' && doc.IssueDate) {
+    // เตือนถ้าได้รับ PO มาแล้วเกินกำหนด (ค่าเริ่มต้น 3 วัน) แต่ยังไม่ได้ออกใบแจ้งหนี้ต่อ
+    if (doc.DocType === 'po' && doc.IssueDate && !hasInvoiceByCustomer[doc.CustomerID]) {
       var daysSinceReceived = -daysUntil(doc.IssueDate);
       if (daysSinceReceived !== null && daysSinceReceived >= poActionWarnDays) {
         reminders.push({
@@ -86,7 +91,21 @@ function computeReminders() {
           severity: daysSinceReceived >= poActionWarnDays * 2 ? 'overdue' : 'urgent',
           customerId: doc.CustomerID,
           customerName: customerDisplayName(customerById[doc.CustomerID]),
-          message: 'ได้รับ PO ' + (doc.DocNumber || '') + ' มาแล้ว ' + daysSinceReceived + ' วัน ยังไม่ได้ดำเนินการต่อ (ออกใบแจ้งหนี้/สลิป/ใบส่งของ)',
+          message: 'ได้รับ PO ' + (doc.DocNumber || '') + ' มาแล้ว ' + daysSinceReceived + ' วัน ยังไม่ได้ออกใบแจ้งหนี้',
+          dueDate: doc.IssueDate,
+        });
+      }
+    }
+    // เตือนถ้าออกใบแจ้งหนี้มาแล้วเกินกำหนด (ค่าเริ่มต้น 3 วัน) แต่ยังไม่ได้แนบสลิป/ใบเสร็จ
+    if (doc.DocType === 'invoice' && doc.IssueDate) {
+      var daysSinceInvoiced = -daysUntil(doc.IssueDate);
+      if (daysSinceInvoiced !== null && daysSinceInvoiced >= invoiceActionWarnDays) {
+        reminders.push({
+          type: 'invoice_pending',
+          severity: daysSinceInvoiced >= invoiceActionWarnDays * 2 ? 'overdue' : 'urgent',
+          customerId: doc.CustomerID,
+          customerName: customerDisplayName(customerById[doc.CustomerID]),
+          message: 'ออกใบแจ้งหนี้ ' + (doc.DocNumber || '') + ' มาแล้ว ' + daysSinceInvoiced + ' วัน ยังไม่ได้รับสลิป/ใบเสร็จ',
           dueDate: doc.IssueDate,
         });
       }

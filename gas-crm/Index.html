@@ -354,8 +354,12 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
           <input name="DELIVERY_WARN_DAYS" type="number">
         </div>
         <div class="field">
-          <label>เตือนถ้าได้รับ PO แล้วยังไม่ดำเนินการต่อเกิน (วัน)</label>
+          <label>เตือนถ้าได้รับ PO แล้วยังไม่ออกใบแจ้งหนี้เกิน (วัน)</label>
           <input name="PO_ACTION_WARN_DAYS" type="number" placeholder="3">
+        </div>
+        <div class="field">
+          <label>เตือนถ้าออกใบแจ้งหนี้แล้วยังไม่ได้รับสลิป/ใบเสร็จเกิน (วัน)</label>
+          <input name="INVOICE_ACTION_WARN_DAYS" type="number" placeholder="3">
         </div>
       </div>
       <div class="modal-actions">
