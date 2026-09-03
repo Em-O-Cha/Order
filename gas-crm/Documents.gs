@@ -54,6 +54,44 @@ function uploadDocument(data) {
   return obj;
 }
 
+/**
+ * แก้ไขเอกสารที่เคยอัปโหลดไว้แล้ว (เผื่อกรอกข้อมูลผิดตอนแรก)
+ * data: { DocType, DocNumber, IssueDate, ExpiryDate, DeliveryDate, Amount, Currency, Notes,
+ *         fileBase64, fileName, mimeType }  (fileBase64 ใส่มาเฉพาะตอนต้องการเปลี่ยนไฟล์แนบใหม่)
+ */
+function updateDocument(id, data) {
+  var existing = getObjectById(SHEETS.DOCUMENTS, id);
+  if (!existing) throw new Error('ไม่พบเอกสารนี้');
+
+  var patch = {
+    DocType: data.DocType || existing.DocType,
+    DocNumber: data.DocNumber || '',
+    IssueDate: data.IssueDate || '',
+    ExpiryDate: data.ExpiryDate || '',
+    DeliveryDate: data.DeliveryDate || '',
+    Amount: data.Amount ? Number(data.Amount) : '',
+    Currency: data.Currency || existing.Currency || 'THB',
+    Notes: data.Notes || '',
+  };
+
+  if (data.fileBase64 && data.fileName) {
+    if (existing.FileUrl) {
+      try {
+        var idMatch = existing.FileUrl.match(/[-\w]{25,}/);
+        if (idMatch) DriveApp.getFileById(idMatch[0]).setTrashed(true);
+      } catch (e) { /* ไฟล์เดิมอาจถูกลบไปแล้ว ข้ามได้ */ }
+    }
+    var folder = getOrCreateDocsFolder();
+    var bytes = Utilities.base64Decode(data.fileBase64);
+    var blob = Utilities.newBlob(bytes, data.mimeType || 'application/octet-stream', data.fileName);
+    var file = folder.createFile(blob);
+    patch.FileUrl = file.getUrl();
+    patch.FileName = data.fileName;
+  }
+
+  return updateObjectById(SHEETS.DOCUMENTS, id, patch);
+}
+
 function deleteDocument(id) {
   var doc = getObjectById(SHEETS.DOCUMENTS, id);
   if (doc && doc.FileUrl) {

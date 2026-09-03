@@ -34,8 +34,19 @@ function computeReminders() {
   var followups = sheetToObjects(getSheet(SHEETS.FOLLOWUPS));
   var reminders = [];
 
+  // ลูกค้าที่มี PO แล้ว = จบขั้นตอนใบเสนอราคาแล้ว ไม่ต้องเตือนใบเสนอราคาหมดอายุอีก
+  // ลูกค้าที่มีใบเสร็จแล้ว = จบกระบวนการเอกสารทั้งหมดแล้ว ไม่ต้องเตือนเรื่องเอกสารใด ๆ อีก (เหลือแค่วันจัดส่งของดีล/การติดตาม)
+  var hasPOByCustomer = {};
+  var hasReceiptByCustomer = {};
   documents.forEach(function (doc) {
+    if (doc.DocType === 'po') hasPOByCustomer[doc.CustomerID] = true;
+    if (doc.DocType === 'receipt') hasReceiptByCustomer[doc.CustomerID] = true;
+  });
+
+  documents.forEach(function (doc) {
+    if (hasReceiptByCustomer[doc.CustomerID]) return; // จบกระบวนการเอกสารแล้ว ข้ามการเตือนเอกสารทั้งหมดของลูกค้ารายนี้
     if (doc.DocType === 'quotation' && doc.ExpiryDate) {
+      if (hasPOByCustomer[doc.CustomerID]) return; // มี PO แล้ว แปลว่าปิดขั้นตอนใบเสนอราคาไปแล้ว ไม่ต้องเตือนอีก
       var d = daysUntil(doc.ExpiryDate);
       if (d !== null && d <= quotationWarnDays) {
         reminders.push({

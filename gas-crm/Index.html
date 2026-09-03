@@ -571,7 +571,7 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 
 <div class="modal-overlay" id="docModal" hidden>
   <div class="modal">
-    <h3>อัปโหลดเอกสาร</h3>
+    <h3 id="docModalTitle">อัปโหลดเอกสาร</h3>
     <form id="docForm">
       <div class="form-grid">
         <div class="field"><label>ประเภทเอกสาร</label><select name="DocType" id="docTypeSelect"></select></div>
@@ -581,8 +581,9 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
         <div class="field"><label>วันที่จัดส่ง (สำหรับ PO/ใบส่งของ)</label><input name="DeliveryDate" type="date"></div>
         <div class="field"><label>มูลค่า</label><input name="Amount" type="number" step="0.01"></div>
         <div class="field full">
-          <label>ไฟล์เอกสาร (รองรับ PDF, JPG, PNG)</label>
+          <label id="docFileInputLabel">ไฟล์เอกสาร (รองรับ PDF, JPG, PNG)</label>
           <input type="file" id="docFileInput" accept="application/pdf,image/jpeg,image/jpg,image/png">
+          <div class="muted" id="docCurrentFileHint" style="margin-top:4px" hidden></div>
         </div>
         <div class="field full"><label>หมายเหตุ</label><textarea name="Notes" rows="2"></textarea></div>
       </div>
@@ -1111,7 +1112,9 @@ function renderDocs(c) {
   el.innerHTML = c.documents.map(function (d) {
     return '<div class="doc-item"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
       '<b>' + docTypeLabel(d.DocType) + (d.DocNumber ? ' #' + escapeHtml(d.DocNumber) : '') + '</b>' +
-      '<button class="btn sm danger outline" data-del-doc="' + d.ID + '">ลบ</button></div>' +
+      '<div style="display:flex;gap:8px;">' +
+      '<button class="btn sm outline" data-edit-doc="' + d.ID + '">แก้ไข</button>' +
+      '<button class="btn sm danger outline" data-del-doc="' + d.ID + '">ลบ</button></div></div>' +
       '<div class="muted" style="margin-top:6px">วันที่ออก: ' + fmtDate(d.IssueDate) +
       (d.ExpiryDate ? ' | หมดอายุ: ' + fmtDate(d.ExpiryDate) : '') +
       (d.DeliveryDate ? ' | วันจัดส่ง: ' + fmtDate(d.DeliveryDate) : '') +
@@ -1124,6 +1127,12 @@ function renderDocs(c) {
         if (!ok) return;
         gsRun('deleteDocument', btn.dataset.delDoc).then(function () { openCustomerDetail(currentCustomerId); }).catch(function (e) { toast(e.message, true); });
       });
+    });
+  });
+  el.querySelectorAll('[data-edit-doc]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var doc = c.documents.find(function (x) { return x.ID === btn.dataset.editDoc; });
+      if (doc) openEditDocModal(doc);
     });
   });
 }
@@ -1247,6 +1256,7 @@ document.querySelectorAll('[data-close]').forEach(function (btn) {
     document.getElementById(btn.dataset.close).hidden = true;
     if (btn.dataset.close === 'dealModal') editingDealId = null;
     if (btn.dataset.close === 'followupModal') editingFollowupId = null;
+    if (btn.dataset.close === 'docModal') editingDocId = null;
   });
 });
 
@@ -1259,7 +1269,41 @@ document.getElementById('addDealBtn').addEventListener('click', function () {
   recalcEstimatedValueFromChecklist();
   document.getElementById('dealModal').hidden = false;
 });
-document.getElementById('addDocBtn').addEventListener('click', function () { document.getElementById('docModal').hidden = false; });
+var editingDocId = null;
+
+document.getElementById('addDocBtn').addEventListener('click', function () {
+  editingDocId = null;
+  document.getElementById('docModalTitle').textContent = 'อัปโหลดเอกสาร';
+  document.getElementById('docSubmitBtn').textContent = 'อัปโหลด';
+  document.getElementById('docForm').reset();
+  document.getElementById('docFileInputLabel').textContent = 'ไฟล์เอกสาร (รองรับ PDF, JPG, PNG)';
+  document.getElementById('docCurrentFileHint').hidden = true;
+  document.getElementById('docModal').hidden = false;
+});
+
+function openEditDocModal(doc) {
+  editingDocId = doc.ID;
+  document.getElementById('docModalTitle').textContent = 'แก้ไขเอกสาร';
+  document.getElementById('docSubmitBtn').textContent = 'บันทึกการแก้ไข';
+  var form = document.getElementById('docForm');
+  form.DocType.value = doc.DocType || '';
+  form.DocNumber.value = doc.DocNumber || '';
+  form.IssueDate.value = doc.IssueDate || '';
+  form.ExpiryDate.value = doc.ExpiryDate || '';
+  form.DeliveryDate.value = doc.DeliveryDate || '';
+  form.Amount.value = doc.Amount || '';
+  form.Notes.value = doc.Notes || '';
+  document.getElementById('docFileInput').value = '';
+  document.getElementById('docFileInputLabel').textContent = 'แนบไฟล์ใหม่แทนของเดิม (ถ้าไม่แนบ จะใช้ไฟล์เดิมต่อไป)';
+  var hint = document.getElementById('docCurrentFileHint');
+  if (doc.FileUrl) {
+    hint.hidden = false;
+    hint.innerHTML = 'ไฟล์ปัจจุบัน: <a href="' + doc.FileUrl + '" target="_blank">' + escapeHtml(doc.FileName || 'เปิดไฟล์') + '</a>';
+  } else {
+    hint.hidden = true;
+  }
+  document.getElementById('docModal').hidden = false;
+}
 document.getElementById('addFollowupBtn').addEventListener('click', function () {
   editingFollowupId = null;
   document.getElementById('followupModalTitle').textContent = 'เพิ่มการติดตามลูกค้า';
@@ -1471,17 +1515,20 @@ document.getElementById('docForm').addEventListener('submit', function (e) {
   data.CustomerID = currentCustomerId;
   var fileInput = document.getElementById('docFileInput');
   var submitBtn = document.getElementById('docSubmitBtn');
+  var isEditing = !!editingDocId;
   submitBtn.disabled = true;
-  submitBtn.innerHTML = '<span class="spinner"></span> กำลังอัปโหลด...';
+  submitBtn.innerHTML = '<span class="spinner"></span> กำลังบันทึก...';
 
   function finish() {
-    gsRun('uploadDocument', data).then(function () {
+    var savePromise = isEditing ? gsRun('updateDocument', editingDocId, data) : gsRun('uploadDocument', data);
+    savePromise.then(function () {
       document.getElementById('docModal').hidden = true;
       e.target.reset();
-      toast('อัปโหลดเอกสารแล้ว');
+      toast(isEditing ? 'แก้ไขเอกสารแล้ว' : 'อัปโหลดเอกสารแล้ว');
+      editingDocId = null;
       openCustomerDetail(currentCustomerId);
-    }).catch(function (err) { toast('อัปโหลดไม่สำเร็จ: ' + err.message, true); })
-    .finally(function () { submitBtn.disabled = false; submitBtn.textContent = 'อัปโหลด'; });
+    }).catch(function (err) { toast((isEditing ? 'แก้ไขไม่สำเร็จ: ' : 'อัปโหลดไม่สำเร็จ: ') + err.message, true); })
+    .finally(function () { submitBtn.disabled = false; submitBtn.textContent = isEditing ? 'บันทึกการแก้ไข' : 'อัปโหลด'; });
   }
 
   if (fileInput.files && fileInput.files[0]) {

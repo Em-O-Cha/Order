@@ -17,6 +17,7 @@ var API_FUNCTIONS = {
   updateFollowup: updateFollowup,
   deleteFollowup: deleteFollowup,
   uploadDocument: uploadDocument,
+  updateDocument: updateDocument,
   deleteDocument: deleteDocument,
   getDashboard: getDashboard,
   sendDailyReportNow: sendDailyReportNow,
