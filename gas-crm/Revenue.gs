@@ -98,7 +98,11 @@ function getCampaignOptions() {
 }
 
 function getCustomerTypeOptions() {
-  return getMasterDataList(PROPS.getProperty('CUSTOMER_TYPE_LIST_TAB') || 'CustomerType');
+  var configured = PROPS.getProperty('CUSTOMER_TYPE_LIST_TAB');
+  if (configured) return getMasterDataList(configured);
+  var list = getMasterDataList('CustomerType');
+  if (list.length) return list;
+  return getMasterDataList('Customer'); // ชื่อแท็บทางเลือกที่พบได้บ่อย (ไฟล์บางฉบับตั้งชื่อแท็บว่า "Customer" เฉย ๆ)
 }
 
 function getProvinces() {
