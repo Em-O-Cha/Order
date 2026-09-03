@@ -56,7 +56,12 @@ function apiCall(name, args) {
 function doPost(e) {
   var response;
   try {
-    var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    // รองรับทั้งสองแบบ: ส่งเป็น form field ชื่อ "payload" (ใช้เมื่อเรียกข้ามโดเมน เช่นจาก GitHub Pages
+    // เพื่อเลี่ยงปัญหา CORS ตอน Apps Script redirect ภายใน) หรือส่ง JSON ดิบมาตรง ๆ ใน request body
+    var rawPayload = (e && e.parameter && e.parameter.payload)
+      ? e.parameter.payload
+      : ((e && e.postData && e.postData.contents) || '{}');
+    var body = JSON.parse(rawPayload);
     var storedToken = PROPS.getProperty('API_TOKEN');
     if (body.fn === 'generateApiToken') {
       // สร้าง Token ครั้งแรกได้โดยไม่ต้องมี Token เดิม แต่ถ้ามีอยู่แล้วต้องยืนยันด้วย Token เดิมก่อน กันคนอื่นมาสร้างทับ

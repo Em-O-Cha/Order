@@ -612,10 +612,14 @@ function getApiUrl() { return localStorage.getItem(API_URL_KEY) || DEFAULT_API_U
 function getApiToken() { return localStorage.getItem(API_TOKEN_KEY) || ''; }
 
 function rawApiCall(url, token, fnName, args) {
+  // ส่งเป็น application/x-www-form-urlencoded (ไม่ใช่ JSON ตรง ๆ) เพราะ Apps Script Web App เวลาถูกเรียกข้ามโดเมน
+  // (เช่นจาก GitHub Pages) จะ redirect ไปยัง script.googleusercontent.com ภายใน ซึ่งพบว่ารูปแบบนี้เท่านั้น
+  // ที่รอดจาก redirect แบบ CORS ได้แน่นอน ส่วน JSON แบบ text/plain มักโดนเบราว์เซอร์บล็อกเป็น "Failed to fetch"
+  var params = new URLSearchParams();
+  params.set('payload', JSON.stringify({ token: token, fn: fnName, args: args }));
   return fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ token: token, fn: fnName, args: args }),
+    body: params,
   }).then(function (r) { return r.json(); }).then(function (data) {
     if (!data.ok) throw new Error(data.error || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ');
     return data.result;
