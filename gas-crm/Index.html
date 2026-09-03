@@ -553,6 +553,7 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
         <div class="field">
           <label>จังหวัด</label>
           <select id="closeWonProvinceSelect"><option value="">- ไม่ระบุ -</option></select>
+          <input id="closeWonProvinceCustomInput" placeholder="พิมพ์จังหวัดเอง" hidden style="margin-top:6px">
         </div>
         <div class="field full">
           <label>แนบสลิปการโอนเงิน (ถ้ายังไม่เคยอัปโหลดไว้ในเอกสารของลูกค้ารายนี้)</label>
@@ -1344,8 +1345,7 @@ function ensureAdPaymentOptionsLoaded() {
     fillSelectWithCustomOption('closeWonPaymentSelect', results[1]);
     fillSelectWithCustomOption('closeWonCampaignSelect', results[2]);
     fillSelectWithCustomOption('closeWonCustomerTypeSelect', results[3]);
-    document.getElementById('closeWonProvinceSelect').innerHTML = '<option value="">- ไม่ระบุ -</option>' +
-      results[4].map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join('');
+    fillSelectWithCustomOption('closeWonProvinceSelect', results[4]);
   });
 }
 
@@ -1360,6 +1360,7 @@ document.getElementById('closeWonAdSelect').addEventListener('change', function 
 document.getElementById('closeWonPaymentSelect').addEventListener('change', function () { toggleCustomInput('closeWonPaymentSelect', 'closeWonPaymentCustomInput'); });
 document.getElementById('closeWonCampaignSelect').addEventListener('change', function () { toggleCustomInput('closeWonCampaignSelect', 'closeWonCampaignCustomInput'); });
 document.getElementById('closeWonCustomerTypeSelect').addEventListener('change', function () { toggleCustomInput('closeWonCustomerTypeSelect', 'closeWonCustomerTypeCustomInput'); });
+document.getElementById('closeWonProvinceSelect').addEventListener('change', function () { toggleCustomInput('closeWonProvinceSelect', 'closeWonProvinceCustomInput'); });
 
 function resolveSelectOrCustom(selectId, customInputId) {
   var sel = document.getElementById(selectId);
@@ -1396,6 +1397,8 @@ function openCloseWonModal(dealId, deal, selEl) {
   document.getElementById('closeWonCustomerTypeCustomInput').value = '';
   document.getElementById('closeWonCustomerTypeCustomInput').hidden = true;
   document.getElementById('closeWonProvinceSelect').value = '';
+  document.getElementById('closeWonProvinceCustomInput').value = '';
+  document.getElementById('closeWonProvinceCustomInput').hidden = true;
   recalcCloseWonTotals();
   ensureAdPaymentOptionsLoaded().catch(function (e) { toast(e.message, true); });
   document.getElementById('closeWonModal').hidden = false;
@@ -1416,7 +1419,7 @@ document.getElementById('closeWonForm').addEventListener('submit', function (e) 
   data.Payment = resolveSelectOrCustom('closeWonPaymentSelect', 'closeWonPaymentCustomInput');
   data.Campaign = resolveSelectOrCustom('closeWonCampaignSelect', 'closeWonCampaignCustomInput');
   data.CustomerType = resolveSelectOrCustom('closeWonCustomerTypeSelect', 'closeWonCustomerTypeCustomInput');
-  data.Province = document.getElementById('closeWonProvinceSelect').value;
+  data.Province = resolveSelectOrCustom('closeWonProvinceSelect', 'closeWonProvinceCustomInput');
   var submitBtn = document.getElementById('closeWonSubmitBtn');
   submitBtn.disabled = true;
   submitBtn.innerHTML = '<span class="spinner"></span> กำลังบันทึก...';
