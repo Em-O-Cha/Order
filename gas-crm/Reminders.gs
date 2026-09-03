@@ -35,12 +35,12 @@ function computeReminders() {
   var reminders = [];
 
   // ลูกค้าที่มี PO แล้ว = จบขั้นตอนใบเสนอราคาแล้ว ไม่ต้องเตือนใบเสนอราคาหมดอายุอีก
-  // ลูกค้าที่มีใบเสร็จแล้ว = จบกระบวนการเอกสารทั้งหมดแล้ว ไม่ต้องเตือนเรื่องเอกสารใด ๆ อีก (เหลือแค่วันจัดส่งของดีล/การติดตาม)
+  // ลูกค้าที่มีสลิปการโอนเงิน หรือใบเสร็จแล้ว = จบกระบวนการเอกสารทั้งหมดแล้ว ไม่ต้องเตือนเรื่องเอกสารใด ๆ อีก (เหลือแค่วันจัดส่งของดีล/การติดตาม)
   var hasPOByCustomer = {};
   var hasReceiptByCustomer = {};
   documents.forEach(function (doc) {
     if (doc.DocType === 'po') hasPOByCustomer[doc.CustomerID] = true;
-    if (doc.DocType === 'receipt') hasReceiptByCustomer[doc.CustomerID] = true;
+    if (doc.DocType === 'receipt' || doc.DocType === 'payment_slip') hasReceiptByCustomer[doc.CustomerID] = true;
   });
 
   documents.forEach(function (doc) {
