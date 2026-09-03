@@ -154,13 +154,9 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 <div class="topbar">
   <div class="topbar-row1">
     <div class="brand">
-      <? if (logoDataUri) { ?>
-        <img src="<?= logoDataUri ?>" class="brand-logo" alt="logo"
-          onerror="this.style.display='none';document.getElementById('logoFallback').style.display='inline';">
-        <span id="logoFallback" style="display:none;font-size:26px">🌏</span>
-      <? } else { ?>
-        <span style="font-size:26px">🌏</span>
-      <? } ?>
+      <img src="Logo.png" class="brand-logo" alt="logo"
+        onerror="this.style.display='none';document.getElementById('logoFallback').style.display='inline';">
+      <span id="logoFallback" style="display:none;font-size:26px">🌏</span>
       <div>
         <h1>CRM Spunky Food</h1>
         <div class="brand-sub">ระบบติดตามลูกค้า บริษัท สปังกี้ ฟู้ด จำกัด</div>
@@ -169,9 +165,32 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
     <div class="topbar-meta">
       <div class="clock">📅 <span id="clockText"></span></div>
       <div class="user">👤 <span id="currentUserText">-</span></div>
+      <a href="#" id="changeConnectionLink" style="font-size:12px;color:var(--g6)">🔧 การเชื่อมต่อ</a>
     </div>
   </div>
   <nav id="mainNav"></nav>
+</div>
+
+<div class="modal-overlay" id="connectGateOverlay" hidden>
+  <div class="modal" style="max-width:480px">
+    <h3>🔌 เชื่อมต่อระบบ CRM</h3>
+    <p class="muted" style="margin-bottom:14px">กรอกข้อมูลการเชื่อมต่อไปยัง Apps Script ที่เป็นฐานข้อมูล/เซิร์ฟเวอร์ของระบบนี้ (ทำครั้งเดียว ระบบจะจำไว้ในเครื่องนี้)</p>
+    <div class="form-grid">
+      <div class="field full">
+        <label>Web App URL (จาก Apps Script Deploy)</label>
+        <input id="connectUrlInput" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+      </div>
+      <div class="field full">
+        <label>API Token</label>
+        <input id="connectTokenInput" placeholder="วางโทเค็นที่นี่ หรือกด &quot;สร้าง Token ใหม่&quot; ด้านล่างถ้ายังไม่มี">
+      </div>
+    </div>
+    <div class="muted" id="connectGateError" style="margin-top:6px;color:var(--red)"></div>
+    <div class="modal-actions" style="justify-content:space-between">
+      <button type="button" class="btn outline" id="connectGenerateTokenBtn">สร้าง Token ใหม่ (ครั้งแรกเท่านั้น)</button>
+      <button type="button" class="btn" id="connectSubmitBtn">เชื่อมต่อ</button>
+    </div>
+  </div>
 </div>
 
 <div class="wrap">
@@ -326,10 +345,6 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
           <label>แจ้งเตือนก่อนวันจัดส่ง (วัน)</label>
           <input name="DELIVERY_WARN_DAYS" type="number">
         </div>
-        <div class="field">
-          <label>Google Drive File ID ของโลโก้บริษัท</label>
-          <input name="LOGO_FILE_ID" placeholder="เช่น 19swmOZR5ClYcKqzUuMJLo7kkIaZ-vK7u">
-        </div>
       </div>
       <div class="modal-actions">
         <button type="submit" class="btn">บันทึกการตั้งค่า</button>
@@ -407,10 +422,19 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
     </div>
 
     <div class="card" style="margin-top:14px">
-      <h3 style="margin-bottom:4px">ทดสอบโลโก้บริษัท</h3>
-      <p class="muted">ถ้าโลโก้ไม่ขึ้นบนหน้าเว็บ กดทดสอบเพื่อดูสาเหตุที่แท้จริง (เช่น ยังไม่ได้แชร์ไฟล์ หรือ File ID ผิด)</p>
-      <button class="btn sm outline" id="testLogoBtn" style="margin-top:10px">ทดสอบโหลดโลโก้</button>
-      <div id="logoTestResult" style="margin-top:10px;font-size:13px"></div>
+      <h3 style="margin-bottom:4px">การเชื่อมต่อ (สำหรับหน้าเว็บที่ฝากไว้ที่อื่น เช่น GitHub Pages)</h3>
+      <p class="muted">Web App URL และ API Token ใช้กรอกในหน้าจอ "เชื่อมต่อระบบ CRM" ตอนเปิดเว็บที่ฝากไว้นอก Apps Script ครั้งแรก</p>
+      <div class="form-grid" style="margin-top:10px">
+        <div class="field full">
+          <label>Web App URL ของระบบนี้</label>
+          <input id="settingsWebAppUrl" readonly>
+        </div>
+        <div class="field full">
+          <label>API Token ปัจจุบัน</label>
+          <input id="settingsApiToken" readonly>
+        </div>
+      </div>
+      <button type="button" class="btn sm outline" id="regenerateTokenBtn" style="margin-top:10px">สร้าง Token ใหม่ (Token เก่าจะใช้ไม่ได้อีก)</button>
     </div>
 
     <div class="card" style="margin-top:14px">
@@ -575,16 +599,80 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 </div>
 
 <script>
-// ============ ตัวช่วยเรียกฟังก์ชันฝั่งเซิร์ฟเวอร์ ============
-function gsRun(fnName) {
-  var args = Array.prototype.slice.call(arguments, 1);
-  return new Promise(function (resolve, reject) {
-    google.script.run
-      .withSuccessHandler(resolve)
-      .withFailureHandler(function (err) { reject(new Error(err.message || String(err))); })
-      .apiCall(fnName, args);
+// ============ ตัวช่วยเรียกฟังก์ชันฝั่งเซิร์ฟเวอร์ (ผ่าน HTTP API ของ Apps Script, ใช้ได้ทั้งเปิดตรงและฝากไว้ที่อื่น เช่น GitHub Pages) ============
+var API_URL_KEY = 'crm_api_url';
+var API_TOKEN_KEY = 'crm_api_token';
+
+function getApiUrl() { return localStorage.getItem(API_URL_KEY) || ''; }
+function getApiToken() { return localStorage.getItem(API_TOKEN_KEY) || ''; }
+
+function rawApiCall(url, token, fnName, args) {
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ token: token, fn: fnName, args: args }),
+  }).then(function (r) { return r.json(); }).then(function (data) {
+    if (!data.ok) throw new Error(data.error || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ');
+    return data.result;
   });
 }
+
+function gsRun(fnName) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  var url = getApiUrl();
+  if (!url) return Promise.reject(new Error('ยังไม่ได้เชื่อมต่อกับเซิร์ฟเวอร์'));
+  return rawApiCall(url, getApiToken(), fnName, args);
+}
+
+// ============ หน้าจอเชื่อมต่อ (กรอก Web App URL + API Token ครั้งแรก) ============
+function showConnectGate(errorMsg) {
+  document.getElementById('connectGateOverlay').hidden = false;
+  document.getElementById('connectGateError').textContent = errorMsg || '';
+  var urlInput = document.getElementById('connectUrlInput');
+  if (!urlInput.value) urlInput.value = getApiUrl() || (location.href.indexOf('/exec') !== -1 ? location.href : '');
+  document.getElementById('connectTokenInput').value = getApiToken();
+}
+function hideConnectGate() { document.getElementById('connectGateOverlay').hidden = true; }
+
+document.getElementById('changeConnectionLink').addEventListener('click', function (e) {
+  e.preventDefault();
+  showConnectGate();
+});
+
+document.getElementById('connectGenerateTokenBtn').addEventListener('click', function () {
+  var url = document.getElementById('connectUrlInput').value.trim();
+  var tokenInput = document.getElementById('connectTokenInput');
+  var errEl = document.getElementById('connectGateError');
+  if (!url) { errEl.style.color = 'var(--red)'; errEl.textContent = 'กรอก Web App URL ก่อน'; return; }
+  errEl.style.color = 'var(--g6)';
+  errEl.textContent = 'กำลังสร้าง Token...';
+  rawApiCall(url, tokenInput.value.trim(), 'generateApiToken', []).then(function (newToken) {
+    tokenInput.value = newToken;
+    errEl.style.color = 'var(--g6)';
+    errEl.textContent = 'สร้าง Token ใหม่แล้ว กด "เชื่อมต่อ" เพื่อดำเนินการต่อ';
+  }).catch(function (e) {
+    errEl.style.color = 'var(--red)';
+    errEl.textContent = 'สร้าง Token ไม่สำเร็จ: ' + e.message;
+  });
+});
+
+document.getElementById('connectSubmitBtn').addEventListener('click', function () {
+  var url = document.getElementById('connectUrlInput').value.trim();
+  var token = document.getElementById('connectTokenInput').value.trim();
+  var errEl = document.getElementById('connectGateError');
+  if (!url || !token) { errEl.style.color = 'var(--red)'; errEl.textContent = 'กรอกให้ครบทั้ง URL และ Token'; return; }
+  errEl.style.color = 'var(--g6)';
+  errEl.textContent = 'กำลังเชื่อมต่อ...';
+  rawApiCall(url, token, 'getMeta', []).then(function () {
+    localStorage.setItem(API_URL_KEY, url);
+    localStorage.setItem(API_TOKEN_KEY, token);
+    hideConnectGate();
+    startApp();
+  }).catch(function (e) {
+    errEl.style.color = 'var(--red)';
+    errEl.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + e.message;
+  });
+});
 
 // ============ Toast (ซ้อนกันได้หลายอัน ไม่ทับกัน) ============
 var activeToasts = [];
@@ -1341,7 +1429,19 @@ function loadSettings() {
     document.getElementById('weeklyTriggerStatus').textContent = t.weekly ? '✅ เปิดใช้งานอยู่' : '⚠️ ยังไม่ได้เปิดใช้งาน';
     document.getElementById('monthlyTriggerStatus').textContent = t.monthly ? '✅ เปิดใช้งานอยู่' : '⚠️ ยังไม่ได้เปิดใช้งาน';
   }).catch(function (e) { toast(e.message, true); });
+  document.getElementById('settingsWebAppUrl').value = getApiUrl();
+  document.getElementById('settingsApiToken').value = getApiToken();
 }
+document.getElementById('regenerateTokenBtn').addEventListener('click', function () {
+  confirmDialog('Token เก่าจะใช้เรียก API ไม่ได้อีกทันที ต้องไปอัปเดต Token ใหม่ในหน้าเว็บที่ฝากไว้ที่อื่นด้วย (ถ้ามี) ต้องการสร้าง Token ใหม่ใช่หรือไม่?', 'สร้าง Token ใหม่').then(function (ok) {
+    if (!ok) return;
+    gsRun('generateApiToken').then(function (newToken) {
+      localStorage.setItem(API_TOKEN_KEY, newToken);
+      document.getElementById('settingsApiToken').value = newToken;
+      toast('สร้าง Token ใหม่แล้ว');
+    }).catch(function (e) { toast(e.message, true); });
+  });
+});
 document.getElementById('settingsForm').addEventListener('submit', function (e) {
   e.preventDefault();
   var data = Object.fromEntries(new FormData(e.target).entries());
@@ -1388,17 +1488,6 @@ document.getElementById('previewReportBtn').addEventListener('click', function (
     box.textContent = r.text;
   }).catch(function (e) { box.textContent = 'สร้างตัวอย่างไม่สำเร็จ: ' + e.message; });
 });
-document.getElementById('testLogoBtn').addEventListener('click', function () {
-  var el = document.getElementById('logoTestResult');
-  el.textContent = 'กำลังทดสอบ...';
-  gsRun('testLogoConnection').then(function (r) {
-    if (r.ok) {
-      el.innerHTML = '✅ ' + escapeHtml(r.message);
-    } else {
-      el.innerHTML = '⚠️ ' + escapeHtml(r.message) + '<br>File ID ที่ใช้อยู่: <code>' + escapeHtml(r.fileId) + '</code>';
-    }
-  }).catch(function (e) { el.innerHTML = '⚠️ ' + escapeHtml(e.message); });
-});
 document.getElementById('sendReportNowBtn').addEventListener('click', function () {
   var el = document.getElementById('reportResult');
   el.textContent = 'กำลังส่ง...';
@@ -1424,17 +1513,28 @@ function populateSelectOptions() {
   document.getElementById('followupTypeSelect').innerHTML = meta.followupTypes.map(function (s) { return '<option value="' + s.value + '">' + s.label + '</option>'; }).join('');
 }
 
-renderNav('dashboard');
-gsRun('getMeta').then(function (m) {
-  meta = m;
-  document.getElementById('currentUserText').textContent = m.currentUser || 'ผู้ใช้งาน';
-  populateSelectOptions();
-  showView('dashboard');
-  return gsRun('getSkus');
-}).then(function (items) {
-  skus = items || [];
-  populateProductInterestSelect();
-}).catch(function (e) { toast('โหลดข้อมูลเริ่มต้นไม่สำเร็จ: ' + e.message, true); });
+function startApp() {
+  renderNav('dashboard');
+  gsRun('getMeta').then(function (m) {
+    meta = m;
+    document.getElementById('currentUserText').textContent = m.currentUser || 'ผู้ใช้งาน';
+    populateSelectOptions();
+    showView('dashboard');
+    return gsRun('getSkus');
+  }).then(function (items) {
+    skus = items || [];
+    populateProductInterestSelect();
+  }).catch(function (e) {
+    toast('โหลดข้อมูลเริ่มต้นไม่สำเร็จ: ' + e.message, true);
+    showConnectGate('เชื่อมต่อสำเร็จแต่โหลดข้อมูลไม่ได้: ' + e.message + ' — ลองตรวจสอบ URL/Token อีกครั้ง');
+  });
+}
+
+if (getApiUrl() && getApiToken()) {
+  startApp();
+} else {
+  showConnectGate();
+}
 </script>
 </body>
 </html>

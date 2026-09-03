@@ -171,9 +171,9 @@ function todayStr() {
 // ===================== Web app entry =====================
 
 function doGet(e) {
-  var template = HtmlService.createTemplateFromFile('Index');
-  template.logoDataUri = getLogoDataUri();
-  return template.evaluate()
+  // Index.html ไม่มี GAS scriptlet แล้ว (ย้ายไปเรียกทุกอย่างผ่าน doPost API แทน เพื่อให้ไฟล์เดียวกัน
+  // ใช้ได้ทั้งตอนเปิดตรงจาก Apps Script และตอนฝากไว้ที่อื่น เช่น GitHub Pages)
+  return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('CRM Spunky Food')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
