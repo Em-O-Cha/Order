@@ -171,7 +171,12 @@ function todayStr() {
 // ===================== Web app entry =====================
 
 function doGet(e) {
-  // Index.html ไม่มี GAS scriptlet แล้ว (ย้ายไปเรียกทุกอย่างผ่าน doPost API แทน เพื่อให้ไฟล์เดียวกัน
+  // Apps Script อาจเปลี่ยน POST เป็น GET ระหว่าง redirect ภายใน (ทำให้ doGet ถูกเรียกแทน doPost จริง ๆ)
+  // ถ้ามี e.parameter.payload มาด้วย แปลว่านี่คือการเรียก API ไม่ใช่การเปิดหน้าเว็บปกติ ให้ประมวลผลแบบ API แทน
+  if (e && e.parameter && e.parameter.payload) {
+    return handleApiRequest(e);
+  }
+  // Index.html ไม่มี GAS scriptlet แล้ว (ย้ายไปเรียกทุกอย่างผ่าน API แทน เพื่อให้ไฟล์เดียวกัน
   // ใช้ได้ทั้งตอนเปิดตรงจาก Apps Script และตอนฝากไว้ที่อื่น เช่น GitHub Pages)
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('CRM Spunky Food')

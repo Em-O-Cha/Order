@@ -51,10 +51,14 @@ function apiCall(name, args) {
 /**
  * จุดเข้าถึงแบบ HTTP API สำหรับหน้าเว็บที่ฝากไว้ที่อื่น (เช่น GitHub Pages)
  * ต้องส่งมาเป็น form field ชื่อ "payload" ที่เป็น JSON string ของ { token, fn, args } — token ต้องตรงกับ API_TOKEN ที่ตั้งไว้ในหน้าตั้งค่า
- * ถ้ามี viaIframe: true และ requestId มาด้วย จะตอบกลับเป็นหน้า HTML เล็ก ๆ ที่เรียก parent.postMessage() แทนการตอบ JSON ตรง ๆ
+ * ถ้ามี viaIframe: true และ requestId มาด้วย จะตอบกลับเป็นหน้า HTML เล็ก ๆ ที่เรียก top.postMessage() แทนการตอบ JSON ตรง ๆ
  * (ใช้แก้ปัญหา Apps Script Web App ไม่ส่ง CORS header ที่เชื่อถือได้เวลาเรียกข้ามโดเมนด้วย fetch — ฟอร์ม/iframe/postMessage ไม่ถูกจำกัดโดย CORS)
+ *
+ * สำคัญ: Apps Script เปลี่ยน POST เป็น GET ระหว่าง redirect ภายในได้ (ทำให้ doGet ถูกเรียกแทน doPost จริง ๆ)
+ * เพื่อไม่ให้พังตอนนั้น ทั้ง doGet และ doPost จะเช็คว่ามี e.parameter.payload มาไหม ถ้ามีคือ "เรียก API" ให้ประมวลผลแบบเดียวกันเสมอ
+ * ไม่ว่าจริง ๆ แล้ว Apps Script จะเรียกเข้าทาง handler ไหนก็ตาม — ต่างจากตอนเปิดแอปปกติที่ doGet จะ serve หน้าเว็บแทน
  */
-function doPost(e) {
+function handleApiRequest(e) {
   var response;
   var body = {};
   try {
@@ -79,11 +83,17 @@ function doPost(e) {
     var messageObj = { __crmApiResponse: true, requestId: body.requestId, ok: response.ok, result: response.result, error: response.error };
     // กัน payload ที่มี "</script" อยู่ข้างในทำลาย HTML ก่อนถึง JS parser (เช่น หมายเหตุลูกค้าที่พิมพ์คำนี้ไว้)
     var safeJson = JSON.stringify(messageObj).replace(/<\/script/gi, '<\\/script');
-    var html = '<script>parent.postMessage(' + safeJson + ", '*');<\/script>";
+    // ใช้ top.postMessage (ไม่ใช่ parent) เพราะ Apps Script serve หน้า HtmlService ผ่าน iframe sandbox
+    // ของ Google เองอีกชั้นเสมอ — parent จะชี้ไปที่ iframe ของ Google เอง ไม่ใช่หน้าเว็บของเราจริง ๆ
+    var html = '<script>top.postMessage(' + safeJson + ", '*');<\/script>";
     return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
   return ContentService.createTextOutput(JSON.stringify(response)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  return handleApiRequest(e);
 }
 
 function checkApiToken(token) {
