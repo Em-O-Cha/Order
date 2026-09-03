@@ -93,6 +93,18 @@ function getPaymentOptions() {
     'ตัดบัญชีธนาคาร', 'TrueMoney', 'MobileBanking', 'QR พร้อมเพย์'];
 }
 
+function getCampaignOptions() {
+  return getMasterDataList(PROPS.getProperty('CAMPAIGN_LIST_TAB') || 'Campaign');
+}
+
+function getCustomerTypeOptions() {
+  return getMasterDataList(PROPS.getProperty('CUSTOMER_TYPE_LIST_TAB') || 'CustomerType');
+}
+
+function getProvinces() {
+  return THAI_PROVINCES;
+}
+
 /**
  * ตรวจสอบว่าดีลนี้เพิ่งเปลี่ยนเป็น "ปิดการขายสำเร็จ" (won) หรือไม่ (เทียบสถานะก่อน/หลัง)
  * ใช้เป็นทางสำรองสำหรับจุดที่ไม่ได้ผ่านหน้าต่างปิดการขาย (closeDealWon) เช่นการตั้งสถานะลูกค้าด่วนจากหน้ารายชื่อ
@@ -150,6 +162,9 @@ function closeDealWon(dealId, extra) {
         shipping: extra.ShippingCost,
         ad: extra.Ad,
         payment: extra.Payment,
+        campaign: extra.Campaign,
+        customerType: extra.CustomerType,
+        province: extra.Province,
         slipFileUrl: slipFileUrl,
       });
       updateObjectById(SHEETS.DEALS, updated.ID, { RevenueExported: revenueResult.revenueId });
@@ -204,8 +219,9 @@ function exportDealToRevenue(deal, overrides) {
     'Phone Number': customer.Phone || '',
     'Sales Name': (function () { try { return Session.getActiveUser().getEmail() || 'CRM Spunky Food'; } catch (e) { return 'CRM Spunky Food'; } })(),
     'Ad': overrides.ad || '',
-    'Campaign': 'Export',
-    'CustomerType': 'ลูกค้าส่งออกต่างประเทศ',
+    'Campaign': overrides.campaign || 'Export',
+    'CustomerType': overrides.customerType || 'ลูกค้าส่งออกต่างประเทศ',
+    'Province': overrides.province || '',
     'Remark': (deal.Notes || '') + (countryLabel ? ' | ประเทศปลายทาง: ' + countryLabel : ''),
     'Order Date': timestamp,
     'Customer Address': (customer.Address || '') + (countryLabel ? ' (' + countryLabel + ')' : ''),
