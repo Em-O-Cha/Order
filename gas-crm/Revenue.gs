@@ -32,8 +32,12 @@ function countryLabelFor(code) {
  */
 function generateRevenueId(sheet) {
   var tz = Session.getScriptTimeZone();
-  var yy = Utilities.formatDate(new Date(), tz, 'yy');
-  var mm = Utilities.formatDate(new Date(), tz, 'MM');
+  var now = new Date();
+  // เลขบิลเดิมในชีต Revenue ใช้ปี พ.ศ. ไม่ใช่ปี ค.ศ. (เช่น REV6909xxx = เดือน 09 ปี 2569) ต้องบวก 543 ก่อนตัดปี 2 หลัก
+  // ไม่งั้นจะได้ prefix คนละชุดกับเลขบิลเดิม ทำให้เลขบิลไม่ต่อเนื่องกัน
+  var buddhistYear = Number(Utilities.formatDate(now, tz, 'yyyy')) + 543;
+  var yy = String(buddhistYear).slice(-2);
+  var mm = Utilities.formatDate(now, tz, 'MM');
   var prefix = 'REV' + yy + mm;
   var data = sheet.getDataRange().getValues();
   var headers = data[0];
