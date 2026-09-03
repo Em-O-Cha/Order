@@ -1272,16 +1272,25 @@ document.getElementById('dealForm').addEventListener('submit', function (e) {
   var manualProduct = document.getElementById('productInterestManual').value.trim();
   if (manualProduct) selectedProducts.push(manualProduct);
   data.ProductInterest = selectedProducts.join(', ');
+  // ห้ามบันทึกเป็น "ปิดการขายสำเร็จ" ตรง ๆ จากฟอร์มนี้ — ต้องผ่านหน้าต่างกรอกยอดขาย/VAT/ค่าขนส่ง/Ad/Payment เสมอ
+  // เพื่อให้บันทึกเข้า Revenue ได้ครบถ้วน ไม่งั้นจะปิดดีลแบบไม่มีข้อมูลยอดขายเลย
+  var wantsWon = data.Stage === 'won';
+  if (wantsWon) data.Stage = editingDealId ? undefined : 'new';
   var savePromise = editingDealId
     ? gsRun('updateDeal', editingDealId, data)
     : gsRun('createDeal', currentCustomerId, data);
-  savePromise.then(function () {
+  savePromise.then(function (deal) {
     document.getElementById('dealModal').hidden = true;
     document.getElementById('productInterestManual').value = '';
     e.target.reset();
-    toast(editingDealId ? 'แก้ไขดีลแล้ว' : 'เพิ่มดีลแล้ว');
+    var wasEditing = editingDealId;
     editingDealId = null;
     openCustomerDetail(currentCustomerId);
+    if (wantsWon) {
+      openCloseWonModal(deal.ID, deal, null);
+    } else {
+      toast(wasEditing ? 'แก้ไขดีลแล้ว' : 'เพิ่มดีลแล้ว');
+    }
   }).catch(function (err) { toast(err.message, true); });
 });
 
