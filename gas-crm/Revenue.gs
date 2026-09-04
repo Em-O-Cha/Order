@@ -24,6 +24,58 @@ function countryLabelFor(code) {
   return found ? found.th : (code || '');
 }
 
+function findRevenueRowIndex(sheet, revenueId) {
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var idCol = headers.indexOf('Revenue ID');
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][idCol]) === String(revenueId)) return r + 1; // 1-based sheet row
+  }
+  return -1;
+}
+
+/**
+ * เมื่อแก้ไขดีล/ลูกค้าที่ปิดการขายสำเร็จไปแล้ว (มีแถวใน Revenue อยู่แล้ว) ให้ซิงก์ข้อมูลกลับไปที่แถวนั้นด้วย
+ * ซิงก์เฉพาะคอลัมน์ที่มีข้อมูลต้นทางอยู่จริงในระบบ CRM (ชื่อ/เบอร์โทร/ที่อยู่/LINE/สินค้า/หมายเหตุ)
+ * ไม่แตะคอลัมน์ที่กรอกเฉพาะในชีต Revenue เอง เช่น Bill Total, Payment, เลขพัสดุ, สถานะจัดส่ง ฯลฯ
+ * เพราะไม่มีข้อมูลต้นทางฝั่ง CRM ให้ซิงก์กลับ (กรอกครั้งเดียวตอนปิดการขาย หรือกรอกตรงในชีตโดยทีมอื่น)
+ */
+function syncDealToRevenueRow(dealId) {
+  var deal = getObjectById(SHEETS.DEALS, dealId);
+  if (!deal || !deal.RevenueExported) return;
+  var customer = getObjectById(SHEETS.CUSTOMERS, deal.CustomerID);
+  if (!customer) return;
+
+  var sheet = getRevenueSheet();
+  var rowIndex = findRevenueRowIndex(sheet, deal.RevenueExported);
+  if (rowIndex === -1) return; // แถวอาจถูกลบ/เปลี่ยนเลขไปแล้วในชีตโดยตรง ข้ามได้ ไม่ต้อง error
+
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var customerName = customer.Type === 'company' ? (customer.CompanyName || customer.Name) : customer.Name;
+  var countryLabel = countryLabelFor(customer.Country);
+
+  var patch = {
+    'ProductName': deal.ActualProducts || deal.ProductInterest || deal.Title,
+    'Customer Name': customerName,
+    'Phone Number': customer.Phone || '',
+    'Customer Address': (customer.Address || '') + (countryLabel ? ' (' + countryLabel + ')' : ''),
+    'LINE UID': customer.LineID || '',
+    'Remark': (deal.Notes || '') + (countryLabel ? ' | ประเทศปลายทาง: ' + countryLabel : ''),
+  };
+
+  headers.forEach(function (h, i) {
+    if (patch.hasOwnProperty(h)) sheet.getRange(rowIndex, i + 1).setValue(patch[h]);
+  });
+  SpreadsheetApp.flush();
+}
+
+/** เรียกตอนแก้ไขข้อมูลลูกค้า เพื่อซิงก์ทุกดีลที่ปิดการขายสำเร็จแล้วของลูกค้ารายนี้กลับไปที่ Revenue */
+function syncCustomerDealsToRevenue(customerId) {
+  var deals = sheetToObjects(getSheet(SHEETS.DEALS))
+    .filter(function (d) { return d.CustomerID === customerId && d.RevenueExported; });
+  deals.forEach(function (d) { syncDealToRevenueRow(d.ID); });
+}
+
 /**
  * ต่อเลขที่บิลจากคอลัมน์ "Revenue ID" เดิมในชีต ให้อยู่รูปแบบเดียวกับที่ใช้อยู่แล้ว (เช่น REV6907001)
  * คือ REV + ปี พ.ศ. 2 หลักท้าย + เดือน 2 หลัก + เลขรันต่อจากตัวสูงสุดของเดือนนั้น

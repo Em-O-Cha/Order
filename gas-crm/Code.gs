@@ -339,7 +339,9 @@ function createCustomer(data) {
 
 function updateCustomer(id, data) {
   data.UpdatedAt = nowIso();
-  return updateObjectById(SHEETS.CUSTOMERS, id, data);
+  var updated = updateObjectById(SHEETS.CUSTOMERS, id, data);
+  syncCustomerDealsToRevenue(id); // ถ้าลูกค้ารายนี้มีดีลที่ปิดการขายสำเร็จไปแล้ว ให้อัปเดตข้อมูลใน Revenue ให้ตรงกันด้วย
+  return updated;
 }
 
 /**
@@ -421,7 +423,8 @@ function updateDeal(id, data) {
   if (data.Stage) {
     updateObjectById(SHEETS.CUSTOMERS, updated.CustomerID, { Status: data.Stage, UpdatedAt: nowIso() });
   }
-  return updated;
+  syncDealToRevenueRow(id); // ถ้าดีลนี้เคยปิดการขายไปแล้วก่อนหน้า ให้ข้อมูลที่แก้ไขล่าสุดตรงกับ Revenue เสมอ
+  return getObjectById(SHEETS.DEALS, id);
 }
 
 function deleteDeal(id) {
