@@ -558,8 +558,8 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 
 <div class="modal-overlay" id="closeWonModal" hidden>
   <div class="modal">
-    <h3>🎉 ปิดการขายสำเร็จ - กรอกรายละเอียดก่อนบันทึกยอดขาย</h3>
-    <p class="muted">ข้อมูลนี้จะถูกบันทึกเป็นแถวใหม่ในชีต Revenue โดยอัตโนมัติ</p>
+    <h3 id="closeWonModalTitle">🎉 ปิดการขายสำเร็จ - กรอกรายละเอียดก่อนบันทึกยอดขาย</h3>
+    <p class="muted" id="closeWonModalSubtitle">ข้อมูลนี้จะถูกบันทึกเป็นแถวใหม่ในชีต Revenue โดยอัตโนมัติ</p>
     <form id="closeWonForm">
       <div class="form-grid">
         <div class="field"><label>ยอดขายสินค้า (ก่อน VAT) *</label><input name="Subtotal" id="closeWonSubtotalInput" type="number" step="0.01" required></div>
@@ -1097,8 +1097,9 @@ function renderDeals(c) {
       ' | คาดปิดดีล: ' + fmtDate(d.ExpectedCloseDate) + ' | วันจัดส่ง: ' + fmtDate(d.DeliveryDate) + '</div>' +
       '<div class="muted" style="margin-top:4px">ประเทศปลายทาง: ' + (d.ExportCountry ? countryLabel(d.ExportCountry) : '-') + '</div>' +
       (d.RevenueExported ? '<div class="muted" style="margin-top:4px">✅ บันทึกยอดขายเข้า Revenue แล้ว (' + escapeHtml(d.RevenueExported) + ')</div>' : '') +
-      '<div style="margin-top:8px;display:flex;gap:8px;">' +
+      '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' +
       '<button class="btn sm outline" data-edit-deal="' + d.ID + '">แก้ไข</button>' +
+      (d.RevenueExported ? '<button class="btn sm outline" data-edit-revenue="' + d.ID + '">แก้ไขข้อมูลการขาย</button>' : '') +
       '<button class="btn sm danger outline" data-del-deal="' + d.ID + '">ลบดีลนี้</button></div></div>';
   }).join('');
 
@@ -1132,6 +1133,12 @@ function renderDeals(c) {
     btn.addEventListener('click', function () {
       var deal = c.deals.find(function (x) { return x.ID === btn.dataset.editDeal; });
       if (deal) openEditDealModal(deal);
+    });
+  });
+  el.querySelectorAll('[data-edit-revenue]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var deal = c.deals.find(function (x) { return x.ID === btn.dataset.editRevenue; });
+      if (deal) openEditRevenueModal(deal);
     });
   });
 }
@@ -1499,9 +1506,8 @@ document.getElementById('closeWonSubtotalInput').addEventListener('input', recal
 document.getElementById('closeWonVatCheck').addEventListener('change', recalcCloseWonTotals);
 document.getElementById('closeWonShippingInput').addEventListener('input', recalcCloseWonTotals);
 
-function populateCloseWonProductChecklist(deal) {
-  var orderedNames = (deal && deal.ProductInterest ? deal.ProductInterest.split(',') : [])
-    .map(function (s) { return s.trim(); }).filter(Boolean);
+function populateCloseWonProductChecklist(productNamesStr) {
+  var orderedNames = (productNamesStr || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
   var box = document.getElementById('closeWonProductChecklist');
   box.innerHTML = skus.map(function (s) {
     var label = s.productNameTh + (s.category ? ' (' + s.category + ')' : '');
@@ -1515,14 +1521,35 @@ function populateCloseWonProductChecklist(deal) {
   document.getElementById('closeWonProductManual').value = manualNames.join(', ');
 }
 
+function setSelectOrCustomValue(selectId, customInputId, value) {
+  var sel = document.getElementById(selectId);
+  var input = document.getElementById(customInputId);
+  var hasOption = Array.prototype.some.call(sel.options, function (o) { return o.value === value; });
+  if (value && !hasOption) {
+    sel.value = '__custom__';
+    input.value = value;
+    input.hidden = false;
+  } else {
+    sel.value = value || '';
+    input.value = '';
+    input.hidden = true;
+  }
+}
+
+var pendingCloseWonMode = 'close'; // 'close' = กำลังปิดการขายครั้งแรก, 'edit' = แก้ไขข้อมูลการขายที่บันทึกไปแล้ว
+
 function openCloseWonModal(dealId, deal, selEl) {
   pendingCloseWonDealId = dealId;
   pendingCloseWonSelectEl = selEl;
+  pendingCloseWonMode = 'close';
+  document.getElementById('closeWonModalTitle').textContent = '🎉 ปิดการขายสำเร็จ - กรอกรายละเอียดก่อนบันทึกยอดขาย';
+  document.getElementById('closeWonModalSubtitle').textContent = 'ข้อมูลนี้จะถูกบันทึกเป็นแถวใหม่ในชีต Revenue โดยอัตโนมัติ';
+  document.getElementById('closeWonSubmitBtn').textContent = 'บันทึกปิดการขาย';
   document.getElementById('closeWonSubtotalInput').value = deal ? (deal.EstimatedValue || '') : '';
   document.getElementById('closeWonVatCheck').checked = true;
   document.getElementById('closeWonShippingInput').value = 0;
   document.getElementById('closeWonSlipInput').value = '';
-  populateCloseWonProductChecklist(deal);
+  populateCloseWonProductChecklist(deal ? deal.ProductInterest : '');
   document.getElementById('closeWonAdCustomInput').value = '';
   document.getElementById('closeWonAdCustomInput').hidden = true;
   document.getElementById('closeWonPaymentCustomInput').value = '';
@@ -1535,8 +1562,40 @@ function openCloseWonModal(dealId, deal, selEl) {
   document.getElementById('closeWonProvinceCustomInput').value = '';
   document.getElementById('closeWonProvinceCustomInput').hidden = true;
   recalcCloseWonTotals();
-  ensureAdPaymentOptionsLoaded().catch(function (e) { toast(e.message, true); });
+  ensureAdPaymentOptionsLoaded().then(function () {
+    document.getElementById('closeWonAdSelect').value = '';
+    document.getElementById('closeWonPaymentSelect').value = '';
+    document.getElementById('closeWonCampaignSelect').value = '';
+    document.getElementById('closeWonCustomerTypeSelect').value = '';
+    document.getElementById('closeWonProvinceSelect').value = '';
+  }).catch(function (e) { toast(e.message, true); });
   document.getElementById('closeWonModal').hidden = false;
+}
+
+/** เปิดป็อปอัพเดียวกัน แต่โหมด "แก้ไขข้อมูลการขาย" — ดึงค่าที่เคยบันทึกไว้ใน Revenue กลับมาให้แก้ไข แทนที่จะเริ่มจากค่าว่าง */
+function openEditRevenueModal(deal) {
+  pendingCloseWonDealId = deal.ID;
+  pendingCloseWonSelectEl = null;
+  pendingCloseWonMode = 'edit';
+  document.getElementById('closeWonModalTitle').textContent = '✏️ แก้ไขข้อมูลการขาย';
+  document.getElementById('closeWonModalSubtitle').textContent = 'แก้ไขแล้วจะบันทึกทับแถวเดิมในชีต Revenue (เลข Revenue ID เดิมไม่เปลี่ยน)';
+  document.getElementById('closeWonSubmitBtn').textContent = 'บันทึกการแก้ไข';
+  document.getElementById('closeWonSlipInput').value = '';
+  ensureAdPaymentOptionsLoaded().then(function () {
+    return gsRun('getRevenueRowForDeal', deal.ID);
+  }).then(function (row) {
+    document.getElementById('closeWonSubtotalInput').value = row.subtotal;
+    document.getElementById('closeWonVatCheck').checked = row.vat > 0;
+    document.getElementById('closeWonShippingInput').value = row.shipping;
+    recalcCloseWonTotals();
+    populateCloseWonProductChecklist(row.productName);
+    setSelectOrCustomValue('closeWonAdSelect', 'closeWonAdCustomInput', row.ad);
+    setSelectOrCustomValue('closeWonPaymentSelect', 'closeWonPaymentCustomInput', row.payment);
+    setSelectOrCustomValue('closeWonCampaignSelect', 'closeWonCampaignCustomInput', row.campaign);
+    setSelectOrCustomValue('closeWonCustomerTypeSelect', 'closeWonCustomerTypeCustomInput', row.customerType);
+    setSelectOrCustomValue('closeWonProvinceSelect', 'closeWonProvinceCustomInput', row.province);
+    document.getElementById('closeWonModal').hidden = false;
+  }).catch(function (e) { toast(e.message, true); });
 }
 
 document.getElementById('cancelCloseWonBtn').addEventListener('click', function () {
@@ -1563,12 +1622,19 @@ document.getElementById('closeWonForm').addEventListener('submit', function (e) 
   submitBtn.innerHTML = '<span class="spinner"></span> กำลังบันทึก...';
 
   function finish() {
-    gsRun('closeDealWon', pendingCloseWonDealId, data).then(function (result) {
+    var isEdit = pendingCloseWonMode === 'edit';
+    var savePromise = isEdit
+      ? gsRun('updateRevenueRow', pendingCloseWonDealId, data)
+      : gsRun('closeDealWon', pendingCloseWonDealId, data);
+    savePromise.then(function (result) {
       document.getElementById('closeWonModal').hidden = true;
       e.target.reset();
-      toast(result.revenue && result.revenue.revenueId
-        ? 'ปิดการขายสำเร็จ บันทึกเข้า Revenue แล้ว (' + result.revenue.revenueId + ')'
-        : 'ปิดการขายสำเร็จ (บันทึกเข้า Revenue ไม่สำเร็จ ลองตรวจสอบสิทธิ์เข้าถึงชีต)');
+      var revenueId = isEdit ? result.revenueId : (result.revenue && result.revenue.revenueId);
+      toast(isEdit
+        ? (revenueId ? 'แก้ไขข้อมูลการขายแล้ว (' + revenueId + ')' : 'แก้ไขข้อมูลการขายแล้ว')
+        : (revenueId
+          ? 'ปิดการขายสำเร็จ บันทึกเข้า Revenue แล้ว (' + revenueId + ')'
+          : 'ปิดการขายสำเร็จ (บันทึกเข้า Revenue ไม่สำเร็จ ลองตรวจสอบสิทธิ์เข้าถึงชีต)'));
       openCustomerDetail(currentCustomerId);
     }).catch(function (err) {
       toast(err.message, true);
@@ -1578,7 +1644,7 @@ document.getElementById('closeWonForm').addEventListener('submit', function (e) 
       }
     }).finally(function () {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'บันทึกปิดการขาย';
+      submitBtn.textContent = isEdit ? 'บันทึกการแก้ไข' : 'บันทึกปิดการขาย';
     });
   }
 

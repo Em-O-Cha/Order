@@ -40,6 +40,8 @@ var API_FUNCTIONS = {
   getCustomerTypeOptions: getCustomerTypeOptions,
   getProvinces: getProvinces,
   closeDealWon: closeDealWon,
+  getRevenueRowForDeal: getRevenueRowForDeal,
+  updateRevenueRow: updateRevenueRow,
   getSettings: getSettings,
   saveSettings: saveSettings,
   generateApiToken: generateApiToken,

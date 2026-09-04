@@ -78,6 +78,89 @@ function syncCustomerDealsToRevenue(customerId) {
 }
 
 /**
+ * อ่านค่าที่เคยกรอกไว้ตอนปิดการขาย กลับมาให้ป็อปอัพ "แก้ไขข้อมูลการขาย" เอาไปเติมในฟอร์ม
+ * (แยก VAT ออกจาก Amount เพราะชีต Revenue เก็บแค่ยอดหลังบวก VAT แล้ว ไม่มีคอลัมน์ VAT แยกต่างหาก)
+ */
+function getRevenueRowForDeal(dealId) {
+  var deal = getObjectById(SHEETS.DEALS, dealId);
+  if (!deal || !deal.RevenueExported) throw new Error('ดีลนี้ยังไม่เคยปิดการขาย ไม่มีข้อมูลใน Revenue ให้แก้ไข');
+  var row = sheetToObjects(getRevenueSheet()).filter(function (r) { return String(r['Revenue ID']) === String(deal.RevenueExported); })[0];
+  if (!row) throw new Error('ไม่พบแถวข้อมูลใน Revenue (อาจถูกลบ/เปลี่ยนเลขไปแล้วในชีตโดยตรง) — เลข Revenue ID เดิมคือ ' + deal.RevenueExported);
+  var subtotal = Number(row['Price']) || 0;
+  var vat = Math.round(((Number(row['Amount']) || 0) - subtotal) * 100) / 100;
+  return {
+    revenueId: row['Revenue ID'],
+    subtotal: subtotal,
+    vat: vat,
+    shipping: Number(row['Delivery']) || 0,
+    ad: row['Ad'] || '',
+    payment: row['Payment'] || '',
+    campaign: row['Campaign'] || '',
+    customerType: row['CustomerType'] || '',
+    province: row['Province'] || '',
+    productName: row['ProductName'] || '',
+  };
+}
+
+/**
+ * แก้ไขข้อมูลการขายของดีลที่ปิดการขายไปแล้ว — บันทึกทับแถวเดิมใน Revenue (ใช้ Revenue ID เดิม ไม่สร้างแถวใหม่)
+ * ต่างจาก closeDealWon ตรงที่ดีลนี้ปิดการขายไปแล้ว จุดประสงค์คือแก้ไขตัวเลข/ตัวเลือกที่เคยกรอกผิดหรือเปลี่ยนไป
+ */
+function updateRevenueRow(dealId, extra) {
+  extra = extra || {};
+  var deal = getObjectById(SHEETS.DEALS, dealId);
+  if (!deal || !deal.RevenueExported) throw new Error('ดีลนี้ยังไม่เคยปิดการขาย ไม่มีข้อมูลใน Revenue ให้แก้ไข');
+
+  var sheet = getRevenueSheet();
+  var rowIndex = findRevenueRowIndex(sheet, deal.RevenueExported);
+  if (rowIndex === -1) throw new Error('ไม่พบแถวข้อมูลใน Revenue (อาจถูกลบ/เปลี่ยนเลขไปแล้วในชีตโดยตรง) — เลข Revenue ID เดิมคือ ' + deal.RevenueExported);
+
+  if (extra.ActualProducts) updateObjectById(SHEETS.DEALS, dealId, { ActualProducts: extra.ActualProducts });
+
+  var slipUrl = null;
+  if (extra.fileBase64 && extra.fileName) {
+    var doc = uploadDocument({
+      CustomerID: deal.CustomerID,
+      DealID: deal.ID,
+      DocType: 'payment_slip',
+      DocNumber: '',
+      IssueDate: todayStr(),
+      fileBase64: extra.fileBase64,
+      fileName: extra.fileName,
+      mimeType: extra.mimeType,
+    });
+    slipUrl = doc.FileUrl;
+  }
+
+  var subtotal = Number(extra.Subtotal) || 0;
+  var vat = Number(extra.Vat) || 0;
+  var shipping = Number(extra.ShippingCost) || 0;
+  var amountAfterVat = subtotal + vat;
+  var billTotal = amountAfterVat + shipping;
+
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var patch = {
+    'ProductName': extra.ActualProducts || deal.ActualProducts || deal.ProductInterest || deal.Title,
+    'Price': subtotal,
+    'Amount': amountAfterVat,
+    'Delivery': shipping,
+    'Bill Total': billTotal,
+    'Payment': extra.Payment || '',
+    'Ad': extra.Ad || '',
+    'Campaign': extra.Campaign || 'Export',
+    'CustomerType': extra.CustomerType || 'ลูกค้าส่งออกต่างประเทศ',
+    'Province': extra.Province || '',
+  };
+  if (slipUrl) patch['Slip1'] = slipUrl;
+
+  headers.forEach(function (h, i) {
+    if (patch.hasOwnProperty(h)) sheet.getRange(rowIndex, i + 1).setValue(patch[h]);
+  });
+  SpreadsheetApp.flush();
+  return { ok: true, revenueId: deal.RevenueExported };
+}
+
+/**
  * ต่อเลขที่บิลจากคอลัมน์ "Revenue ID" เดิมในชีต ให้อยู่รูปแบบเดียวกับที่ใช้อยู่แล้ว (เช่น REV6907001)
  * คือ REV + ปี พ.ศ. 2 หลักท้าย + เดือน 2 หลัก + เลขรันต่อจากตัวสูงสุดของเดือนนั้น
  * หมายเหตุ: ถ้ามีระบบอื่น (เช่นตัวซิงก์ออเดอร์ปลีก) เขียนแถวใหม่พร้อมกันในจังหวะเดียวกันพอดี
