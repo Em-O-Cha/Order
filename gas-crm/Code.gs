@@ -385,7 +385,10 @@ function getCustomerDetail(id) {
   customer.documents = documents;
   customer.followups = followups;
   customer.insights = insights;
-  customer.reminders = computeReminders().filter(function (r) { return r.customerId === id; });
+  // ใช้ข้อมูลของลูกค้าคนนี้ที่โหลดมาอยู่แล้วด้านบน แทนการเรียก computeReminders() แบบเต็มระบบ
+  // (ซึ่งจะอ่านชีต Documents/Deals/Followups ของลูกค้าทุกคนซ้ำอีกรอบโดยไม่จำเป็น — ทำให้หน้านี้โหลดช้าลงเรื่อย ๆ
+  // เมื่อข้อมูลทั้งระบบเยอะขึ้น ทั้งที่ต้องการแค่การแจ้งเตือนของลูกค้าคนเดียว)
+  customer.reminders = computeRemindersFrom([customer], documents, deals, followups);
   return customer;
 }
 

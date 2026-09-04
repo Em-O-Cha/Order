@@ -21,19 +21,22 @@ function customerDisplayName(customer) {
   return customer.Type === 'company' ? (customer.CompanyName || customer.Name) : customer.Name;
 }
 
-function computeReminders() {
+/**
+ * คำนวณการแจ้งเตือนจากรายการที่ส่งเข้ามาตรง ๆ (ไม่อ่านชีตเอง) — ใช้ร่วมกันทั้ง 2 กรณี:
+ * 1. computeReminders() ด้านล่าง สำหรับหน้า Dashboard ที่ต้องดูของลูกค้าทุกคน (ส่งข้อมูลทั้งระบบเข้ามา)
+ * 2. getCustomerDetail() ที่ต้องการแค่การแจ้งเตือนของลูกค้าคนเดียว (ส่งแค่ข้อมูลของลูกค้าคนนั้นเข้ามา)
+ *    เพื่อไม่ต้องอ่านชีต Documents/Deals/Followups ซ้ำอีกรอบทั้งที่เพิ่งอ่านไปแล้วสำหรับลูกค้าคนนั้น —
+ *    การอ่านทั้งชีตทุกครั้งที่เปิดหน้าลูกค้าคนเดียวคือสาเหตุหลักที่หน้าโหลดช้าเมื่อข้อมูลในระบบเยอะขึ้น
+ */
+function computeRemindersFrom(customers, documents, deals, followups) {
   var quotationWarnDays = getSettingNumber('QUOTATION_EXPIRY_WARN_DAYS', 3);
   var deliveryWarnDays = getSettingNumber('DELIVERY_WARN_DAYS', 2);
   var poActionWarnDays = getSettingNumber('PO_ACTION_WARN_DAYS', 3);
   var invoiceActionWarnDays = getSettingNumber('INVOICE_ACTION_WARN_DAYS', 3);
 
-  var customers = sheetToObjects(getSheet(SHEETS.CUSTOMERS));
   var customerById = {};
   customers.forEach(function (c) { customerById[c.ID] = c; });
 
-  var documents = sheetToObjects(getSheet(SHEETS.DOCUMENTS));
-  var deals = sheetToObjects(getSheet(SHEETS.DEALS));
-  var followups = sheetToObjects(getSheet(SHEETS.FOLLOWUPS));
   var reminders = [];
 
   // ลำดับขั้นเอกสาร: ใบเสนอราคา -> PO -> ใบแจ้งหนี้ -> สลิป/ใบเสร็จ
@@ -153,6 +156,15 @@ function computeReminders() {
     return (order[a.severity] - order[b.severity]) || String(a.dueDate).localeCompare(String(b.dueDate));
   });
   return reminders;
+}
+
+/** ใช้กับหน้า Dashboard/รายงาน ที่ต้องดูการแจ้งเตือนของลูกค้าทุกคนในระบบ */
+function computeReminders() {
+  var customers = sheetToObjects(getSheet(SHEETS.CUSTOMERS));
+  var documents = sheetToObjects(getSheet(SHEETS.DOCUMENTS));
+  var deals = sheetToObjects(getSheet(SHEETS.DEALS));
+  var followups = sheetToObjects(getSheet(SHEETS.FOLLOWUPS));
+  return computeRemindersFrom(customers, documents, deals, followups);
 }
 
 // ===================== Dashboard =====================
