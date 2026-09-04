@@ -5,6 +5,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CRM Spunky Food</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#00805f">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CRM Spunky">
+<!-- ทั้งหมดนี้ทำงานเฉพาะตอนเปิดจากหน้าเว็บที่ฝากบน GitHub Pages เท่านั้น (มือถือกด "เพิ่มลงหน้าจอหลัก" แล้วเปิดแบบเต็มจอเหมือนแอป) —
+     ถ้าเปิดผ่าน Apps Script โดยตรง manifest/ไอคอนพวกนี้จะหาไม่เจอ แต่ไม่กระทบการใช้งานเว็บตามปกติ -->
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&display=swap');
 :root{
@@ -643,6 +652,12 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 // ปลอดภัยที่จะใส่/commit ค่านี้ไว้ตรง ๆ เพราะไม่ใช่ความลับ (ตัว API Token ต่างหากที่เป็นความลับ ห้ามใส่ตรงนี้หรือ commit ขึ้น GitHub)
 // ตัวอย่าง: 'https://script.google.com/macros/s/xxxxxxxxxxxxxxxxxxxx/exec'
 var DEFAULT_API_URL = '';
+
+// ============ ลงทะเบียน Service Worker เพื่อให้ติดตั้งเป็นแอปบนมือถือได้ (PWA) ============
+// ทำงานได้เฉพาะตอนเปิดจาก GitHub Pages เท่านั้น (Apps Script ไม่มีไฟล์ sw.js ให้ ลงทะเบียนไม่สำเร็จก็ปล่อยผ่านเงียบๆ ไม่กระทบอะไร)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(function () { /* เปิดผ่าน Apps Script โดยตรง ไม่มี sw.js ให้ลงทะเบียน ข้ามได้ */ });
+}
 
 // ============ ตัวช่วยเรียกฟังก์ชันฝั่งเซิร์ฟเวอร์ (ผ่าน HTTP API ของ Apps Script, ใช้ได้ทั้งเปิดตรงและฝากไว้ที่อื่น เช่น GitHub Pages) ============
 var API_URL_KEY = 'crm_api_url';
