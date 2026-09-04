@@ -222,7 +222,7 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
     </div>
     <div class="table-wrap">
       <table class="table">
-        <thead><tr><th>ชื่อ</th><th>ประเภท</th><th>ประเทศ</th><th>ช่องทาง</th><th>สถานะ</th><th>โทร/อีเมล</th></tr></thead>
+        <thead><tr><th>ชื่อ</th><th>ประเภท</th><th>ประเทศ</th><th>ช่องทาง</th><th>สินค้า</th><th>สถานะ</th><th>โทร/อีเมล</th></tr></thead>
         <tbody id="customerRows"></tbody>
       </table>
     </div>
@@ -965,6 +965,7 @@ function customerRowHtml(c) {
     '<td><span class="badge type-' + c.Type + '">' + (c.Type === 'company' ? 'บริษัท' : 'บุคคลธรรมดา') + '</span></td>' +
     '<td>' + countryLabel(c.Country) + '</td>' +
     '<td>' + escapeHtml(c.ContactChannel || '-') + '</td>' +
+    '<td>' + escapeHtml(c.products || '-') + '</td>' +
     '<td><select data-status-customer="' + c.ID + '" data-deal-count="' + (c.dealCount || 0) + '">' + statusOptionsHtml(c.currentStage) + '</select></td>' +
     '<td>' + escapeHtml(c.Phone || c.Email || '-') + '</td></tr>';
 }
@@ -979,7 +980,7 @@ function loadCustomerList() {
     var el = document.getElementById('customerRows');
     el.innerHTML = list.length
       ? list.map(customerRowHtml).join('')
-      : '<tr><td colspan="6"><div class="empty-state">ยังไม่มีลูกค้า</div></td></tr>';
+      : '<tr><td colspan="7"><div class="empty-state">ยังไม่มีลูกค้า</div></td></tr>';
     bindStatusSelects(el);
   }).catch(function (e) { toast(e.message, true); });
 }

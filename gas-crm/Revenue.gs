@@ -136,6 +136,7 @@ function closeDealWon(dealId, extra) {
   if (!before) throw new Error('ไม่พบดีลนี้');
 
   var patch = { Stage: 'won', Status: 'won', UpdatedAt: nowIso() };
+  if (extra.ActualProducts) patch.ActualProducts = extra.ActualProducts;
   var updated = updateObjectById(SHEETS.DEALS, dealId, patch);
   updateObjectById(SHEETS.CUSTOMERS, updated.CustomerID, { Status: 'won', UpdatedAt: nowIso() });
 

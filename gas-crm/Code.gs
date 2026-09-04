@@ -16,7 +16,7 @@ var SHEETS = {
 
 var HEADERS = {
   Customers: ['ID', 'Type', 'Status', 'Name', 'CompanyName', 'TaxID', 'ContactPerson', 'Phone', 'Email', 'LineID', 'Address', 'Country', 'ContactChannel', 'SourceDetail', 'Notes', 'CreatedAt', 'UpdatedAt'],
-  Deals: ['ID', 'CustomerID', 'Title', 'Stage', 'ProductInterest', 'EstimatedValue', 'Currency', 'ExpectedCloseDate', 'DeliveryDate', 'Status', 'Notes', 'RevenueExported', 'CreatedAt', 'UpdatedAt'],
+  Deals: ['ID', 'CustomerID', 'Title', 'Stage', 'ProductInterest', 'ActualProducts', 'EstimatedValue', 'Currency', 'ExpectedCloseDate', 'DeliveryDate', 'Status', 'Notes', 'RevenueExported', 'CreatedAt', 'UpdatedAt'],
   Documents: ['ID', 'CustomerID', 'DealID', 'DocType', 'DocNumber', 'FileUrl', 'FileName', 'IssueDate', 'ExpiryDate', 'DeliveryDate', 'Amount', 'Currency', 'Notes', 'CreatedAt'],
   Followups: ['ID', 'CustomerID', 'DealID', 'Type', 'Note', 'FollowUpDate', 'Done', 'CreatedAt'],
   AIInsights: ['ID', 'CustomerID', 'Approach', 'RecommendedProducts', 'RiskLevel', 'NextAction', 'CreatedAt'],
@@ -300,9 +300,12 @@ function listCustomers(filter) {
 
   customers.forEach(function (c) {
     var cDeals = deals.filter(function (d) { return d.CustomerID === c.ID; });
+    var mainDeal = cDeals[0];
     c.dealCount = cDeals.length;
-    c.currentStage = c.Status || (cDeals[0] ? cDeals[0].Stage : 'new');
+    c.currentStage = c.Status || (mainDeal ? mainDeal.Stage : 'new');
     c.reminderCount = reminderCountByCustomer[c.ID] || 0;
+    // สินค้า: ถ้าปิดการขายสำเร็จแล้วโชว์สินค้าที่ขายได้จริง ถ้ายังไม่ปิดโชว์สินค้าที่เสนอราคาไป
+    c.products = mainDeal ? (mainDeal.Status === 'won' ? (mainDeal.ActualProducts || mainDeal.ProductInterest) : mainDeal.ProductInterest) : '';
   });
 
   customers.sort(function (a, b) { return (b.UpdatedAt || '').localeCompare(a.UpdatedAt || ''); });
