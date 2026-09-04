@@ -1454,8 +1454,7 @@ function populateCloseWonProductChecklist(deal) {
     var checked = orderedNames.indexOf(s.productNameTh) !== -1 ? ' checked' : '';
     return '<label>' +
       '<span style="display:flex;align-items:center;"><input type="checkbox" data-close-won-product-checkbox value="' + escapeHtml(s.productNameTh) + '"' + checked + '>' +
-      '<span class="name">' + escapeHtml(label) + '</span></span>' +
-      '<span class="price">' + fmtMoney(s.price) + ' บาท</span></label>';
+      '<span class="name">' + escapeHtml(label) + '</span></span></label>';
   }).join('');
   // สินค้าที่พิมพ์เอง (ไม่อยู่ใน SKU list) ให้ใส่ไว้ในช่อง "พิมพ์เพิ่มเอง" แทน
   var manualNames = orderedNames.filter(function (n) { return !skus.some(function (s) { return s.productNameTh === n; }); });
