@@ -1046,7 +1046,7 @@ function renderCustomerHeader(c) {
     banner +
     '<div class="muted" style="margin-top:10px">ประเทศ: ' + countryLabel(c.Country) + ' &nbsp;|&nbsp; ช่องทาง: ' + escapeHtml(c.ContactChannel || '-') + '</div>' +
     '<div class="muted" style="margin-top:4px">' + (c.ContactPerson ? 'ผู้ติดต่อ: ' + escapeHtml(c.ContactPerson) + ' | ' : '') +
-    'โทร: ' + escapeHtml(c.Phone || '-') + ' | อีเมล: ' + escapeHtml(c.Email || '-') + ' | Line: ' + escapeHtml(c.LineID || '-') + '</div>' +
+    'โทร: <span style="font-size:16px;font-weight:600;color:var(--td)">' + escapeHtml(c.Phone || '-') + '</span> | อีเมล: ' + escapeHtml(c.Email || '-') + ' | Line: ' + escapeHtml(c.LineID || '-') + '</div>' +
     (c.Notes ? '<div class="muted" style="margin-top:10px">หมายเหตุ: ' + escapeHtml(c.Notes) + '</div>' : '') +
     '<div class="quick-info">' +
     '<span data-jump="documents">📄 เอกสาร: ' + docSummary + '</span>' +
