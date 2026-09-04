@@ -564,6 +564,12 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
           <input id="closeWonProvinceCustomInput" placeholder="พิมพ์จังหวัดเอง" hidden style="margin-top:6px">
         </div>
         <div class="field full">
+          <label>สินค้าที่สั่งจริง (ปรับให้ตรงกับที่ลูกค้าสั่งจริง เช่น เสนอราคาไป 10 รายการ แต่สั่งจริงแค่ 1-2 รายการ)</label>
+          <div id="closeWonProductChecklist" class="checklist"></div>
+          <input id="closeWonProductManual" placeholder="พิมพ์สินค้าเพิ่มเอง (ถ้ามี)" style="margin-top:6px">
+          <div class="muted" style="margin-top:4px">ค่าเริ่มต้นติ๊กตามสินค้าที่สนใจในดีลนี้ไว้ให้ ปรับติ๊ก/เอาออกให้ตรงกับออเดอร์จริงก่อนบันทึก — รายชื่อสุดท้ายนี้จะถูกบันทึกลงคอลัมน์ ProductName ในชีต Revenue</div>
+        </div>
+        <div class="field full">
           <label>แนบสลิปการโอนเงิน (ถ้ายังไม่เคยอัปโหลดไว้ในเอกสารของลูกค้ารายนี้)</label>
           <input type="file" id="closeWonSlipInput" accept="application/pdf,image/jpeg,image/jpg,image/png">
           <div class="muted" style="margin-top:4px">ถ้าเคยอัปโหลด "สลิปการโอนเงิน" ไว้ในแท็บเอกสารแล้ว ไม่ต้องแนบซ้ำ ระบบจะดึงให้เอง</div>
@@ -1439,6 +1445,23 @@ document.getElementById('closeWonSubtotalInput').addEventListener('input', recal
 document.getElementById('closeWonVatCheck').addEventListener('change', recalcCloseWonTotals);
 document.getElementById('closeWonShippingInput').addEventListener('input', recalcCloseWonTotals);
 
+function populateCloseWonProductChecklist(deal) {
+  var orderedNames = (deal && deal.ProductInterest ? deal.ProductInterest.split(',') : [])
+    .map(function (s) { return s.trim(); }).filter(Boolean);
+  var box = document.getElementById('closeWonProductChecklist');
+  box.innerHTML = skus.map(function (s) {
+    var label = s.productNameTh + (s.category ? ' (' + s.category + ')' : '');
+    var checked = orderedNames.indexOf(s.productNameTh) !== -1 ? ' checked' : '';
+    return '<label>' +
+      '<span style="display:flex;align-items:center;"><input type="checkbox" data-close-won-product-checkbox value="' + escapeHtml(s.productNameTh) + '"' + checked + '>' +
+      '<span class="name">' + escapeHtml(label) + '</span></span>' +
+      '<span class="price">' + fmtMoney(s.price) + ' บาท</span></label>';
+  }).join('');
+  // สินค้าที่พิมพ์เอง (ไม่อยู่ใน SKU list) ให้ใส่ไว้ในช่อง "พิมพ์เพิ่มเอง" แทน
+  var manualNames = orderedNames.filter(function (n) { return !skus.some(function (s) { return s.productNameTh === n; }); });
+  document.getElementById('closeWonProductManual').value = manualNames.join(', ');
+}
+
 function openCloseWonModal(dealId, deal, selEl) {
   pendingCloseWonDealId = dealId;
   pendingCloseWonSelectEl = selEl;
@@ -1446,6 +1469,7 @@ function openCloseWonModal(dealId, deal, selEl) {
   document.getElementById('closeWonVatCheck').checked = true;
   document.getElementById('closeWonShippingInput').value = 0;
   document.getElementById('closeWonSlipInput').value = '';
+  populateCloseWonProductChecklist(deal);
   document.getElementById('closeWonAdCustomInput').value = '';
   document.getElementById('closeWonAdCustomInput').hidden = true;
   document.getElementById('closeWonPaymentCustomInput').value = '';
@@ -1478,6 +1502,9 @@ document.getElementById('closeWonForm').addEventListener('submit', function (e) 
   data.Campaign = resolveSelectOrCustom('closeWonCampaignSelect', 'closeWonCampaignCustomInput');
   data.CustomerType = resolveSelectOrCustom('closeWonCustomerTypeSelect', 'closeWonCustomerTypeCustomInput');
   data.Province = resolveSelectOrCustom('closeWonProvinceSelect', 'closeWonProvinceCustomInput');
+  var actualProducts = Array.from(document.querySelectorAll('#closeWonProductChecklist input[data-close-won-product-checkbox]:checked')).map(function (cb) { return cb.value; });
+  var manualProducts = document.getElementById('closeWonProductManual').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  data.ActualProducts = actualProducts.concat(manualProducts).join(', ');
   var submitBtn = document.getElementById('closeWonSubmitBtn');
   submitBtn.disabled = true;
   submitBtn.innerHTML = '<span class="spinner"></span> กำลังบันทึก...';

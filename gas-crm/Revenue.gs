@@ -169,6 +169,7 @@ function closeDealWon(dealId, extra) {
         campaign: extra.Campaign,
         customerType: extra.CustomerType,
         province: extra.Province,
+        actualProducts: extra.ActualProducts,
         slipFileUrl: slipFileUrl,
       });
       updateObjectById(SHEETS.DEALS, updated.ID, { RevenueExported: revenueResult.revenueId });
@@ -210,7 +211,7 @@ function exportDealToRevenue(deal, overrides) {
   var rowObj = {
     'Revenue ID': revenueId,
     'Timestamp': timestamp,
-    'ProductName': deal.ProductInterest || deal.Title,
+    'ProductName': overrides.actualProducts || deal.ProductInterest || deal.Title,
     'Qty': 1,
     'Price': subtotal,
     'Discount': 0,
