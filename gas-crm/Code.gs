@@ -16,7 +16,7 @@ var SHEETS = {
 
 var HEADERS = {
   Customers: ['ID', 'Type', 'Status', 'Name', 'CompanyName', 'TaxID', 'ContactPerson', 'Phone', 'Email', 'LineID', 'Address', 'Country', 'ContactChannel', 'SourceDetail', 'Notes', 'CreatedAt', 'UpdatedAt'],
-  Deals: ['ID', 'CustomerID', 'Title', 'Stage', 'ProductInterest', 'ActualProducts', 'EstimatedValue', 'Currency', 'ExpectedCloseDate', 'DeliveryDate', 'Status', 'Notes', 'RevenueExported', 'CreatedAt', 'UpdatedAt'],
+  Deals: ['ID', 'CustomerID', 'Title', 'Stage', 'ProductInterest', 'ActualProducts', 'ExportCountry', 'EstimatedValue', 'Currency', 'ExpectedCloseDate', 'DeliveryDate', 'Status', 'Notes', 'RevenueExported', 'CreatedAt', 'UpdatedAt'],
   Documents: ['ID', 'CustomerID', 'DealID', 'DocType', 'DocNumber', 'FileUrl', 'FileName', 'IssueDate', 'ExpiryDate', 'DeliveryDate', 'Amount', 'Currency', 'Notes', 'CreatedAt'],
   Followups: ['ID', 'CustomerID', 'DealID', 'Type', 'Note', 'FollowUpDate', 'Done', 'CreatedAt'],
   AIInsights: ['ID', 'CustomerID', 'Approach', 'RecommendedProducts', 'RiskLevel', 'NextAction', 'CreatedAt'],
@@ -400,6 +400,7 @@ function createDeal(customerId, data) {
     Title: data.Title || ('ดีล ' + customer.Name),
     Stage: data.Stage || 'new',
     ProductInterest: data.ProductInterest || '',
+    ExportCountry: data.ExportCountry || '',
     EstimatedValue: Number(data.EstimatedValue) || 0,
     Currency: data.Currency || 'THB',
     ExpectedCloseDate: data.ExpectedCloseDate || '',

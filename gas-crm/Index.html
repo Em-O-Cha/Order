@@ -520,6 +520,7 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
           <label>หรือพิมพ์ชื่อสินค้าเอง (ถ้าไม่มีในรายการด้านบน — จะต่อท้ายรายการที่เลือกไว้)</label>
           <input id="productInterestManual" placeholder="เช่น น้ำพริกสูตรพิเศษ">
         </div>
+        <div class="field"><label>ประเทศปลายทาง (ส่งออกไปขายที่ไหนในดีลนี้)</label><select name="ExportCountry" id="dealCountrySelect"><option value="">- ไม่ระบุ -</option></select></div>
         <div class="field"><label>มูลค่าประมาณ (คำนวณอัตโนมัติจากสินค้าที่ติ๊ก แก้ไขเพิ่มเติมเองได้)</label><input name="EstimatedValue" id="dealEstimatedValueInput" type="number" step="0.01"></div>
         <div class="field"><label>สกุลเงิน</label><input name="Currency" value="THB"></div>
         <div class="field"><label>วันที่คาดว่าจะปิดดีล</label><input name="ExpectedCloseDate" type="date"></div>
@@ -1071,6 +1072,7 @@ function renderDeals(c) {
       '<select data-deal-stage="' + d.ID + '">' + statusOptionsHtml(d.Stage) + '</select></div>' +
       '<div class="muted" style="margin-top:6px">สินค้าที่สนใจ: ' + escapeHtml(d.ProductInterest || '-') + ' | มูลค่า: ' + fmtMoney(d.EstimatedValue) + ' ' + escapeHtml(d.Currency) +
       ' | คาดปิดดีล: ' + fmtDate(d.ExpectedCloseDate) + ' | วันจัดส่ง: ' + fmtDate(d.DeliveryDate) + '</div>' +
+      '<div class="muted" style="margin-top:4px">ประเทศปลายทาง: ' + (d.ExportCountry ? countryLabel(d.ExportCountry) : '-') + '</div>' +
       (d.RevenueExported ? '<div class="muted" style="margin-top:4px">✅ บันทึกยอดขายเข้า Revenue แล้ว (' + escapeHtml(d.RevenueExported) + ')</div>' : '') +
       '<div style="margin-top:8px;display:flex;gap:8px;">' +
       '<button class="btn sm outline" data-edit-deal="' + d.ID + '">แก้ไข</button>' +
@@ -1119,6 +1121,7 @@ function openEditDealModal(deal) {
   var form = document.getElementById('dealForm');
   form.Title.value = deal.Title || '';
   form.Stage.value = deal.Stage || 'new';
+  form.ExportCountry.value = deal.ExportCountry || '';
   form.EstimatedValue.value = deal.EstimatedValue || '';
   form.Currency.value = deal.Currency || 'THB';
   form.ExpectedCloseDate.value = deal.ExpectedCloseDate || '';
@@ -1746,9 +1749,11 @@ document.getElementById('sendReportNowBtn').addEventListener('click', function (
 function populateSelectOptions() {
   var countryFilter = document.getElementById('countryFilter');
   var countrySelect = document.getElementById('countrySelect');
+  var dealCountrySelect = document.getElementById('dealCountrySelect');
   meta.countries.forEach(function (c) {
     countryFilter.insertAdjacentHTML('beforeend', '<option value="' + c.code + '">' + c.th + '</option>');
     countrySelect.insertAdjacentHTML('beforeend', '<option value="' + c.code + '">' + c.th + ' (' + c.en + ')</option>');
+    dealCountrySelect.insertAdjacentHTML('beforeend', '<option value="' + c.code + '">' + c.th + ' (' + c.en + ')</option>');
   });
   var channelSelect = document.getElementById('channelSelect');
   meta.channels.forEach(function (ch) { channelSelect.insertAdjacentHTML('beforeend', '<option value="' + ch + '">' + ch + '</option>'); });

@@ -52,15 +52,16 @@ function syncDealToRevenueRow(dealId) {
 
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var customerName = customer.Type === 'company' ? (customer.CompanyName || customer.Name) : customer.Name;
-  var countryLabel = countryLabelFor(customer.Country);
+  var customerCountryLabel = countryLabelFor(customer.Country);
+  var exportCountryLabel = countryLabelFor(deal.ExportCountry || customer.Country);
 
   var patch = {
     'ProductName': deal.ActualProducts || deal.ProductInterest || deal.Title,
     'Customer Name': customerName,
     'Phone Number': customer.Phone || '',
-    'Customer Address': (customer.Address || '') + (countryLabel ? ' (' + countryLabel + ')' : ''),
+    'Customer Address': (customer.Address || '') + (customerCountryLabel ? ' (' + customerCountryLabel + ')' : ''),
     'LINE UID': customer.LineID || '',
-    'Remark': (deal.Notes || '') + (countryLabel ? ' | ประเทศปลายทาง: ' + countryLabel : ''),
+    'Remark': (deal.Notes || '') + (exportCountryLabel ? ' | ประเทศปลายทาง: ' + exportCountryLabel : ''),
   };
 
   headers.forEach(function (h, i) {
@@ -244,7 +245,9 @@ function exportDealToRevenue(deal, overrides) {
   var tz = Session.getScriptTimeZone();
   var timestamp = Utilities.formatDate(new Date(), tz, 'dd/MM/yyyy HH:mm:ss');
   var customerName = customer.Type === 'company' ? (customer.CompanyName || customer.Name) : customer.Name;
-  var countryLabel = countryLabelFor(customer.Country);
+  // ประเทศของ "ลูกค้า" (ที่อยู่/ที่ติดต่อมา) กับ "ปลายทางส่งออก" ของแต่ละดีล เป็นคนละอย่างกัน — ลูกค้ารายเดียวอาจสั่งส่งไปคนละประเทศได้ในแต่ละดีล
+  var customerCountryLabel = countryLabelFor(customer.Country);
+  var exportCountryLabel = countryLabelFor(deal.ExportCountry || customer.Country); // ดีลเก่าก่อนมีช่องนี้ ใช้ประเทศของลูกค้าแทนไปก่อน
   var hasSubtotal = overrides.subtotal !== undefined && overrides.subtotal !== null && overrides.subtotal !== '';
   var subtotal = hasSubtotal ? Number(overrides.subtotal) : (Number(deal.EstimatedValue) || 0);
   var vat = Number(overrides.vat || 0);
@@ -280,9 +283,9 @@ function exportDealToRevenue(deal, overrides) {
     'Campaign': overrides.campaign || 'Export',
     'CustomerType': overrides.customerType || 'ลูกค้าส่งออกต่างประเทศ',
     'Province': overrides.province || '',
-    'Remark': (deal.Notes || '') + (countryLabel ? ' | ประเทศปลายทาง: ' + countryLabel : ''),
+    'Remark': (deal.Notes || '') + (exportCountryLabel ? ' | ประเทศปลายทาง: ' + exportCountryLabel : ''),
     'Order Date': timestamp,
-    'Customer Address': (customer.Address || '') + (countryLabel ? ' (' + countryLabel + ')' : ''),
+    'Customer Address': (customer.Address || '') + (customerCountryLabel ? ' (' + customerCountryLabel + ')' : ''),
     'LINE UID': customer.LineID || '',
   };
 
