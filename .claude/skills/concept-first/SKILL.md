@@ -1,6 +1,6 @@
 ---
 name: concept-first
-description: Use whenever the user requests a new feature, behavior change, or non-trivial fix to this CRM (gas-crm/ Apps Script backend + Index.html frontend, mirrored to Em-O-Cha/Order and Em-O-Cha/CRM-SpunkyFood). Before writing or editing any code, summarize the proposed concept back to the user and get their explicit go-ahead. Skip this for trivial one-line fixes, typo/wording corrections, or requests that are already fully specified (exact field names, exact copy, "just do X" with no ambiguity left). The user has been burned by back-and-forth rework and explicitly asked for this: "คุยคอนเซปกันก่อนว่าจะทำอะไร จะได้เข้าใจตรงกัน ไม่ต้องมานั่งแก้กันไปมา".
+description: Use before EVERY code change on this CRM (gas-crm/ Apps Script backend + Index.html frontend, mirrored to Em-O-Cha/Order and Em-O-Cha/CRM-SpunkyFood) — new feature, bug fix, or copy tweak alike. Before writing or editing any code, restate what you understood and what you're about to change, and get the user's explicit "yes, that's right" before touching a file. This is a standing working agreement the user set, not a per-request judgment call: "ทุกครั้งก่อนจะดำเนินการ ถือเป็น Skill และการทำงานระหว่างกันเลยนะ เธอต้องคอนเฟิมก่อนว่าจะทำอะไร ฉันโอเค ด้วยกับความเข้าใจของเธอหรือเปล่า" (every time, before proceeding — confirm what you're about to do and check I'm okay with your understanding).
 ---
 
 # คุยคอนเซปก่อนลงมือ (Concept before code)
@@ -12,17 +12,23 @@ implementation on an ambiguous request, guessing wrong on a design detail
 redoing it once the user clarifies what they actually meant. Confirming the
 shape of the change up front is cheap; re-doing a wired-up feature is not.
 
+The user later made this explicit and unconditional: this isn't a judgment
+call to make per-request anymore — it's the standing agreement for how we
+work together on this project. Confirm first, every time, by default.
+
 ## When to pause and confirm
 
-Trigger this for anything that adds a feature, changes behavior, or touches
-more than a trivial detail — new fields, new UI flows, new reminder/automation
-logic, changes to what gets written where (e.g. which sheet/column a value
-lands in), anything with more than one reasonable way to build it.
+**Every time**, before editing any `gas-crm/*.gs` or `Index.html` code —
+new feature, behavior change, bug fix, or a small tweak alike. Restate what
+you understood you're about to do and get an explicit "ใช่/โอเค" before
+touching a file.
 
-Skip it when the request is already unambiguous: a one-line copy fix, a typo,
-a color tweak, or something the user has already specced down to the exact
-field/value/location (as happened with "เอามาแต่ชื่อสินค้าเท่านั้น" — no
-open questions left, just do it).
+The only thing that skips the confirmation step is the user directly typing
+the literal text to put somewhere (an exact label, an exact value) with
+nothing left to interpret — even then, a one-line "โอเคจะแก้ตรงนี้นะ" as
+you go is fine and costs nothing. When in doubt, confirm. Don't reach for
+"this one's obviously simple" as a reason to skip it — that judgment call is
+exactly what this skill exists to remove from your hands.
 
 ## What to do
 
