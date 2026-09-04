@@ -156,6 +156,13 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
 .checklist label span.name{flex:1;}
 .checklist label span.price{color:var(--g6);font-size:12px;white-space:nowrap;}
 .checklist input[type=checkbox]{margin-right:10px;width:16px;height:16px;accent-color:var(--gm);cursor:pointer;}
+.country-picker{position:relative;}
+.country-search-input{width:100%;}
+.country-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;max-height:220px;overflow-y:auto;
+  background:#fff;border:1.5px solid #ddd;border-radius:8px;box-shadow:0 8px 20px rgba(0,40,30,.12);z-index:20;}
+.country-dropdown-item{padding:8px 12px;font-size:13px;cursor:pointer;}
+.country-dropdown-item:hover{background:var(--gp);}
+.country-dropdown-empty{padding:8px 12px;font-size:13px;color:var(--g6);}
 </style>
 </head>
 <body>
@@ -222,7 +229,11 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
     </div>
     <div class="search-bar">
       <input type="text" id="searchInput" placeholder="ค้นหาชื่อ / เบอร์โทร / อีเมล">
-      <select id="countryFilter"><option value="">ทุกประเทศ</option></select>
+      <div class="country-picker" style="min-width:180px">
+        <input type="text" id="countryFilterSearch" class="country-search-input" autocomplete="off" placeholder="ทุกประเทศ (พิมพ์ค้นหา)">
+        <input type="hidden" id="countryFilter">
+        <div class="country-dropdown" id="countryFilterDropdown" hidden></div>
+      </div>
       <select id="typeFilter">
         <option value="">ทุกประเภท</option>
         <option value="individual">บุคคลธรรมดา</option>
@@ -490,7 +501,12 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
         <div class="field"><label>เบอร์โทร</label><input name="Phone"></div>
         <div class="field"><label>อีเมล</label><input name="Email" type="email"></div>
         <div class="field"><label>Line ID</label><input name="LineID"></div>
-        <div class="field"><label>ประเทศที่จะส่งไปขาย</label><select name="Country" id="countrySelect" required></select></div>
+        <div class="field country-picker">
+          <label>ประเทศที่จะส่งไปขาย</label>
+          <input type="text" id="countrySearch" class="country-search-input" autocomplete="off" placeholder="พิมพ์ค้นหาประเทศ...">
+          <input type="hidden" name="Country" id="countrySelect">
+          <div class="country-dropdown" id="countryDropdown" hidden></div>
+        </div>
         <div class="field"><label>ช่องทางที่ลูกค้าติดต่อเข้ามา</label><select name="ContactChannel" id="channelSelect"></select></div>
         <div class="field"><label>รายละเอียดช่องทาง</label><input name="SourceDetail"></div>
         <div class="field full"><label>ที่อยู่</label><textarea name="Address" rows="2"></textarea></div>
@@ -520,7 +536,12 @@ select.status-select.lg{font-size:13px;padding:8px 28px 8px 14px;background-size
           <label>หรือพิมพ์ชื่อสินค้าเอง (ถ้าไม่มีในรายการด้านบน — จะต่อท้ายรายการที่เลือกไว้)</label>
           <input id="productInterestManual" placeholder="เช่น น้ำพริกสูตรพิเศษ">
         </div>
-        <div class="field"><label>ประเทศปลายทาง (ส่งออกไปขายที่ไหนในดีลนี้)</label><select name="ExportCountry" id="dealCountrySelect"><option value="">- ไม่ระบุ -</option></select></div>
+        <div class="field country-picker">
+          <label>ประเทศปลายทาง (ส่งออกไปขายที่ไหนในดีลนี้)</label>
+          <input type="text" id="dealCountrySearch" class="country-search-input" autocomplete="off" placeholder="พิมพ์ค้นหาประเทศ... (ไม่ระบุก็ได้)">
+          <input type="hidden" name="ExportCountry" id="dealCountrySelect">
+          <div class="country-dropdown" id="dealCountryDropdown" hidden></div>
+        </div>
         <div class="field"><label>มูลค่าประมาณ (คำนวณอัตโนมัติจากสินค้าที่ติ๊ก แก้ไขเพิ่มเติมเองได้)</label><input name="EstimatedValue" id="dealEstimatedValueInput" type="number" step="0.01"></div>
         <div class="field"><label>สกุลเงิน</label><input name="Currency" value="THB"></div>
         <div class="field"><label>วันที่คาดว่าจะปิดดีล</label><input name="ExpectedCloseDate" type="date"></div>
@@ -1001,16 +1022,18 @@ function loadCustomerList() {
   }).catch(function (e) { toast(e.message, true); });
 }
 
-['searchInput', 'countryFilter', 'typeFilter'].forEach(function (id) {
+['searchInput', 'typeFilter'].forEach(function (id) {
   document.getElementById(id).addEventListener('input', loadCustomerList);
   document.getElementById(id).addEventListener('change', loadCustomerList);
 });
+// countryFilter (ตัวเลือกประเทศแบบพิมพ์ค้นหา) เรียก loadCustomerList เองผ่าน onChange ของ attachCountryPicker แล้ว ไม่ต้องผูกซ้ำตรงนี้
 
 document.getElementById('addCustomerBtn').addEventListener('click', function () { document.getElementById('addCustomerModal').hidden = false; });
 
 document.getElementById('addCustomerForm').addEventListener('submit', function (e) {
   e.preventDefault();
   var data = Object.fromEntries(new FormData(e.target).entries());
+  if (!data.Country) { toast('กรุณาเลือกประเทศที่จะส่งไปขาย', true); return; }
   gsRun('createCustomer', data).then(function (created) {
     document.getElementById('addCustomerModal').hidden = true;
     e.target.reset();
@@ -1114,14 +1137,16 @@ function renderDeals(c) {
 }
 
 var editingDealId = null;
+var editingDealOriginalStage = null;
 
 function openEditDealModal(deal) {
   editingDealId = deal.ID;
+  editingDealOriginalStage = deal.Stage;
   document.getElementById('dealModalTitle').textContent = 'แก้ไขดีล';
   var form = document.getElementById('dealForm');
   form.Title.value = deal.Title || '';
   form.Stage.value = deal.Stage || 'new';
-  form.ExportCountry.value = deal.ExportCountry || '';
+  setCountryPickerDisplay('dealCountrySearch', 'dealCountrySelect', deal.ExportCountry);
   form.EstimatedValue.value = deal.EstimatedValue || '';
   form.Currency.value = deal.Currency || 'THB';
   form.ExpectedCloseDate.value = deal.ExpectedCloseDate || '';
@@ -1232,7 +1257,6 @@ function renderAi(c) {
 }
 
 function renderEditForm(c) {
-  var countryOptions = meta.countries.map(function (x) { return '<option value="' + x.code + '"' + (c.Country === x.code ? ' selected' : '') + '>' + x.th + '</option>'; }).join('');
   var channelOptions = meta.channels.map(function (x) { return '<option value="' + x + '"' + (c.ContactChannel === x ? ' selected' : '') + '>' + x + '</option>'; }).join('');
   document.getElementById('editFormGrid').innerHTML =
     '<div class="field"><label>ประเภทลูกค้า</label><select name="Type">' +
@@ -1245,10 +1269,17 @@ function renderEditForm(c) {
     '<div class="field"><label>เบอร์โทร</label><input name="Phone" value="' + escapeHtml(c.Phone || '') + '"></div>' +
     '<div class="field"><label>อีเมล</label><input name="Email" value="' + escapeHtml(c.Email || '') + '"></div>' +
     '<div class="field"><label>Line ID</label><input name="LineID" value="' + escapeHtml(c.LineID || '') + '"></div>' +
-    '<div class="field"><label>ประเทศ</label><select name="Country">' + countryOptions + '</select></div>' +
+    '<div class="field country-picker">' +
+    '<label>ประเทศ</label>' +
+    '<input type="text" id="editCountrySearch" class="country-search-input" autocomplete="off" placeholder="พิมพ์ค้นหาประเทศ...">' +
+    '<input type="hidden" name="Country" id="editCountrySelect" value="' + escapeHtml(c.Country || '') + '">' +
+    '<div class="country-dropdown" id="editCountryDropdown" hidden></div>' +
+    '</div>' +
     '<div class="field"><label>ช่องทาง</label><select name="ContactChannel">' + channelOptions + '</select></div>' +
     '<div class="field full"><label>ที่อยู่</label><textarea name="Address" rows="2">' + escapeHtml(c.Address || '') + '</textarea></div>' +
     '<div class="field full"><label>หมายเหตุ</label><textarea name="Notes" rows="2">' + escapeHtml(c.Notes || '') + '</textarea></div>';
+  attachCountryPicker('editCountrySearch', 'editCountrySelect', 'editCountryDropdown');
+  setCountryPickerDisplay('editCountrySearch', 'editCountrySelect', c.Country);
 }
 
 function showDetailLoadError(id, message) {
@@ -1295,6 +1326,7 @@ document.querySelectorAll('[data-close]').forEach(function (btn) {
 
 document.getElementById('addDealBtn').addEventListener('click', function () {
   editingDealId = null;
+  editingDealOriginalStage = null;
   document.getElementById('dealModalTitle').textContent = 'เพิ่มดีล/โอกาสการขาย';
   document.getElementById('dealForm').reset();
   document.getElementById('productInterestManual').value = '';
@@ -1382,7 +1414,9 @@ document.getElementById('dealForm').addEventListener('submit', function (e) {
   data.ProductInterest = selectedProducts.join(', ');
   // ห้ามบันทึกเป็น "ปิดการขายสำเร็จ" ตรง ๆ จากฟอร์มนี้ — ต้องผ่านหน้าต่างกรอกยอดขาย/VAT/ค่าขนส่ง/Ad/Payment เสมอ
   // เพื่อให้บันทึกเข้า Revenue ได้ครบถ้วน ไม่งั้นจะปิดดีลแบบไม่มีข้อมูลยอดขายเลย
-  var wantsWon = data.Stage === 'won';
+  // แต่ถ้าดีลนี้ "ปิดการขายสำเร็จไปแล้วอยู่ก่อนหน้า" (แค่แก้ไขรายละเอียดอื่นแล้ว Stage ยังเป็น won เหมือนเดิม)
+  // ไม่ต้องเปิดป็อปอัพซ้ำ — แค่บันทึกการแก้ไขตามปกติ (ไม่งั้นข้อมูลที่กรอกไว้ตอนปิดการขายครั้งแรกจะดูเหมือนหายไป)
+  var wantsWon = data.Stage === 'won' && editingDealOriginalStage !== 'won';
   if (wantsWon) data.Stage = editingDealId ? undefined : 'new';
   var savePromise = editingDealId
     ? gsRun('updateDeal', editingDealId, data)
@@ -1393,6 +1427,7 @@ document.getElementById('dealForm').addEventListener('submit', function (e) {
     e.target.reset();
     var wasEditing = editingDealId;
     editingDealId = null;
+    editingDealOriginalStage = null;
     openCustomerDetail(currentCustomerId);
     if (wantsWon) {
       openCloseWonModal(deal.ID, deal, null);
@@ -1747,19 +1782,64 @@ document.getElementById('sendReportNowBtn').addEventListener('click', function (
 
 // ============ Init ============
 function populateSelectOptions() {
-  var countryFilter = document.getElementById('countryFilter');
-  var countrySelect = document.getElementById('countrySelect');
-  var dealCountrySelect = document.getElementById('dealCountrySelect');
-  meta.countries.forEach(function (c) {
-    countryFilter.insertAdjacentHTML('beforeend', '<option value="' + c.code + '">' + c.th + '</option>');
-    countrySelect.insertAdjacentHTML('beforeend', '<option value="' + c.code + '">' + c.th + ' (' + c.en + ')</option>');
-    dealCountrySelect.insertAdjacentHTML('beforeend', '<option value="' + c.code + '">' + c.th + ' (' + c.en + ')</option>');
-  });
   var channelSelect = document.getElementById('channelSelect');
   meta.channels.forEach(function (ch) { channelSelect.insertAdjacentHTML('beforeend', '<option value="' + ch + '">' + ch + '</option>'); });
   document.getElementById('dealStageSelect').innerHTML = meta.dealStages.map(function (s) { return '<option value="' + s.value + '">' + s.label + '</option>'; }).join('');
   document.getElementById('docTypeSelect').innerHTML = meta.documentTypes.map(function (s) { return '<option value="' + s.value + '">' + s.label + '</option>'; }).join('');
   document.getElementById('followupTypeSelect').innerHTML = meta.followupTypes.map(function (s) { return '<option value="' + s.value + '">' + s.label + '</option>'; }).join('');
+  attachCountryPicker('countrySearch', 'countrySelect', 'countryDropdown');
+  attachCountryPicker('dealCountrySearch', 'dealCountrySelect', 'dealCountryDropdown');
+  attachCountryPicker('countryFilterSearch', 'countryFilter', 'countryFilterDropdown', loadCustomerList);
+}
+
+// ============ ตัวเลือกประเทศแบบพิมพ์ค้นหาได้ (ใช้แทน <select> ยาว ๆ ทุกจุดที่ต้องเลือกประเทศ) ============
+function attachCountryPicker(searchId, hiddenId, dropdownId, onChange) {
+  var searchInput = document.getElementById(searchId);
+  var hiddenInput = document.getElementById(hiddenId);
+  var dropdown = document.getElementById(dropdownId);
+  if (!searchInput || !hiddenInput || !dropdown) return;
+
+  function renderList() {
+    var q = searchInput.value.trim().toLowerCase();
+    var list = (meta.countries || []).filter(function (c) {
+      return !q || c.th.toLowerCase().indexOf(q) !== -1 || c.en.toLowerCase().indexOf(q) !== -1;
+    });
+    dropdown.innerHTML = list.length
+      ? list.map(function (c) {
+          return '<div class="country-dropdown-item" data-code="' + c.code + '" data-label="' + escapeHtml(c.th) + '">' + escapeHtml(c.th) + ' (' + escapeHtml(c.en) + ')</div>';
+        }).join('')
+      : '<div class="country-dropdown-empty">ไม่พบประเทศที่ค้นหา</div>';
+    dropdown.hidden = false;
+  }
+
+  searchInput.addEventListener('focus', renderList);
+  searchInput.addEventListener('input', renderList);
+  searchInput.addEventListener('blur', function () { setTimeout(function () { dropdown.hidden = true; }, 150); });
+  // ลบข้อความจนว่างเปล่า = เคลียร์ค่าที่เลือกไว้ (เช่น ตัวกรอง "ทุกประเทศ" กลับไปว่างได้)
+  searchInput.addEventListener('input', function () {
+    if (!searchInput.value.trim() && hiddenInput.value) {
+      hiddenInput.value = '';
+      if (onChange) onChange('');
+    }
+  });
+  dropdown.addEventListener('mousedown', function (e) {
+    var item = e.target.closest('[data-code]');
+    if (!item) return;
+    hiddenInput.value = item.dataset.code;
+    searchInput.value = item.dataset.label;
+    dropdown.hidden = true;
+    if (onChange) onChange(item.dataset.code);
+  });
+}
+
+/** ตั้งค่าตัวเลือกประเทศจากโค้ดประเทศ (ใช้ตอนเปิดฟอร์มแก้ไขที่มีค่าประเทศเดิมอยู่แล้ว) */
+function setCountryPickerDisplay(searchId, hiddenId, code) {
+  var searchInput = document.getElementById(searchId);
+  var hiddenInput = document.getElementById(hiddenId);
+  if (!searchInput || !hiddenInput) return;
+  hiddenInput.value = code || '';
+  var found = (meta.countries || []).find(function (c) { return c.code === code; });
+  searchInput.value = found ? found.th : '';
 }
 
 function startApp() {
