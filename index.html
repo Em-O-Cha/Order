@@ -629,11 +629,17 @@ function applyShopBootstrap_(r){
     document.getElementById('purchaseReferrerField').classList.remove('sh');
   }
 
+  // ⚡ เพิ่ม — applyShopBootstrap_ ถูกเรียก 2 รอบต่อการเปิดหน้า (รอบแรกจากแคชทันที รอบสองตอน API จริงตอบกลับ
+  // มาอัปเดตให้ตรงล่าสุด) renderCatalog() เขียน #prodList ใหม่ทั้งหมดทุกรอบ ถ้าลูกค้าเลื่อนดูสินค้าอยู่แล้ว
+  // ระหว่างรอ API จริง พอ renderCatalog() รันซ้ำจะทำให้จอดีดกลับขึ้นบนสุดโดยไม่ตั้งใจ (ลูกค้าจะงงว่าเลือก
+  // สินค้าไว้หายไปไหน) — จำตำแหน่งเลื่อนหน้าจอไว้ก่อน แล้วคืนกลับให้เหมือนเดิมหลัง render เสร็จ
+  var scrollY_ = window.scrollY;
   categories = r.categories || [];
   activeAutoCoupons = (r.coupons || []).filter(function(c){ return c.autoApply; });
   renderCatalog();
   showState('catalogState');
   renderMyPrivileges_({ success: true, results: r.privileges || [] });
+  requestAnimationFrame(function(){ window.scrollTo(0, scrollY_); });
 
   savedAddressLoaded = true;
   if (r.province) savedProvince = r.province;
