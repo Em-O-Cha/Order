@@ -83,13 +83,31 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .bank-box .row{display:flex;justify-content:space-between;padding:5px 0;}
 .bank-box .row span:first-child{color:var(--g6);}
 .bank-box .row span:last-child{font-weight:600;color:var(--gd);}
-/* ⚡ เพิ่ม — กล่องโปรที่ใช้อัตโนมัติ (คูปอง autoApply) แยกโทนสีส้ม/เหลืองจากกล่องสิทธิพิเศษส่วนตัว (โทนเขียว)
-   ให้เห็นชัดตั้งแต่แวบแรกว่าคนละประเภทกัน: เขียว = สิทธิ์เฉพาะตัวคุณ, ส้ม = โปรร้านที่ใช้อัตโนมัติตอนนี้ */
-.promo-box{background:#fff3e0;border:1.5px solid #ffcc80;border-radius:12px;padding:16px;margin-top:14px;font-size:14px;}
-.promo-box p{color:#e65100;}
-.promo-box .row{display:flex;justify-content:space-between;padding:5px 0;}
-.promo-box .row span:first-child{color:#8d5524;}
-.promo-box .row span:last-child{font-weight:600;color:#e65100;}
+/* ⚡ เพิ่ม — กล่องโปรที่ใช้อัตโนมัติ (คูปอง autoApply) แยกโทนสีส้ม/เหลืองจากกล่องสิทธิพิเศษส่วนตัว (โทนชมพู/แดง)
+   ให้เห็นชัดตั้งแต่แวบแรกว่าคนละประเภทกัน: ชมพู/แดง = สิทธิ์เฉพาะตัวคุณ, ส้ม = โปรร้านที่ใช้อัตโนมัติตอนนี้
+   ออกแบบเป็นการ์ดคูปองแบบตั๋วฉีก (ticket) แยกทีละใบ ให้ดูเหมือนคูปองจริง */
+/* หมายเหตุ: วงกลมบาก (notch) ต้องเป็นลูกของ .coupon-ticket ตรง ๆ (ไม่ใช่ลูกของ .coupon-ticket-inner ที่มี
+   overflow:hidden) ไม่งั้นครึ่งวงกลมที่ทับเส้นขอบจะถูกตัดหายไป เหลือแต่เส้นขอบตรง ๆ พาดผ่านรอยบาก แทนที่จะเห็น
+   เส้นขอบโค้งเว้าจริง ๆ ตามรอยบาก */
+.coupon-ticket{position:relative;border:2px solid #fb8c00;border-radius:16px;margin-bottom:26px;}
+.coupon-ticket:last-child{margin-bottom:0;}
+.coupon-ticket-inner{display:flex;align-items:stretch;background:#fff;border-radius:14px;overflow:hidden;}
+.coupon-ticket-stub{flex:0 0 80px;background:#fb8c00;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:10px 4px;}
+.coupon-ticket-stub small{font-size:13px;font-weight:600;opacity:.95;line-height:1.25;}
+.coupon-ticket-stub b{font-size:19px;line-height:1.15;margin-top:3px;word-break:break-word;}
+.coupon-ticket-notch{position:absolute;left:87px;width:20px;height:20px;background:#fff;border-radius:50%;transform:translateX(-50%);z-index:1;}
+.coupon-ticket-notch.top{top:-10px;}
+.coupon-ticket-notch.bottom{bottom:-10px;}
+.coupon-ticket-divider{flex:0 0 0;border-left:2px dashed #fb8c00;margin:16px 0 16px 7px;}
+.coupon-ticket-body{flex:1;padding:10px 12px;text-align:left;min-width:0;display:flex;flex-direction:column;justify-content:center;}
+.coupon-ticket-body .ct-title{font-weight:700;font-size:15px;color:#3e2723;}
+.coupon-ticket-body .ct-sub{font-size:12px;color:#8d6e63;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.coupon-ticket-body .ct-exp{font-size:12px;color:var(--gm);margin-top:4px;font-weight:600;}
+.coupon-ticket-tag{flex:0 0 auto;align-self:center;margin-right:12px;background:#eeeeee;color:#757575;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;white-space:nowrap;}
+/* ⚡ เพิ่ม — กล่อง "สิทธิพิเศษของคุณ" โทนชมพู/แดงให้เด่นชัด แยกจากกล่องอื่นที่ยังใช้ .bank-box (โทนเขียว) เดิม */
+.privilege-box{background:#ffebee;border:1.5px solid #ef9a9a;border-radius:12px;padding:16px;margin-top:14px;font-size:14px;}
+.privilege-box p{color:#c62828;}
+.privilege-box .row{padding:5px 0;color:#c62828;}
 
 .order-box{background:var(--gp);border-radius:12px;padding:18px;text-align:left;margin-top:10px;}
 .order-box .row{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;}
@@ -699,7 +717,7 @@ function renderMyPrivileges_(r){
   // ไว้เหมือนพฤติกรรมเดิมก่อนหน้านี้
   var activeOnly = r.results.filter(function(p){ return !p.isUpcoming; });
   if (!activeOnly.length) return;
-  var h = '<div class="bank-box" style="margin-bottom:16px;text-align:left">';
+  var h = '<div class="privilege-box" style="margin-bottom:16px;text-align:left">';
   h += '<p style="font-weight:600;margin-bottom:8px">🎖️ สิทธิพิเศษของคุณ</p>';
   activeOnly.forEach(function(p){
     h += '<div class="row"><span>' + escHtml(p.name) + ' (' + escHtml(p.expiry) + ')</span></div>';
@@ -711,7 +729,7 @@ function renderMyPrivileges_(r){
 
 // ⚡ เพิ่ม — กล่องแยกต่างหากสำหรับคูปองร้าน (autoApply) ที่ใช้อัตโนมัติตอนนี้ ไม่ปนกับกล่อง "สิทธิพิเศษของคุณ"
 // ด้านบน เพราะเป็นคนละความหมาย: สิทธิพิเศษของคุณ = ของเฉพาะตัวลูกค้าคนนั้น (สมัครสมาชิก/แนะนำเพื่อน/แลกแต้ม)
-// ส่วนกล่องนี้ = โปรร้านที่ลูกค้าทุกคนใช้ได้เหมือนกัน ใช้โทนสีส้ม (.promo-box) แยกจากโทนเขียวของกล่องบนให้ชัดเจน
+// ส่วนกล่องนี้ = โปรร้านที่ลูกค้าทุกคนใช้ได้เหมือนกัน แสดงเป็นการ์ดคูปองแบบตั๋วฉีก (.coupon-ticket) ทีละใบ
 function autoPromoValueText_(c){
   if (c.type === 'percent') return 'ลด ' + c.value + '%';
   if (c.type === 'fixed') return 'ลด ' + c.value.toLocaleString('th-TH') + ' บาท';
@@ -720,14 +738,36 @@ function autoPromoValueText_(c){
   if (c.type === 'bogo') return 'ซื้อครบ ' + c.value + ' แถม ' + (c.freeQty || 1);
   return '';
 }
+// ⚡ เพิ่ม — ข้อความสั้นสำหรับฝั่งซ้ายของตั๋วคูปอง (ป้าย + ตัวเลขตัวโต)
+function autoPromoStubText_(c){
+  if (c.type === 'percent') return { label: 'ลดพิเศษ', value: c.value + '%' };
+  if (c.type === 'fixed') return { label: 'ลดพิเศษ', value: c.value.toLocaleString('th-TH') + '.-' };
+  if (c.type === 'ship_percent') return c.value >= 100 ? { label: 'จัดส่ง', value: 'ฟรี' } : { label: 'ลดค่าส่ง', value: c.value + '%' };
+  if (c.type === 'ship_fixed') return { label: 'ลดค่าส่ง', value: c.value.toLocaleString('th-TH') + '.-' };
+  if (c.type === 'bogo') return { label: 'ซื้อ ' + c.value, value: 'แถม ' + (c.freeQty || 1) };
+  return { label: 'โปร', value: 'พิเศษ' };
+}
 function renderAutoPromoBox_(coupons){
   var box = document.getElementById('autoPromoBox');
   if (!coupons || !coupons.length) { box.classList.add('sh'); box.innerHTML = ''; return; }
-  var h = '<div class="promo-box" style="margin-bottom:16px;text-align:left">';
-  h += '<p style="font-weight:600;margin-bottom:8px">🎉 คูปองพร้อมใช้สำหรับคุณ</p>';
+  var h = '<div style="margin-bottom:16px;text-align:left">';
+  h += '<p style="font-weight:600;margin-bottom:8px;color:#e65100">🎉 คูปองพร้อมใช้สำหรับคุณ</p>';
   coupons.forEach(function(c){
-    h += '<div class="row"><span>' + escHtml(autoPromoValueText_(c)) + '</span>'
-      + '<span>' + (c.expiry ? 'ใช้ได้ถึง ' + escHtml(c.expiry) : '') + '</span></div>';
+    var stub = autoPromoStubText_(c);
+    h += '<div class="coupon-ticket">'
+      + '<div class="coupon-ticket-notch top"></div>'
+      + '<div class="coupon-ticket-notch bottom"></div>'
+      + '<div class="coupon-ticket-inner">'
+        + '<div class="coupon-ticket-stub"><small>' + escHtml(stub.label) + '</small><b>' + escHtml(stub.value) + '</b></div>'
+        + '<div class="coupon-ticket-divider"></div>'
+        + '<div class="coupon-ticket-body">'
+          + '<div class="ct-title">' + escHtml(autoPromoValueText_(c)) + '</div>'
+          + (c.minPurchase ? '<div class="ct-sub">เมื่อช้อปครบ ' + escHtml(c.minPurchase.toLocaleString('th-TH')) + '.-</div>' : '')
+          + (c.expiry ? '<div class="ct-exp">ใช้ได้ถึง ' + escHtml(c.expiry) + '</div>' : '')
+        + '</div>'
+        + '<div class="coupon-ticket-tag">ใช้อยู่</div>'
+      + '</div>'
+    + '</div>';
   });
   h += '</div>';
   box.innerHTML = h;
