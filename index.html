@@ -83,6 +83,13 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .bank-box .row{display:flex;justify-content:space-between;padding:5px 0;}
 .bank-box .row span:first-child{color:var(--g6);}
 .bank-box .row span:last-child{font-weight:600;color:var(--gd);}
+/* ⚡ เพิ่ม — กล่องโปรที่ใช้อัตโนมัติ (คูปอง autoApply) แยกโทนสีส้ม/เหลืองจากกล่องสิทธิพิเศษส่วนตัว (โทนเขียว)
+   ให้เห็นชัดตั้งแต่แวบแรกว่าคนละประเภทกัน: เขียว = สิทธิ์เฉพาะตัวคุณ, ส้ม = โปรร้านที่ใช้อัตโนมัติตอนนี้ */
+.promo-box{background:#fff3e0;border:1.5px solid #ffcc80;border-radius:12px;padding:16px;margin-top:14px;font-size:14px;}
+.promo-box p{color:#e65100;}
+.promo-box .row{display:flex;justify-content:space-between;padding:5px 0;}
+.promo-box .row span:first-child{color:#8d5524;}
+.promo-box .row span:last-child{font-weight:600;color:#e65100;}
 
 .order-box{background:var(--gp);border-radius:12px;padding:18px;text-align:left;margin-top:10px;}
 .order-box .row{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;}
@@ -195,6 +202,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
     <div id="catalogState" class="sh">
       <div class="history-link"><button type="button" onclick="showHistory()">🧾 คำสั่งซื้อรอดำเนินการ</button></div>
       <div id="myPrivileges" class="sh"></div>
+      <div id="autoPromoBox" class="sh"></div>
       <div id="prodList"></div>
     </div>
 
@@ -639,6 +647,7 @@ function applyShopBootstrap_(r){
   renderCatalog();
   showState('catalogState');
   renderMyPrivileges_({ success: true, results: r.privileges || [] });
+  renderAutoPromoBox_(activeAutoCoupons);
   requestAnimationFrame(function(){ window.scrollTo(0, scrollY_); });
 
   savedAddressLoaded = true;
@@ -698,6 +707,31 @@ function renderMyPrivileges_(r){
   h += '</div>';
   document.getElementById('myPrivileges').innerHTML = h;
   document.getElementById('myPrivileges').classList.remove('sh');
+}
+
+// ⚡ เพิ่ม — กล่องแยกต่างหากสำหรับคูปองร้าน (autoApply) ที่ใช้อัตโนมัติตอนนี้ ไม่ปนกับกล่อง "สิทธิพิเศษของคุณ"
+// ด้านบน เพราะเป็นคนละความหมาย: สิทธิพิเศษของคุณ = ของเฉพาะตัวลูกค้าคนนั้น (สมัครสมาชิก/แนะนำเพื่อน/แลกแต้ม)
+// ส่วนกล่องนี้ = โปรร้านที่ลูกค้าทุกคนใช้ได้เหมือนกัน ใช้โทนสีส้ม (.promo-box) แยกจากโทนเขียวของกล่องบนให้ชัดเจน
+function autoPromoValueText_(c){
+  if (c.type === 'percent') return 'ลด ' + c.value + '%';
+  if (c.type === 'fixed') return 'ลด ' + c.value.toLocaleString('th-TH') + ' บาท';
+  if (c.type === 'ship_percent') return c.value >= 100 ? 'ฟรีค่าจัดส่ง' : 'ลดค่าส่ง ' + c.value + '%';
+  if (c.type === 'ship_fixed') return 'ลดค่าส่ง ' + c.value.toLocaleString('th-TH') + ' บาท';
+  if (c.type === 'bogo') return 'ซื้อครบ ' + c.value + ' แถม ' + (c.freeQty || 1);
+  return '';
+}
+function renderAutoPromoBox_(coupons){
+  var box = document.getElementById('autoPromoBox');
+  if (!coupons || !coupons.length) { box.classList.add('sh'); box.innerHTML = ''; return; }
+  var h = '<div class="promo-box" style="margin-bottom:16px;text-align:left">';
+  h += '<p style="font-weight:600;margin-bottom:8px">🎉 โปรที่ใช้อัตโนมัติตอนนี้</p>';
+  coupons.forEach(function(c){
+    h += '<div class="row"><span>' + escHtml(autoPromoValueText_(c)) + '</span>'
+      + '<span>' + (c.expiry ? 'ใช้ได้ถึง ' + escHtml(c.expiry) : '') + '</span></div>';
+  });
+  h += '</div>';
+  box.innerHTML = h;
+  box.classList.remove('sh');
 }
 
 function loadMyPrivileges(){
