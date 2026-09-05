@@ -89,16 +89,16 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 /* หมายเหตุ: วงกลมบาก (notch) ต้องเป็นลูกของ .coupon-ticket ตรง ๆ (ไม่ใช่ลูกของ .coupon-ticket-inner ที่มี
    overflow:hidden) ไม่งั้นครึ่งวงกลมที่ทับเส้นขอบจะถูกตัดหายไป เหลือแต่เส้นขอบตรง ๆ พาดผ่านรอยบาก แทนที่จะเห็น
    เส้นขอบโค้งเว้าจริง ๆ ตามรอยบาก */
-.coupon-ticket{position:relative;border:2px solid #fb8c00;border-radius:16px;margin-bottom:26px;}
+.coupon-ticket{position:relative;border:1.5px solid #ffcc80;border-radius:14px;margin-bottom:26px;}
 .coupon-ticket:last-child{margin-bottom:0;}
-.coupon-ticket-inner{display:flex;align-items:stretch;background:#fff;border-radius:14px;overflow:hidden;}
-.coupon-ticket-stub{flex:0 0 80px;background:#fb8c00;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:10px 4px;}
+.coupon-ticket-inner{display:flex;align-items:stretch;background:#fff;border-radius:12.5px;overflow:hidden;}
+.coupon-ticket-stub{flex:0 0 80px;background:linear-gradient(135deg,#fb8c00,#e65100);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:10px 4px;}
 .coupon-ticket-stub small{font-size:13px;font-weight:600;opacity:.95;line-height:1.25;}
 .coupon-ticket-stub b{font-size:19px;line-height:1.15;margin-top:3px;word-break:break-word;}
-.coupon-ticket-notch{position:absolute;left:87px;width:20px;height:20px;background:#fff;border-radius:50%;transform:translateX(-50%);z-index:1;}
+.coupon-ticket-notch{position:absolute;left:80px;width:20px;height:20px;background:#fff;border-radius:50%;transform:translateX(-50%);z-index:1;}
 .coupon-ticket-notch.top{top:-10px;}
 .coupon-ticket-notch.bottom{bottom:-10px;}
-.coupon-ticket-divider{flex:0 0 0;border-left:2px dashed #fb8c00;margin:16px 0 16px 7px;}
+.coupon-ticket-divider{flex:0 0 0;border-left:2px dashed #ffcc80;margin:16px 0;}
 .coupon-ticket-body{flex:1;padding:10px 12px;text-align:left;min-width:0;display:flex;flex-direction:column;justify-content:center;}
 .coupon-ticket-body .ct-title{font-weight:700;font-size:15px;color:#3e2723;}
 .coupon-ticket-body .ct-sub{font-size:12px;color:#8d6e63;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
