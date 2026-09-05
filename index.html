@@ -712,7 +712,7 @@ function renderCatalog(){
         + '<div style="flex:1"><div class="prod-name">' + escHtml(v.label) + '</div><div class="prod-price">' + priceHtml + '</div></div>'
         + '<div class="qty-ctl">'
         + '<button class="qty-btn" onclick="changeQty(' + idx + ',-1)">−</button>'
-        + '<span class="qty-val" id="qty_' + idx + '">0</span>'
+        + '<span class="qty-val" id="qty_' + idx + '">' + (cart[v.skuName] || 0) + '</span>'
         + '<button class="qty-btn" onclick="changeQty(' + idx + ',1)">+</button>'
         + '</div></div>';
     });
