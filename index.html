@@ -684,9 +684,15 @@ function getBestPromoPrice_(skuName, price){
 
 function renderMyPrivileges_(r){
   if (!r || !r.success || !r.results || !r.results.length) return;
+  // ⚡ เพิ่ม — getMyPrivilegesForLineUid_ (ฝั่ง backend) เปลี่ยนมาส่งสิทธิ์ที่ยังไม่ถึงวันเริ่มใช้กลับมาด้วยแล้ว
+  // (isUpcoming) เพื่อให้ popup ต้อนรับสมาชิกใหม่ในหน้าสมัครสมาชิกโชว์ได้ — กล่องนี้เป็นหน้าสั่งซื้อ/ชำระเงิน
+  // ไม่อยากให้ลูกค้าเข้าใจผิดว่าใช้สิทธิ์ได้วันนี้ทั้งที่ยังไม่ถึงวันเริ่มใช้จริง เลยกรองสิทธิ์ที่ยังไม่ถึงวันออก
+  // ไว้เหมือนพฤติกรรมเดิมก่อนหน้านี้
+  var activeOnly = r.results.filter(function(p){ return !p.isUpcoming; });
+  if (!activeOnly.length) return;
   var h = '<div class="bank-box" style="margin-bottom:16px;text-align:left">';
   h += '<p style="font-weight:600;margin-bottom:8px">🎖️ สิทธิพิเศษของคุณ</p>';
-  r.results.forEach(function(p){
+  activeOnly.forEach(function(p){
     h += '<div class="row"><span>' + escHtml(p.name) + ' (' + escHtml(p.expiry) + ')</span></div>';
   });
   h += '</div>';
