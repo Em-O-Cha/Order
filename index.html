@@ -724,7 +724,7 @@ function renderAutoPromoBox_(coupons){
   var box = document.getElementById('autoPromoBox');
   if (!coupons || !coupons.length) { box.classList.add('sh'); box.innerHTML = ''; return; }
   var h = '<div class="promo-box" style="margin-bottom:16px;text-align:left">';
-  h += '<p style="font-weight:600;margin-bottom:8px">🎉 โปรที่ใช้อัตโนมัติตอนนี้</p>';
+  h += '<p style="font-weight:600;margin-bottom:8px">🎉 คูปองพร้อมใช้สำหรับคุณ</p>';
   coupons.forEach(function(c){
     h += '<div class="row"><span>' + escHtml(autoPromoValueText_(c)) + '</span>'
       + '<span>' + (c.expiry ? 'ใช้ได้ถึง ' + escHtml(c.expiry) : '') + '</span></div>';
