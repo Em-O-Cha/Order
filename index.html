@@ -4,8 +4,12 @@
 <meta charset="UTF-8">
 <link rel="preconnect" href="https://static.line-scdn.net">
 <link rel="preconnect" href="https://access.line.me">
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
 <link rel="dns-prefetch" href="https://static.line-scdn.net">
 <link rel="dns-prefetch" href="https://access.line.me">
+<link rel="dns-prefetch" href="https://script.google.com">
+<link rel="dns-prefetch" href="https://script.googleusercontent.com">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>สั่งซื้อสินค้า</title>
 <style>
@@ -335,6 +339,7 @@ var BANK_LOGO_URL_ = 'bank-logo.png';
 var COPY_ICON_URL_ = 'https://raw.githubusercontent.com/Em-O-Cha/Order/main/copy-icon.png';
 
 var currentIdToken = null;
+var currentLineUserId = '';
 var categories = [];
 var variantList = [];
 var cart = {};
@@ -580,7 +585,7 @@ function callApi(action, payload, _attempt){
   });
 }
 
-function getIdTokenExpiryMs_(token){
+function decodeJwtPayload_(token){
   try {
     var payload = String(token).split('.')[1];
     var b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
@@ -588,42 +593,73 @@ function getIdTokenExpiryMs_(token){
     var binary = atob(b64);
     var bytes = new Uint8Array(binary.length);
     for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    var json = JSON.parse(new TextDecoder('utf-8').decode(bytes));
-    return json.exp ? json.exp * 1000 : 0;
+    return JSON.parse(new TextDecoder('utf-8').decode(bytes));
   } catch (e) {
-    return 0;
+    return null;
   }
+}
+function getIdTokenExpiryMs_(token){
+  var json = decodeJwtPayload_(token);
+  return json && json.exp ? json.exp * 1000 : 0;
+}
+function getIdTokenSub_(token){
+  var json = decodeJwtPayload_(token);
+  return json && json.sub ? json.sub : '';
 }
 
 var activeAutoCoupons = [];
 
+// ⚡ เพิ่ม — แคชผล getShopBootstrap ล่าสุดไว้ใน localStorage ต่อ LINE UID เพื่อวาดหน้ารายการสินค้าให้เห็น
+// ทันทีจาก "ของเดิมที่เคยรู้" ระหว่างรอ API ตอบกลับจริง (stale-while-revalidate) แทนที่จะค้างจอ
+// "กำลังเชื่อมต่อ..." ทุกครั้งที่เปิดหน้า — ยังคงยิง API จริงเพื่ออัปเดตให้ตรงล่าสุดเสมอ ไม่ได้ข้ามการเช็ค
+function shopBootstrapCacheKey_(uid){ return 'emocha.order.bootstrapCache.' + uid; }
+function loadCachedShopBootstrap_(uid){
+  if (!uid) return null;
+  try {
+    var raw = localStorage.getItem(shopBootstrapCacheKey_(uid));
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function saveCachedShopBootstrap_(uid, result){
+  if (!uid) return;
+  try { localStorage.setItem(shopBootstrapCacheKey_(uid), JSON.stringify(result)); } catch (e) {}
+}
+function applyShopBootstrap_(r){
+  if (r.purchaseReferralEnabled) {
+    document.getElementById('purchaseReferrerField').classList.remove('sh');
+  }
+
+  categories = r.categories || [];
+  activeAutoCoupons = (r.coupons || []).filter(function(c){ return c.autoApply; });
+  renderCatalog();
+  showState('catalogState');
+  renderMyPrivileges_({ success: true, results: r.privileges || [] });
+
+  savedAddressLoaded = true;
+  if (r.province) savedProvince = r.province;
+  if (r.address) savedAddress = r.address;
+
+  if (r.paymentInfo) paymentInfo = r.paymentInfo;
+}
 function loadProducts(){
+  var cached_ = loadCachedShopBootstrap_(currentLineUserId);
+  var usedCache_ = false;
+  if (cached_ && cached_.success && cached_.isMember) {
+    usedCache_ = true;
+    applyShopBootstrap_(cached_);
+  }
   // รวมข้อมูลเริ่มต้นเป็นคำขอเดียว ลดการเปิด Apps Script และตรวจ LINE token ซ้ำ 7 รอบ
   callApi('getShopBootstrap', { idToken: currentIdToken })
     .then(function(r){
-      if (!r || !r.success) { showErrorState('โหลดสินค้าไม่สำเร็จ: ' + (r ? r.error : '')); return; }
+      if (!r || !r.success) { if (!usedCache_) showErrorState('โหลดสินค้าไม่สำเร็จ: ' + (r ? r.error : '')); return; }
       if (!r.isMember) {
         showState('notMemberState');
         return;
       }
-
-      if (r.purchaseReferralEnabled) {
-        document.getElementById('purchaseReferrerField').classList.remove('sh');
-      }
-
-      categories = r.categories || [];
-      activeAutoCoupons = (r.coupons || []).filter(function(c){ return c.autoApply; });
-      renderCatalog();
-      showState('catalogState');
-      renderMyPrivileges_({ success: true, results: r.privileges || [] });
-
-      savedAddressLoaded = true;
-      if (r.province) savedProvince = r.province;
-      if (r.address) savedAddress = r.address;
-
-      if (r.paymentInfo) paymentInfo = r.paymentInfo;
+      saveCachedShopBootstrap_(currentLineUserId, r);
+      applyShopBootstrap_(r);
     })
-    .catch(function(e){ showErrorState('เรียก API ไม่สำเร็จ: ' + e.message); });
+    .catch(function(e){ if (!usedCache_) showErrorState('เรียก API ไม่สำเร็จ: ' + e.message); });
 }
 
 function getBestPromoPrice_(skuName, price){
@@ -1605,6 +1641,7 @@ function initLiff(){
       showErrorState('LINE Login สำเร็จ แต่ LIFF ไม่ส่ง ID token กลับมา');
       return;
     }
+    currentLineUserId = getIdTokenSub_(currentIdToken);
     loadProducts();
   }).catch(function(e){
     clearTimeout(initTimeout);
