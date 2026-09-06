@@ -732,14 +732,20 @@ function getBestPromoPrice_(skuName, price){
   return best;
 }
 
-// ⚡ เพิ่ม — จับคู่สิทธิพิเศษกับโทนสี/ไอคอนตามคีย์เวิร์ดใน p.name (ไม่มี type จาก backend ให้ใช้ตรง ๆ
-// เพราะฝั่ง Apps Script ไม่ได้ push เข้า git เลยต้องเดาจากข้อความ) เช็ค "ซื้อสินค้า" ก่อน "แนะนำ" เฉย ๆ
-// เพราะชื่อ "แนะนำซื้อสินค้า..." มีคำว่า "แนะนำ" ปนอยู่ด้วย ถ้าเช็คผิดลำดับจะจับเป็นสีน้ำเงินหมด
-function myPrivilegeTheme_(name){
-  if (name.indexOf('ซื้อสินค้า') !== -1) return { cls: 'th-teal', stub: { label: 'แนะนำ', value: 'ซื้อของ' }, icon: '🛍️', tagline: 'แนะนำเพื่อน<br>ซื้อของ', keyword: 'แนะนำซื้อสินค้า' };
-  if (name.indexOf('แนะนำ') !== -1) return { cls: 'th-blue', stub: { label: 'แนะนำ', value: 'เพื่อน' }, icon: '🤝', tagline: 'ชวนเพื่อน<br>รับกันคนละครึ่ง', keyword: 'แนะนำเพื่อน' };
-  if (name.indexOf('วันเกิด') !== -1) return { cls: 'th-pink', stub: { label: 'โปร', value: 'วันเกิด' }, icon: '🎂', tagline: 'สุขสันต์<br>วันเกิด', keyword: 'วันเกิด' };
-  return { cls: 'th-gold', stub: { label: 'สิทธิ', value: 'พิเศษ' }, icon: '🏅', tagline: 'เฉพาะสมาชิก<br>เอมโอชา', keyword: '' };
+// ⚡ เพิ่ม — จับคู่สิทธิพิเศษกับโทนสี/ไอคอนโดยเช็คจาก p.reason (คอลัมน์ "ให้โดย" ฝั่ง backend) เป็นหลัก
+// เพราะเป็นค่าที่ระบบกำหนดตายตัวตามที่มาของสิทธิ์ (สมัครสมาชิก/แนะนำเพื่อน/วันเกิด/แอดมินแจก) แม่นยำกว่า
+// การเดาจาก p.name ซึ่งเป็นข้อความอิสระที่พนักงาน/แอดมินพิมพ์เอง เช่น สิทธิ์ต้อนรับสมาชิกใหม่บางอันมีคำว่า
+// "สั่งซื้อสินค้า" ปนอยู่ในชื่อ ถ้าเช็คจากชื่ออย่างเดียวจะเข้าใจผิดว่าเป็นสิทธิ์แนะนำเพื่อนซื้อสินค้า
+// ส่วน reason ของสิทธิ์แนะนำเพื่อนทั้ง 2 แบบ (ชวนเพื่อนสมัคร / เพื่อนสั่งซื้อ) ใช้ค่าเดียวกัน เลยต้องดู p.name
+// เพิ่มอีกชั้นเฉพาะกรณีนี้เพื่อแยกสีน้ำเงิน/เขียวอมฟ้า
+function myPrivilegeTheme_(p){
+  var reason = p.reason || '';
+  if (reason.indexOf('เกิด') !== -1) return { cls: 'th-pink', stub: { label: 'โปร', value: 'วันเกิด' }, icon: '🎂', tagline: 'สุขสันต์<br>วันเกิด' };
+  if (reason.indexOf('แนะนำเพื่อน') !== -1) {
+    if ((p.name || '').indexOf('ซื้อสินค้า') !== -1) return { cls: 'th-teal', stub: { label: 'แนะนำ', value: 'ซื้อของ' }, icon: '🛍️', tagline: 'แนะนำเพื่อน<br>ซื้อของ' };
+    return { cls: 'th-blue', stub: { label: 'แนะนำ', value: 'เพื่อน' }, icon: '🤝', tagline: 'ชวนเพื่อน<br>รับกันคนละครึ่ง' };
+  }
+  return { cls: 'th-gold', stub: { label: 'สิทธิ', value: 'พิเศษ' }, icon: '🏅', tagline: 'เฉพาะสมาชิก<br>เอมโอชา' };
 }
 function renderMyPrivileges_(r){
   if (!r || !r.success || !r.results || !r.results.length) return;
@@ -751,16 +757,14 @@ function renderMyPrivileges_(r){
   if (!activeOnly.length) return;
   var h = '';
   activeOnly.forEach(function(p){
-    var theme = myPrivilegeTheme_(p.name || '');
-    var idx = theme.keyword ? p.name.indexOf(theme.keyword) : -1;
-    var detail = idx !== -1 ? p.name.slice(idx + theme.keyword.length).trim() : '';
+    var theme = myPrivilegeTheme_(p);
     h += '<div class="coupon-ticket ' + theme.cls + '">'
       + '<div class="coupon-ticket-notch top"></div>'
       + '<div class="coupon-ticket-notch bottom"></div>'
       + '<div class="coupon-ticket-inner">'
         + '<div class="coupon-ticket-stub"><small>' + escHtml(theme.stub.label) + '</small><b>' + escHtml(theme.stub.value) + '</b></div>'
         + '<div class="coupon-ticket-body">'
-          + '<div class="ct-title">' + escHtml(detail || p.name) + '</div>'
+          + '<div class="ct-title">' + escHtml(p.name || '') + '</div>'
           + (p.expiry ? '<div class="ct-sub">ใช้ได้ถึง ' + escHtml(p.expiry) + '</div>' : '')
         + '</div>'
         + '<div class="coupon-ticket-side">'
