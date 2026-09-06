@@ -811,14 +811,14 @@ function renderAutoPromoBox_(coupons){
     var side = autoPromoSideInfo_(c);
     var valueText = autoPromoValueText_(c);
     var minPurchaseText = c.minPurchase ? 'เมื่อช้อปครบ ' + c.minPurchase.toLocaleString('th-TH') + '.-' : '';
-    var subText = c.name ? [valueText, minPurchaseText].filter(Boolean).join(' • ') : minPurchaseText;
+    var subText = c.code ? [valueText, minPurchaseText].filter(Boolean).join(' • ') : minPurchaseText;
     h += '<div class="coupon-ticket">'
       + '<div class="coupon-ticket-notch top"></div>'
       + '<div class="coupon-ticket-notch bottom"></div>'
       + '<div class="coupon-ticket-inner">'
         + '<div class="coupon-ticket-stub"><small>' + escHtml(stub.label) + '</small><b>' + escHtml(stub.value) + '</b></div>'
         + '<div class="coupon-ticket-body">'
-          + '<div class="ct-title">' + escHtml(c.name || valueText) + '</div>'
+          + '<div class="ct-title">' + escHtml(c.code || valueText) + '</div>'
           + (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : '')
           + (c.expiry ? '<div class="ct-exp">ใช้ได้ถึง ' + escHtml(c.expiry) + '</div>' : '')
         + '</div>'
