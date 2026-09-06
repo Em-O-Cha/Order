@@ -126,12 +126,12 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .coupon-ticket.th-pink .ct-sub{color:#c9668c;}
 .coupon-ticket.th-pink .coupon-ticket-side{background:#ffc1d9;}
 .coupon-ticket.th-pink .ct-tagline{color:#ad1457;}
-/* ⚡ เพิ่ม — กล่อง "สิทธิพิเศษของคุณ" โทนชมพู/แดงให้เด่นชัด แยกจากกล่องอื่นที่ยังใช้ .bank-box (โทนเขียว) เดิม
-   (ยังใช้กับสิทธิ์ที่จับคู่คีย์เวิร์ดสีไม่ได้ แสดงเป็นลิสต์แบบเดิม) */
-.privilege-box{background:#ffebee;border:1.5px solid #ef9a9a;border-radius:12px;padding:16px;margin-top:14px;font-size:14px;}
-.privilege-box p{color:#c62828;}
-.privilege-box .row{padding:5px 0;color:#c62828;}
-
+.coupon-ticket.th-gold .coupon-ticket-inner{background:#fdf1d6;}
+.coupon-ticket.th-gold .coupon-ticket-stub{background:linear-gradient(135deg,#e8b968,#b8860b);}
+.coupon-ticket.th-gold .ct-title{color:#7a4d12;}
+.coupon-ticket.th-gold .ct-sub{color:#9c7128;}
+.coupon-ticket.th-gold .coupon-ticket-side{background:#f5dfa0;}
+.coupon-ticket.th-gold .ct-tagline{color:#7a4d12;}
 .order-box{background:var(--gp);border-radius:12px;padding:18px;text-align:left;margin-top:10px;}
 .order-box .row{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;}
 
@@ -739,7 +739,7 @@ function myPrivilegeTheme_(name){
   if (name.indexOf('ซื้อสินค้า') !== -1) return { cls: 'th-teal', stub: { label: 'แนะนำ', value: 'ซื้อของ' }, icon: '🛍️', tagline: 'แนะนำเพื่อน<br>ซื้อของ', keyword: 'แนะนำซื้อสินค้า' };
   if (name.indexOf('แนะนำ') !== -1) return { cls: 'th-blue', stub: { label: 'แนะนำ', value: 'เพื่อน' }, icon: '🤝', tagline: 'ชวนเพื่อน<br>รับกันคนละครึ่ง', keyword: 'แนะนำเพื่อน' };
   if (name.indexOf('วันเกิด') !== -1) return { cls: 'th-pink', stub: { label: 'โปร', value: 'วันเกิด' }, icon: '🎂', tagline: 'สุขสันต์<br>วันเกิด', keyword: 'วันเกิด' };
-  return null;
+  return { cls: 'th-gold', stub: { label: 'สิทธิ', value: 'พิเศษ' }, icon: '🏅', tagline: 'เฉพาะสมาชิก<br>เอมโอชา', keyword: '' };
 }
 function renderMyPrivileges_(r){
   if (!r || !r.success || !r.results || !r.results.length) return;
@@ -750,20 +750,18 @@ function renderMyPrivileges_(r){
   var activeOnly = r.results.filter(function(p){ return !p.isUpcoming; });
   if (!activeOnly.length) return;
   var h = '';
-  var plain = [];
   activeOnly.forEach(function(p){
     var theme = myPrivilegeTheme_(p.name || '');
-    if (!theme) { plain.push(p); return; }
-    var idx = p.name.indexOf(theme.keyword);
+    var idx = theme.keyword ? p.name.indexOf(theme.keyword) : -1;
     var detail = idx !== -1 ? p.name.slice(idx + theme.keyword.length).trim() : '';
-    h += '<div class="coupon-ticket ' + theme.cls + '" style="margin-bottom:12px">'
+    h += '<div class="coupon-ticket ' + theme.cls + '">'
       + '<div class="coupon-ticket-notch top"></div>'
       + '<div class="coupon-ticket-notch bottom"></div>'
       + '<div class="coupon-ticket-inner">'
         + '<div class="coupon-ticket-stub"><small>' + escHtml(theme.stub.label) + '</small><b>' + escHtml(theme.stub.value) + '</b></div>'
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(detail || p.name) + '</div>'
-          + (p.expiry ? '<div class="ct-exp">ใช้ได้ถึง ' + escHtml(p.expiry) + '</div>' : '')
+          + (p.expiry ? '<div class="ct-sub">ใช้ได้ถึง ' + escHtml(p.expiry) + '</div>' : '')
         + '</div>'
         + '<div class="coupon-ticket-side">'
           + '<span class="ct-icon">' + theme.icon + '</span>'
@@ -772,14 +770,6 @@ function renderMyPrivileges_(r){
       + '</div>'
     + '</div>';
   });
-  if (plain.length) {
-    h += '<div class="privilege-box" style="margin-bottom:16px;text-align:left">';
-    h += '<p style="font-weight:600;margin-bottom:8px">🎖️ สิทธิพิเศษของคุณ</p>';
-    plain.forEach(function(p){
-      h += '<div class="row"><span>' + escHtml(p.name) + ' (' + escHtml(p.expiry) + ')</span></div>';
-    });
-    h += '</div>';
-  }
   document.getElementById('myPrivileges').innerHTML = h;
   document.getElementById('myPrivileges').classList.remove('sh');
 }
