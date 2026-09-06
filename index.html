@@ -89,23 +89,23 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 /* หมายเหตุ: วงกลมบาก (notch) ต้องเป็นลูกของ .coupon-ticket ตรง ๆ (ไม่ใช่ลูกของ .coupon-ticket-inner ที่มี
    overflow:hidden) ไม่งั้นครึ่งวงกลมที่ทับเส้นขอบจะถูกตัดหายไป เหลือแต่เส้นขอบตรง ๆ พาดผ่านรอยบาก แทนที่จะเห็น
    เส้นขอบโค้งเว้าจริง ๆ ตามรอยบาก (ไม่มีเส้นขอบรอบกล่องแล้ว ตัวพื้นสีส้มอ่อนกับเงาทำหน้าที่แยกกล่องแทน) */
-.coupon-ticket{position:relative;border-radius:12px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+.coupon-ticket{position:relative;border-radius:10px;margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
 .coupon-ticket:last-child{margin-bottom:0;}
-.coupon-ticket-inner{display:flex;align-items:stretch;background:#ffedd6;border-radius:12px;overflow:hidden;}
-.coupon-ticket-stub{flex:0 0 68px;background:linear-gradient(135deg,#fb8c00,#e65100);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:6px 3px;}
-.coupon-ticket-stub small{font-size:11px;font-weight:600;opacity:.95;line-height:1.15;}
-.coupon-ticket-stub b{font-size:15px;line-height:1.05;margin-top:1px;word-break:break-word;}
-.coupon-ticket-notch{position:absolute;left:68px;width:16px;height:16px;background:#fff;border-radius:50%;transform:translateX(-50%);z-index:1;}
-.coupon-ticket-notch.top{top:-8px;}
-.coupon-ticket-notch.bottom{bottom:-8px;}
-.coupon-ticket-body{flex:1;padding:6px 10px;text-align:left;min-width:0;display:flex;flex-direction:column;justify-content:center;}
-.coupon-ticket-body .ct-title{font-weight:700;font-size:14px;color:#3e2723;}
-.coupon-ticket-body .ct-sub{font-size:11px;color:#8d6e63;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.coupon-ticket-body .ct-exp{font-size:10.5px;color:var(--gm);margin-top:2px;font-weight:600;}
-.coupon-ticket-tag{background:#eeeeee;color:#757575;font-size:9.5px;font-weight:600;padding:3px 8px;border-radius:20px;white-space:nowrap;}
-.coupon-ticket-side{flex:0 0 62px;background:#ffdfb3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center;padding:6px 4px;}
-.coupon-ticket-side .ct-icon{font-size:16px;}
-.coupon-ticket-side .ct-tagline{font-size:8px;font-weight:600;color:#a5510a;line-height:1.15;}
+.coupon-ticket-inner{display:flex;align-items:stretch;background:#ffedd6;border-radius:10px;overflow:hidden;}
+.coupon-ticket-stub{flex:0 0 68px;background:linear-gradient(135deg,#fb8c00,#e65100);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:4px 3px;}
+.coupon-ticket-stub small{font-size:10.5px;font-weight:600;opacity:.95;line-height:1.1;}
+.coupon-ticket-stub b{font-size:14px;line-height:1;margin-top:1px;word-break:break-word;}
+.coupon-ticket-notch{position:absolute;left:68px;width:14px;height:14px;background:#fff;border-radius:50%;transform:translateX(-50%);z-index:1;}
+.coupon-ticket-notch.top{top:-7px;}
+.coupon-ticket-notch.bottom{bottom:-7px;}
+.coupon-ticket-body{flex:1;padding:4px 10px;text-align:left;min-width:0;display:flex;flex-direction:column;justify-content:center;}
+.coupon-ticket-body .ct-title{font-weight:700;font-size:13px;color:#3e2723;}
+.coupon-ticket-body .ct-sub{font-size:10.5px;color:#8d6e63;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.coupon-ticket-body .ct-exp{font-size:10px;color:var(--gm);margin-top:1px;font-weight:600;}
+.coupon-ticket-tag{background:#eeeeee;color:#757575;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;white-space:nowrap;}
+.coupon-ticket-side{flex:0 0 60px;background:#ffdfb3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;padding:4px 4px;}
+.coupon-ticket-side .ct-icon{font-size:15px;}
+.coupon-ticket-side .ct-tagline{font-size:7.5px;font-weight:600;color:#a5510a;line-height:1.1;}
 /* ⚡ เพิ่ม — โทนสีสำหรับตั๋วสิทธิพิเศษที่จับคู่คีย์เวิร์ดได้ (แนะนำเพื่อน/แนะนำซื้อสินค้า/โปรวันเกิด)
    ใช้โครง .coupon-ticket เดิม แค่ override สีตาม modifier class */
 .coupon-ticket.th-blue .coupon-ticket-inner{background:#e3f0fd;}
