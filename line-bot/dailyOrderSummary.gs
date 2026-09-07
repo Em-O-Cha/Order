@@ -122,6 +122,13 @@ const EmOChaOrderBot = (() => {
     pushLineMessage(buildRainbowFlexMessage(summary), summary);
   }
 
+  // ทดสอบ/ดูสรุปของ "วันนี้" ทันที (ยอดขายจะยังไม่ครบเต็มวันถ้ารันก่อนหมดวัน)
+  function sendTodaySummary() {
+    const today = todayBangkok();
+    const summary = buildSummaryForRange(today, today);
+    pushLineMessage(buildRainbowFlexMessage(summary), summary);
+  }
+
   // ── โหมดที่ 2: ขอสรุปช่วงวันที่เองผ่านข้อความในกลุ่ม LINE ──
 
   function handleWebhookPost(e) {
@@ -423,6 +430,7 @@ const EmOChaOrderBot = (() => {
     createDailyTrigger,
     deleteDailyTrigger,
     sendDailySummary,
+    sendTodaySummary,
     handleWebhookPost,
   };
 })();
@@ -448,6 +456,11 @@ function EmOChaOrderBot_deleteDailyTrigger() {
 
 function EmOChaOrderBot_sendDailySummary() {
   EmOChaOrderBot.sendDailySummary();
+}
+
+// รันฟังก์ชันนี้เพื่อดูสรุปของ "วันนี้" ทันที (เช่นเทสดูวันที่ 7 ก.ย.)
+function EmOChaOrderBot_sendTodaySummary() {
+  EmOChaOrderBot.sendTodaySummary();
 }
 
 // ⚠️ ลบ 2 ฟังก์ชันด้านล่างนี้ทิ้งถ้าโปรเจกต์นี้มี doGet/doPost อยู่แล้ว
