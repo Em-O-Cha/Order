@@ -293,13 +293,6 @@ const EmOChaOrderBot = (() => {
   // ── สร้าง Flex Message ธีมสีรุ้ง ─────────────────────────────
 
   function buildRainbowFlexMessage(summary) {
-    const stripe = {
-      type: 'box',
-      layout: 'horizontal',
-      height: '8px',
-      contents: RAINBOW.map((color) => ({ type: 'box', layout: 'vertical', flex: 1, backgroundColor: color, contents: [] })),
-    };
-
     const headerBox = {
       type: 'box',
       layout: 'vertical',
@@ -371,7 +364,7 @@ const EmOChaOrderBot = (() => {
 
     return {
       type: 'bubble',
-      header: { type: 'box', layout: 'vertical', paddingAll: '0px', contents: [stripe, headerBox] },
+      header: headerBox,
       body: bodyBox,
     };
   }
