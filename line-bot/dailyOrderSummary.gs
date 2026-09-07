@@ -83,7 +83,12 @@ const EmOChaOrderBot = (() => {
     AMOUNT: 6,
     DELIVERY: 7,
     BILL_TOTAL: 8,
+    AD: 16, // คอลัมน์ "Ad" ในชีต Revenue — ใช้บอกช่องทางขาย เช่น Shopee, TikTok, Line shop
   };
+
+  // นับเฉพาะออเดอร์ที่คอลัมน์ Ad ตรงกับค่านี้เท่านั้น (ไม่สนตัวพิมพ์เล็ก-ใหญ่/เว้นวรรคหน้า-หลัง)
+  // ถ้าในชีตจริงสะกดคำนี้ต่างจากนี้ (เช่น "LINE Shop" ตัวใหญ่ทั้งหมด หรือ "ไลน์ช้อป") ให้แก้ค่านี้ให้ตรง
+  const AD_FILTER = 'line shop';
 
   const THAI_MONTHS = [
     'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -215,8 +220,9 @@ const EmOChaOrderBot = (() => {
 
   /**
    * รวมยอดขาย/สินค้าในช่วง [startDate, endDate] (รวมวันที่ปลายทั้งสองด้าน)
+   * นับเฉพาะออเดอร์ที่คอลัมน์ Ad = AD_FILTER (ดีฟอลต์ "line shop") เท่านั้น
    * รองรับแถวสินค้าเพิ่มเติมของออเดอร์เดียวกัน (แถวที่ไม่มี Revenue ID/Timestamp
-   * ของตัวเอง) โดยยึดวันที่ของแถวหลักของออเดอร์นั้น
+   * ของตัวเอง) โดยยึดวันที่และช่องทาง Ad ของแถวหลักของออเดอร์นั้น
    */
   function buildSummaryForRange(startDate, endDate) {
     const sheet = getRevenueSheet();
@@ -228,7 +234,7 @@ const EmOChaOrderBot = (() => {
     const productIndex = {};
     let orderCount = 0;
     let totalAmount = 0;
-    let currentOrderInRange = false;
+    let currentOrderCounted = false;
 
     for (let i = 1; i < values.length; i++) {
       const row = values[i];
@@ -240,14 +246,16 @@ const EmOChaOrderBot = (() => {
       const isNewOrder = revenueId !== '' && revenueId != null;
       if (isNewOrder) {
         const key = toDateKey(row[COL.TIMESTAMP]);
-        currentOrderInRange = key != null && key >= startKey && key <= endKey;
-        if (currentOrderInRange) {
+        const inRange = key != null && key >= startKey && key <= endKey;
+        const adValue = String(row[COL.AD] || '').trim().toLowerCase();
+        currentOrderCounted = inRange && adValue === AD_FILTER;
+        if (currentOrderCounted) {
           orderCount++;
           totalAmount += billTotal;
         }
       }
 
-      if (!productName || !currentOrderInRange) continue;
+      if (!productName || !currentOrderCounted) continue;
 
       if (!(productName in productIndex)) {
         productIndex[productName] = products.length;
