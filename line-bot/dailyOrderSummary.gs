@@ -201,15 +201,17 @@ const EmOChaOrderBot = (() => {
       start = end = todayBangkok();
       rest = rest.replace(/วันนี้/, '').trim();
     } else {
-      const tokens = rest.match(/\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?/g);
-      if (tokens && tokens.length > 0) {
+      // จับวันที่ 1 หรือ 2 ตัวพร้อมตัวคั่นระหว่างกลาง (เช่น "-") ไว้ในแมตช์เดียว
+      // เพื่อลบทิ้งทั้งก้อนทีเดียว ไม่ให้เหลือตัวคั่นตกค้างปนไปกับชื่อช่องทางที่พิมพ์ต่อท้าย
+      const dateToken = '\\d{1,2}[\\/\\-]\\d{1,2}(?:[\\/\\-]\\d{2,4})?';
+      const rangeMatch = rest.match(new RegExp(`(${dateToken})(?:[\\s\\-]*(${dateToken}))?`));
+      if (rangeMatch) {
         const refYear = Number(Utilities.formatDate(new Date(), TIMEZONE, 'yyyy'));
-        start = parseDateToken(tokens[0], refYear);
-        end = tokens[1] ? parseDateToken(tokens[1], refYear) : start;
+        start = parseDateToken(rangeMatch[1], refYear);
+        end = rangeMatch[2] ? parseDateToken(rangeMatch[2], refYear) : start;
         if (start && end) {
           if (start.getTime() > end.getTime()) { const tmp = start; start = end; end = tmp; }
-          tokens.forEach((tok) => { rest = rest.replace(tok, ''); });
-          rest = rest.trim();
+          rest = (rest.slice(0, rangeMatch.index) + rest.slice(rangeMatch.index + rangeMatch[0].length)).trim();
         } else {
           start = end = null;
         }
