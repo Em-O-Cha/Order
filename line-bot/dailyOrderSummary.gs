@@ -5,12 +5,17 @@
  * สคริปต์นี้อ่านข้อมูลจากชีต "Revenue" (ไฟล์เก็บยอดขายบน Google Drive)
  * แล้วสรุปยอดขายแยกตามสินค้า + ยอดรวม ส่งเป็น Flex Message สีรุ้งเข้ากลุ่ม LINE
  *
+ * ค่า default นับเฉพาะออเดอร์ที่คอลัมน์ Ad เป็น "Line shop" เท่านั้น (ตัด Shopee/
+ * TikTok ออก) — ถ้าอยากดูช่องทางอื่นเป็นครั้งคราว พิมพ์ชื่อช่องทางต่อท้ายคำสั่งได้
+ * เช่น "สรุป shopee วันนี้" หรือ "สรุป ทั้งหมด เมื่อวาน" (ดูโหมดที่ 2 ด้านล่าง)
+ *
  * มี 2 โหมดการทำงาน:
- *   1) สรุปอัตโนมัติทุกเช้า 6-7 โมง เป็นยอดขาย "เมื่อวาน" ทั้งวัน
- *   2) พิมพ์คำสั่งในกลุ่ม LINE เพื่อขอสรุปช่วงวันที่เอง เช่น
+ *   1) สรุปอัตโนมัติทุกเช้า 6-7 โมง เป็นยอดขาย "เมื่อวาน" ทั้งวัน (เฉพาะ Line shop)
+ *   2) พิมพ์คำสั่งในกลุ่ม LINE เพื่อขอสรุปช่วงวันที่/ช่องทางเอง เช่น
  *        "สรุป 01/09/69-07/09/69" (ปีพิมพ์เป็น พ.ศ. แบบเต็ม 2569 หรือ ค.ศ. 2026 ก็ได้)
- *        "สรุปวันนี้"
- *        "สรุปเมื่อวาน"
+ *        "สรุปวันนี้" / "สรุปเมื่อวาน"
+ *        "สรุป shopee วันนี้" / "สรุป tiktok 01/09/69-07/09/69"
+ *        "สรุป ทั้งหมด เมื่อวาน" (รวมทุกช่องทาง ไม่กรอง)
  *
  * ─────────────────────────────────────────────────────────
  * ⚠️ เรื่องชื่อชนกัน (สำคัญ ถ้าโปรเจกต์ที่วางมีไฟล์อื่นอยู่แล้ว)
@@ -160,12 +165,18 @@ const EmOChaOrderBot = (() => {
     if (!range) {
       replyLineMessage(event.replyToken, {
         type: 'text',
-        text: 'พิมพ์ "สรุป" ตามด้วยช่วงวันที่ เช่น\n"สรุป 01/09/69-07/09/69" (ปี พ.ศ. แบบเต็ม 2569 ก็ได้)\nหรือ "สรุปวันนี้" / "สรุปเมื่อวาน"',
+        text: 'พิมพ์ "สรุป" ตามด้วยช่วงวันที่ เช่น\n'
+          + '"สรุป 01/09/69-07/09/69" (ปี พ.ศ. แบบเต็ม 2569 ก็ได้)\n'
+          + 'หรือ "สรุปวันนี้" / "สรุปเมื่อวาน"\n\n'
+          + 'ถ้าอยากดูช่องทางอื่นที่ไม่ใช่ Line shop พิมพ์ชื่อช่องทางต่อท้ายได้ เช่น\n'
+          + '"สรุป shopee วันนี้"\n'
+          + '"สรุป tiktok 01/09/69-07/09/69"\n'
+          + '"สรุป ทั้งหมด เมื่อวาน" (รวมทุกช่องทาง)',
       });
       return;
     }
 
-    const summary = buildSummaryForRange(range.start, range.end);
+    const summary = buildSummaryForRange(range.start, range.end, range.adFilter);
     replyLineMessage(event.replyToken, {
       type: 'flex',
       altText: buildAltText(summary),
@@ -173,25 +184,51 @@ const EmOChaOrderBot = (() => {
     });
   }
 
+  /**
+   * แกะข้อความคำสั่งเป็นช่วงวันที่ + ช่องทาง (Ad) ที่ต้องการดูแทนค่า default
+   * รูปแบบ: "สรุป [ชื่อช่องทาง] [ช่วงวันที่ หรือ วันนี้/เมื่อวาน]" — ชื่อช่องทางใส่หรือไม่ใส่ก็ได้
+   * เช่น "สรุป shopee 01/09/69-07/09/69", "สรุป tiktok วันนี้", "สรุป ทั้งหมด เมื่อวาน"
+   */
   function parseRangeCommand(text) {
-    if (/เมื่อวาน/.test(text)) {
-      const y = addDays(todayBangkok(), -1);
-      return { start: y, end: y };
-    }
-    if (/วันนี้/.test(text)) {
-      const t = todayBangkok();
-      return { start: t, end: t };
+    let rest = text.slice(COMMAND_KEYWORD.length).trim();
+    let start = null;
+    let end = null;
+
+    if (/เมื่อวาน/.test(rest)) {
+      start = end = addDays(todayBangkok(), -1);
+      rest = rest.replace(/เมื่อวาน/, '').trim();
+    } else if (/วันนี้/.test(rest)) {
+      start = end = todayBangkok();
+      rest = rest.replace(/วันนี้/, '').trim();
+    } else {
+      const tokens = rest.match(/\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?/g);
+      if (tokens && tokens.length > 0) {
+        const refYear = Number(Utilities.formatDate(new Date(), TIMEZONE, 'yyyy'));
+        start = parseDateToken(tokens[0], refYear);
+        end = tokens[1] ? parseDateToken(tokens[1], refYear) : start;
+        if (start && end) {
+          if (start.getTime() > end.getTime()) { const tmp = start; start = end; end = tmp; }
+          tokens.forEach((tok) => { rest = rest.replace(tok, ''); });
+          rest = rest.trim();
+        } else {
+          start = end = null;
+        }
+      }
     }
 
-    const tokens = text.match(/\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?/g);
-    if (!tokens || tokens.length === 0) return null;
+    // ข้อความที่เหลือหลังตัดส่วนวันที่ออก ถือเป็นชื่อช่องทาง (Ad) ที่ต้องการแทนค่า default
+    const channelText = rest.trim();
+    let adFilter = null; // null = ใช้ค่า default (AD_FILTER คือ "line shop")
+    if (channelText) {
+      adFilter = /^(ทั้งหมด|all|รวม)$/i.test(channelText) ? '*' : channelText.toLowerCase();
+    }
 
-    const refYear = Number(Utilities.formatDate(new Date(), TIMEZONE, 'yyyy'));
-    let start = parseDateToken(tokens[0], refYear);
-    let end = tokens[1] ? parseDateToken(tokens[1], refYear) : start;
-    if (!start || !end) return null;
-    if (start.getTime() > end.getTime()) { const tmp = start; start = end; end = tmp; }
-    return { start, end };
+    if (!start || !end) {
+      if (!channelText) return null; // ไม่มีทั้งวันที่และชื่อช่องทาง แสดงคำแนะนำการใช้งาน
+      start = end = todayBangkok(); // พิมพ์แค่ชื่อช่องทางมาเฉยๆ (ไม่ระบุวันที่) ถือว่าหมายถึงวันนี้
+    }
+
+    return { start, end, adFilter };
   }
 
   function parseDateToken(token, referenceYear) {
@@ -220,15 +257,17 @@ const EmOChaOrderBot = (() => {
 
   /**
    * รวมยอดขาย/สินค้าในช่วง [startDate, endDate] (รวมวันที่ปลายทั้งสองด้าน)
-   * นับเฉพาะออเดอร์ที่คอลัมน์ Ad = AD_FILTER (ดีฟอลต์ "line shop") เท่านั้น
+   * นับเฉพาะออเดอร์ที่คอลัมน์ Ad ตรงกับ adFilter เท่านั้น — ไม่ระบุ (undefined/null)
+   * จะใช้ค่า default คือ AD_FILTER ("line shop"); ส่ง '*' เพื่อรวมทุกช่องทาง
    * รองรับแถวสินค้าเพิ่มเติมของออเดอร์เดียวกัน (แถวที่ไม่มี Revenue ID/Timestamp
    * ของตัวเอง) โดยยึดวันที่และช่องทาง Ad ของแถวหลักของออเดอร์นั้น
    */
-  function buildSummaryForRange(startDate, endDate) {
+  function buildSummaryForRange(startDate, endDate, adFilter) {
     const sheet = getRevenueSheet();
     const values = sheet.getDataRange().getValues();
     const startKey = dateKeyOf(startDate);
     const endKey = dateKeyOf(endDate);
+    const effectiveAdFilter = adFilter || AD_FILTER;
 
     const products = [];
     const productIndex = {};
@@ -248,7 +287,8 @@ const EmOChaOrderBot = (() => {
         const key = toDateKey(row[COL.TIMESTAMP]);
         const inRange = key != null && key >= startKey && key <= endKey;
         const adValue = String(row[COL.AD] || '').trim().toLowerCase();
-        currentOrderCounted = inRange && adValue === AD_FILTER;
+        const adMatches = effectiveAdFilter === '*' || adValue === effectiveAdFilter;
+        currentOrderCounted = inRange && adMatches;
         if (currentOrderCounted) {
           orderCount++;
           totalAmount += billTotal;
@@ -269,7 +309,14 @@ const EmOChaOrderBot = (() => {
       ? formatThaiDate(startDate)
       : `${formatThaiDate(startDate)} - ${formatThaiDate(endDate)}`;
 
-    return { dateLabel, isSingleDay, products, orderCount, totalAmount };
+    return { dateLabel, isSingleDay, products, orderCount, totalAmount, adFilter: effectiveAdFilter };
+  }
+
+  // ข้อความต่อท้ายหัวการ์ด/altText บอกช่องทางที่กรอง ถ้าเป็นค่า default (Line shop) ไม่ต้องโชว์อะไรเพิ่ม
+  function channelSuffix(adFilter) {
+    if (!adFilter || adFilter === AD_FILTER) return '';
+    if (adFilter === '*') return ' (ทุกช่องทาง)';
+    return ` (${adFilter.charAt(0).toUpperCase()}${adFilter.slice(1)})`;
   }
 
   function toDateKey(value) {
@@ -328,7 +375,7 @@ const EmOChaOrderBot = (() => {
         endColor: '#FF8008',
       },
       contents: [
-        { type: 'text', text: '🧾 สรุปออเดอร์' + (summary.isSingleDay ? 'ประจำวัน' : ''), color: '#FFFFFF', weight: 'bold', size: 'lg' },
+        { type: 'text', text: '🧾 สรุปออเดอร์' + (summary.isSingleDay ? 'ประจำวัน' : '') + channelSuffix(summary.adFilter), color: '#FFFFFF', weight: 'bold', size: 'lg' },
         { type: 'text', text: summary.dateLabel, color: '#FFFFFFCC', size: 'sm', margin: 'xs' },
       ],
     };
@@ -392,7 +439,7 @@ const EmOChaOrderBot = (() => {
   }
 
   function buildAltText(summary) {
-    const text = `สรุปออเดอร์ ${summary.dateLabel} รวม ${summary.orderCount} ออเดอร์ ยอดขาย ${formatBaht(summary.totalAmount)} บาท`;
+    const text = `สรุปออเดอร์${channelSuffix(summary.adFilter)} ${summary.dateLabel} รวม ${summary.orderCount} ออเดอร์ ยอดขาย ${formatBaht(summary.totalAmount)} บาท`;
     return text.length > 400 ? text.slice(0, 397) + '...' : text;
   }
 
