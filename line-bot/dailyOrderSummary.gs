@@ -314,11 +314,13 @@ const EmOChaOrderBot = (() => {
     return { dateLabel, isSingleDay, products, orderCount, totalAmount, adFilter: effectiveAdFilter };
   }
 
-  // ข้อความต่อท้ายหัวการ์ด/altText บอกช่องทางที่กรอง ถ้าเป็นค่า default (Line shop) ไม่ต้องโชว์อะไรเพิ่ม
-  function channelSuffix(adFilter) {
-    if (!adFilter || adFilter === AD_FILTER) return '';
-    if (adFilter === '*') return ' (ทุกช่องทาง)';
-    return ` (${adFilter.charAt(0).toUpperCase()}${adFilter.slice(1)})`;
+  // ชื่อช่องทางแบบสวยๆ ไว้โชว์บนการ์ด/altText เช่น "line shop" → "Line Shop", '*' → "ทุกช่องทาง"
+  function channelLabel(adFilter) {
+    if (adFilter === '*') return 'ทุกช่องทาง';
+    return adFilter
+      .split(' ')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
   }
 
   function toDateKey(value) {
@@ -353,7 +355,7 @@ const EmOChaOrderBot = (() => {
   function formatThaiDate(date) {
     const d = Number(Utilities.formatDate(date, TIMEZONE, 'd'));
     const m = Number(Utilities.formatDate(date, TIMEZONE, 'M')) - 1;
-    const y = Number(Utilities.formatDate(date, TIMEZONE, 'yyyy'));
+    const y = Number(Utilities.formatDate(date, TIMEZONE, 'yyyy')) + 543; // แสดงเป็นปี พ.ศ.
     return `${d} ${THAI_MONTHS[m]} ${y}`;
   }
 
@@ -377,8 +379,8 @@ const EmOChaOrderBot = (() => {
         endColor: '#FF8008',
       },
       contents: [
-        { type: 'text', text: '🧾 สรุปออเดอร์' + (summary.isSingleDay ? 'ประจำวัน' : '') + channelSuffix(summary.adFilter), color: '#FFFFFF', weight: 'bold', size: 'lg' },
-        { type: 'text', text: summary.dateLabel, color: '#FFFFFFCC', size: 'sm', margin: 'xs' },
+        { type: 'text', text: '🧾 สรุปออเดอร์' + (summary.isSingleDay ? 'ประจำวัน' : ''), color: '#FFFFFF', weight: 'bold', size: 'lg', wrap: true },
+        { type: 'text', text: `${channelLabel(summary.adFilter)} · ${summary.dateLabel}`, color: '#FFFFFFCC', size: 'sm', margin: 'xs', wrap: true },
       ],
     };
 
@@ -441,7 +443,7 @@ const EmOChaOrderBot = (() => {
   }
 
   function buildAltText(summary) {
-    const text = `สรุปออเดอร์${channelSuffix(summary.adFilter)} ${summary.dateLabel} รวม ${summary.orderCount} ออเดอร์ ยอดขาย ${formatBaht(summary.totalAmount)} บาท`;
+    const text = `สรุปออเดอร์ (${channelLabel(summary.adFilter)}) ${summary.dateLabel} รวม ${summary.orderCount} ออเดอร์ ยอดขาย ${formatBaht(summary.totalAmount)} บาท`;
     return text.length > 400 ? text.slice(0, 397) + '...' : text;
   }
 
