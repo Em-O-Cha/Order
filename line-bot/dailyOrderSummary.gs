@@ -719,13 +719,29 @@ const EmOChaOrderBot = (() => {
     sheet.autoResizeColumns(1, header.length);
     SpreadsheetApp.flush();
 
-    const blob = DriveApp.getFileById(tempSs.getId()).getAs(MimeType.MICROSOFT_EXCEL).setName(fileName + '.xlsx');
+    const blob = exportSheetAsXlsxBlob(tempSs.getId(), fileName);
     const folder = getOrCreateReportFolder();
     const file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     DriveApp.getFileById(tempSs.getId()).setTrashed(true); // ลบชีตชั่วคราวทิ้ง เก็บแต่ไฟล์ xlsx ที่ export แล้ว
 
     return `https://drive.google.com/uc?export=download&id=${file.getId()}`;
+  }
+
+  // export ชีตเป็น xlsx ผ่าน URL export ของ Google Sheets โดยตรง แทนการใช้
+  // DriveApp.File.getAs(MimeType.MICROSOFT_EXCEL) เพราะบางโปรเจกต์เจอ Exception
+  // "Converting from application/vnd.google-apps.spreadsheet ... is not supported"
+  // วิธีนี้เชื่อถือได้กว่าและเป็นวิธีที่ใช้กันทั่วไปในการ export ชีต Google เป็น xlsx
+  function exportSheetAsXlsxBlob(spreadsheetId, fileName) {
+    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`;
+    const response = UrlFetchApp.fetch(url, {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true,
+    });
+    if (response.getResponseCode() !== 200) {
+      throw new Error(`Export ชีตเป็น xlsx ไม่สำเร็จ (HTTP ${response.getResponseCode()}): ${response.getContentText()}`);
+    }
+    return response.getBlob().setName(fileName + '.xlsx');
   }
 
   // เติมข้อความลิงก์ไฟล์ Excel ต่อท้ายอาร์เรย์ messages ที่มีอยู่ (ถ้าสร้างไฟล์พลาดจะ log ไว้เฉยๆ
