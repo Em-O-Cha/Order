@@ -76,6 +76,7 @@ const EmOChaOrderBot = (() => {
   const COMMAND_KEYWORD = 'สรุป'; // คำเริ่มต้นข้อความที่บอทจะตอบในกลุ่ม
   const MAX_ORDER_ROWS = 10; // จำนวนออเดอร์สูงสุดที่แสดงในการ์ด กันการ์ดยาวเกินไป
   const DAILY_TRIGGER_HANDLER = 'EmOChaOrderBot_sendDailySummary';
+  const EXCEL_FOLDER_NAME = 'LINE Order Bot - รายงาน Excel'; // โฟลเดอร์ใน Google Drive เก็บไฟล์ Excel ที่สร้างไว้
 
   const RAINBOW = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#0A84FF', '#5E5CE6', '#AF52DE'];
 
@@ -135,14 +136,16 @@ const EmOChaOrderBot = (() => {
   function sendDailySummary() {
     const yesterday = addDays(todayBangkok(), -1);
     const summary = buildSummaryForRange(yesterday, yesterday);
-    pushLineMessage(buildRainbowFlexMessage(summary), summary);
+    const messages = [{ type: 'flex', altText: buildAltText(summary), contents: buildRainbowFlexMessage(summary) }];
+    appendExcelMessage(messages, yesterday, yesterday, summary.adFilter, summary.dateLabel);
+    pushLineMessages(messages);
   }
 
   // ทดสอบ/ดูสรุปของ "วันนี้" ทันที (ยอดขายจะยังไม่ครบเต็มวันถ้ารันก่อนหมดวัน)
   function sendTodaySummary() {
     const today = todayBangkok();
     const summary = buildSummaryForRange(today, today);
-    pushLineMessage(buildRainbowFlexMessage(summary), summary);
+    pushLineMessages([{ type: 'flex', altText: buildAltText(summary), contents: buildRainbowFlexMessage(summary) }]);
   }
 
   // ── โหมดที่ 2: ขอสรุปช่วงวันที่เองผ่านข้อความในกลุ่ม LINE ──
@@ -169,7 +172,7 @@ const EmOChaOrderBot = (() => {
 
     const range = parseRangeCommand(text);
     if (!range) {
-      replyLineMessage(event.replyToken, {
+      replyLineMessages(event.replyToken, [{
         type: 'text',
         text: 'พิมพ์ "สรุป" ตามด้วยช่วงวันที่ เช่น\n'
           + '"สรุป 01/09/69-07/09/69" (ปี พ.ศ. แบบเต็ม 2569 ก็ได้)\n'
@@ -177,17 +180,19 @@ const EmOChaOrderBot = (() => {
           + 'ถ้าอยากดูช่องทางอื่นที่ไม่ใช่ Line shop พิมพ์ชื่อช่องทางต่อท้ายได้ เช่น\n'
           + '"สรุป shopee วันนี้"\n'
           + '"สรุป tiktok 01/09/69-07/09/69"\n'
-          + '"สรุป ทั้งหมด เมื่อวาน" (รวมทุกช่องทาง)',
-      });
+          + '"สรุป ทั้งหมด เมื่อวาน" (รวมทุกช่องทาง)\n\n'
+          + 'พิมพ์คำว่า "excel" แทรกไปด้วยจะได้ไฟล์ Excel แนบมาด้วย เช่น\n'
+          + '"สรุป excel 01/09/69-07/09/69"',
+      }]);
       return;
     }
 
     const summary = buildSummaryForRange(range.start, range.end, range.adFilter);
-    replyLineMessage(event.replyToken, {
-      type: 'flex',
-      altText: buildAltText(summary),
-      contents: buildRainbowFlexMessage(summary),
-    });
+    const messages = [{ type: 'flex', altText: buildAltText(summary), contents: buildRainbowFlexMessage(summary) }];
+    if (range.wantExcel) {
+      appendExcelMessage(messages, range.start, range.end, summary.adFilter, summary.dateLabel);
+    }
+    replyLineMessages(event.replyToken, messages);
   }
 
   /**
@@ -224,7 +229,15 @@ const EmOChaOrderBot = (() => {
       }
     }
 
-    // ข้อความที่เหลือหลังตัดส่วนวันที่ออก ถือเป็นชื่อช่องทาง (Ad) ที่ต้องการแทนค่า default
+    // คำว่า "excel" แทรกอยู่ตรงไหนก็ได้ในข้อความ ตัดออกก่อนแล้วจำไว้ว่าต้องแนบไฟล์ Excel มาด้วย
+    let wantExcel = false;
+    const excelMatch = rest.match(/\bexcel\b/i);
+    if (excelMatch) {
+      wantExcel = true;
+      rest = (rest.slice(0, excelMatch.index) + rest.slice(excelMatch.index + excelMatch[0].length)).trim();
+    }
+
+    // ข้อความที่เหลือหลังตัดส่วนวันที่/excel ออก ถือเป็นชื่อช่องทาง (Ad) ที่ต้องการแทนค่า default
     const channelText = rest.trim();
     let adFilter = null; // null = ใช้ค่า default (AD_FILTER คือ "line shop")
     if (channelText) {
@@ -232,11 +245,11 @@ const EmOChaOrderBot = (() => {
     }
 
     if (!start || !end) {
-      if (!channelText) return null; // ไม่มีทั้งวันที่และชื่อช่องทาง แสดงคำแนะนำการใช้งาน
-      start = end = todayBangkok(); // พิมพ์แค่ชื่อช่องทางมาเฉยๆ (ไม่ระบุวันที่) ถือว่าหมายถึงวันนี้
+      if (!channelText && !wantExcel) return null; // ไม่มีวันที่/ช่องทาง/excel เลย แสดงคำแนะนำการใช้งาน
+      start = end = todayBangkok(); // พิมพ์แค่ชื่อช่องทาง/excel มาเฉยๆ (ไม่ระบุวันที่) ถือว่าหมายถึงวันนี้
     }
 
-    return { start, end, adFilter };
+    return { start, end, adFilter, wantExcel };
   }
 
   function parseDateToken(token, referenceYear) {
@@ -559,9 +572,119 @@ const EmOChaOrderBot = (() => {
     return text.length > 400 ? text.slice(0, 397) + '...' : text;
   }
 
+  // ── สร้างไฟล์ Excel ยอดขายรายวัน ─────────────────────────────
+
+  /**
+   * รวมยอดขายเป็นรายวัน (1 แถวต่อ 1 วัน) สำหรับช่วง [startDate, endDate] — มีแถวครบ
+   * ทุกวันแม้วันที่ไม่มีออเดอร์เลย (ยอด 0) เพื่อให้เห็นครบไม่มีวันขาดหาย
+   */
+  function buildDailyRollup(startDate, endDate, adFilter) {
+    const sheet = getRevenueSheet();
+    const values = sheet.getDataRange().getValues();
+    const startKey = dateKeyOf(startDate);
+    const endKey = dateKeyOf(endDate);
+    const effectiveAdFilter = adFilter || AD_FILTER;
+
+    const daysByKey = {};
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      const revenueId = row[COL.REVENUE_ID];
+      if (revenueId === '' || revenueId == null) continue; // สนใจแค่แถวหลักของแต่ละออเดอร์
+      const productName = String(row[COL.PRODUCT_NAME] || '').trim();
+      const billTotal = Number(row[COL.BILL_TOTAL]) || 0;
+
+      const key = toDateKey(row[COL.TIMESTAMP]);
+      const inRange = key != null && key >= startKey && key <= endKey;
+      const adValue = String(row[COL.AD] || '').trim().toLowerCase();
+      const adMatches = effectiveAdFilter === '*' || adValue === effectiveAdFilter;
+      if (!inRange || !adMatches) continue;
+
+      if (!daysByKey[key]) daysByKey[key] = { orderCount: 0, cancelledCount: 0, totalAmount: 0 };
+      if (productName === CANCELLED_LABEL) {
+        daysByKey[key].cancelledCount++;
+      } else {
+        daysByKey[key].orderCount++;
+        daysByKey[key].totalAmount += billTotal;
+      }
+    }
+
+    const rows = [];
+    for (let cursor = startDate; dateKeyOf(cursor) <= endKey; cursor = addDays(cursor, 1)) {
+      const key = dateKeyOf(cursor);
+      const d = daysByKey[key] || { orderCount: 0, cancelledCount: 0, totalAmount: 0 };
+      rows.push({
+        dateKey: key,
+        dateLabel: formatThaiDateFromKey(key),
+        orderCount: d.orderCount,
+        cancelledCount: d.cancelledCount,
+        totalAmount: d.totalAmount,
+      });
+    }
+    return rows;
+  }
+
+  function getOrCreateReportFolder() {
+    const existing = DriveApp.getFoldersByName(EXCEL_FOLDER_NAME);
+    if (existing.hasNext()) return existing.next();
+    return DriveApp.createFolder(EXCEL_FOLDER_NAME);
+  }
+
+  /**
+   * สร้างไฟล์ .xlsx จริงใน Google Drive จากข้อมูลรายวัน แล้วคืนลิงก์ดาวน์โหลด
+   * (สร้าง Google Sheet ชั่วคราวเพื่อ export เป็น xlsx แล้วลบชีตชั่วคราวทิ้ง เหลือแต่ไฟล์ xlsx)
+   */
+  function buildDailyRollupExcelLink(rows, fileLabel, adFilter) {
+    const fileName = `ยอดขายรายวัน ${channelLabel(adFilter)} ${fileLabel}`;
+    const tempSs = SpreadsheetApp.create(fileName);
+    const sheet = tempSs.getSheets()[0];
+
+    const header = ['วันที่', 'จำนวนออเดอร์', 'ยกเลิก', 'ยอดขาย (บาท)'];
+    sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
+
+    if (rows.length > 0) {
+      const data = rows.map((r) => [r.dateLabel, r.orderCount, r.cancelledCount, r.totalAmount]);
+      sheet.getRange(2, 1, data.length, header.length).setValues(data);
+    }
+
+    const totalRowIndex = rows.length + 2;
+    const totals = [
+      'รวมทั้งหมด',
+      rows.reduce((s, r) => s + r.orderCount, 0),
+      rows.reduce((s, r) => s + r.cancelledCount, 0),
+      rows.reduce((s, r) => s + r.totalAmount, 0),
+    ];
+    sheet.getRange(totalRowIndex, 1, 1, header.length).setValues([totals]).setFontWeight('bold');
+    sheet.autoResizeColumns(1, header.length);
+    SpreadsheetApp.flush();
+
+    const blob = DriveApp.getFileById(tempSs.getId()).getAs(MimeType.MICROSOFT_EXCEL).setName(fileName + '.xlsx');
+    const folder = getOrCreateReportFolder();
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    DriveApp.getFileById(tempSs.getId()).setTrashed(true); // ลบชีตชั่วคราวทิ้ง เก็บแต่ไฟล์ xlsx ที่ export แล้ว
+
+    return `https://drive.google.com/uc?export=download&id=${file.getId()}`;
+  }
+
+  // เติมข้อความลิงก์ไฟล์ Excel ต่อท้ายอาร์เรย์ messages ที่มีอยู่ (ถ้าสร้างไฟล์พลาดจะ log ไว้เฉยๆ
+  // ไม่ทำให้การ์ดสรุปหลักที่สร้างไว้แล้วส่งไม่ได้ไปด้วย)
+  function appendExcelMessage(messages, startDate, endDate, adFilter, dateLabel) {
+    try {
+      const rows = buildDailyRollup(startDate, endDate, adFilter);
+      const url = buildDailyRollupExcelLink(rows, dateLabel, adFilter);
+      messages.push({
+        type: 'text',
+        text: `📊 ไฟล์ Excel ยอดขายรายวัน (${channelLabel(adFilter)})\n${dateLabel}\nกดลิงก์เพื่อดาวน์โหลด:\n${url}`,
+      });
+    } catch (err) {
+      Logger.log('สร้างไฟล์ Excel ไม่สำเร็จ: ' + err);
+    }
+  }
+
   // ── เรียก LINE Messaging API ───────────────────────────────
 
-  function pushLineMessage(flexContents, summary) {
+  // ส่งได้สูงสุด 5 ข้อความต่อครั้งตามข้อจำกัดของ LINE Messaging API
+  function pushLineMessages(messages) {
     const props = PropertiesService.getScriptProperties();
     const token = props.getProperty('LINE_CHANNEL_ACCESS_TOKEN');
     const groupId = props.getProperty('LINE_GROUP_ID');
@@ -569,10 +692,7 @@ const EmOChaOrderBot = (() => {
       throw new Error('ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN / LINE_GROUP_ID — เรียก EmOChaOrderBot_setupCredentials() ก่อน');
     }
 
-    const payload = {
-      to: groupId,
-      messages: [{ type: 'flex', altText: buildAltText(summary), contents: flexContents }],
-    };
+    const payload = { to: groupId, messages };
 
     const response = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
       method: 'post',
@@ -588,13 +708,13 @@ const EmOChaOrderBot = (() => {
     }
   }
 
-  function replyLineMessage(replyToken, message) {
+  function replyLineMessages(replyToken, messages) {
     const token = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
     const response = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/reply', {
       method: 'post',
       contentType: 'application/json',
       headers: { Authorization: 'Bearer ' + token },
-      payload: JSON.stringify({ replyToken, messages: [message] }),
+      payload: JSON.stringify({ replyToken, messages }),
       muteHttpExceptions: true,
     });
 
