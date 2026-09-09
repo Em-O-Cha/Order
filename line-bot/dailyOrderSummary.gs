@@ -3,7 +3,8 @@
  * =========================================================
  *
  * สคริปต์นี้อ่านข้อมูลจากชีต "Revenue" (ไฟล์เก็บยอดขายบน Google Drive)
- * แล้วสรุปยอดขายแยกตามสินค้า + ยอดรวม ส่งเป็น Flex Message สีรุ้งเข้ากลุ่ม LINE
+ * แล้วสรุปเป็นรายออเดอร์ (แต่ละคนสั่งอะไรบ้าง สูงสุด 10 ออเดอร์ต่อการ์ด) + ยอดรวม
+ * ส่งเป็น Flex Message สีรุ้งเข้ากลุ่ม LINE
  *
  * ค่า default นับเฉพาะออเดอร์ที่คอลัมน์ Ad เป็น "Line shop" เท่านั้น (ตัด Shopee/
  * TikTok ออก) — ถ้าอยากดูช่องทางอื่นเป็นครั้งคราว พิมพ์ชื่อช่องทางต่อท้ายคำสั่งได้
@@ -73,7 +74,7 @@ const EmOChaOrderBot = (() => {
   const REVENUE_SHEET_NAME = 'Revenue'; // ถ้าชื่อแท็บในชีตไม่ตรง จะ fallback ไปใช้แท็บแรกให้อัตโนมัติ
   const TIMEZONE = 'Asia/Bangkok';
   const COMMAND_KEYWORD = 'สรุป'; // คำเริ่มต้นข้อความที่บอทจะตอบในกลุ่ม
-  const MAX_PRODUCT_ROWS = 20; // จำนวนแถวสินค้าสูงสุดที่แสดงในการ์ด กันการ์ดยาวเกินไป
+  const MAX_ORDER_ROWS = 10; // จำนวนออเดอร์สูงสุดที่แสดงในการ์ด กันการ์ดยาวเกินไป
   const DAILY_TRIGGER_HANDLER = 'EmOChaOrderBot_sendDailySummary';
 
   const RAINBOW = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#0A84FF', '#5E5CE6', '#AF52DE'];
@@ -88,6 +89,7 @@ const EmOChaOrderBot = (() => {
     AMOUNT: 6,
     DELIVERY: 7,
     BILL_TOTAL: 8,
+    CUSTOMER_NAME: 13, // คอลัมน์ "Customer Name" ในชีต Revenue
     AD: 16, // คอลัมน์ "Ad" ในชีต Revenue — ใช้บอกช่องทางขาย เช่น Shopee, TikTok, Line shop
   };
 
@@ -258,11 +260,12 @@ const EmOChaOrderBot = (() => {
   }
 
   /**
-   * รวมยอดขาย/สินค้าในช่วง [startDate, endDate] (รวมวันที่ปลายทั้งสองด้าน)
-   * นับเฉพาะออเดอร์ที่คอลัมน์ Ad ตรงกับ adFilter เท่านั้น — ไม่ระบุ (undefined/null)
-   * จะใช้ค่า default คือ AD_FILTER ("line shop"); ส่ง '*' เพื่อรวมทุกช่องทาง
+   * รวบรวมออเดอร์ (แต่ละออเดอร์แยกกัน พร้อมรายการสินค้าของออเดอร์นั้น) ในช่วง
+   * [startDate, endDate] (รวมวันที่ปลายทั้งสองด้าน) นับเฉพาะออเดอร์ที่คอลัมน์ Ad
+   * ตรงกับ adFilter เท่านั้น — ไม่ระบุ (undefined/null) จะใช้ค่า default คือ
+   * AD_FILTER ("line shop"); ส่ง '*' เพื่อรวมทุกช่องทาง
    * รองรับแถวสินค้าเพิ่มเติมของออเดอร์เดียวกัน (แถวที่ไม่มี Revenue ID/Timestamp
-   * ของตัวเอง) โดยยึดวันที่และช่องทาง Ad ของแถวหลักของออเดอร์นั้น
+   * ของตัวเอง) โดยผูกเข้ากับออเดอร์หลักแถวก่อนหน้า
    */
   function buildSummaryForRange(startDate, endDate, adFilter) {
     const sheet = getRevenueSheet();
@@ -271,11 +274,10 @@ const EmOChaOrderBot = (() => {
     const endKey = dateKeyOf(endDate);
     const effectiveAdFilter = adFilter || AD_FILTER;
 
-    const products = [];
-    const productIndex = {};
+    const orders = [];
+    let currentOrder = null;
     let orderCount = 0;
     let totalAmount = 0;
-    let currentOrderCounted = false;
 
     for (let i = 1; i < values.length; i++) {
       const row = values[i];
@@ -286,24 +288,26 @@ const EmOChaOrderBot = (() => {
 
       const isNewOrder = revenueId !== '' && revenueId != null;
       if (isNewOrder) {
+        currentOrder = null;
         const key = toDateKey(row[COL.TIMESTAMP]);
         const inRange = key != null && key >= startKey && key <= endKey;
         const adValue = String(row[COL.AD] || '').trim().toLowerCase();
         const adMatches = effectiveAdFilter === '*' || adValue === effectiveAdFilter;
-        currentOrderCounted = inRange && adMatches;
-        if (currentOrderCounted) {
+        if (inRange && adMatches) {
           orderCount++;
           totalAmount += billTotal;
+          currentOrder = {
+            id: revenueId,
+            customerName: String(row[COL.CUSTOMER_NAME] || '').trim(),
+            items: [],
+            subtotal: billTotal,
+          };
+          orders.push(currentOrder);
         }
       }
 
-      if (!productName || !currentOrderCounted) continue;
-
-      if (!(productName in productIndex)) {
-        productIndex[productName] = products.length;
-        products.push({ name: productName, qty: 0 });
-      }
-      products[productIndex[productName]].qty += qty;
+      if (!productName || !currentOrder) continue;
+      currentOrder.items.push({ name: productName, qty });
     }
 
     const isSingleDay = startKey === endKey;
@@ -311,7 +315,7 @@ const EmOChaOrderBot = (() => {
       ? formatThaiDate(startDate)
       : `${formatThaiDate(startDate)} - ${formatThaiDate(endDate)}`;
 
-    return { dateLabel, isSingleDay, products, orderCount, totalAmount, adFilter: effectiveAdFilter };
+    return { dateLabel, isSingleDay, orders, orderCount, totalAmount, adFilter: effectiveAdFilter };
   }
 
   // ชื่อช่องทางแบบสวยๆ ไว้โชว์บนการ์ด/altText เช่น "line shop" → "Line Shop", '*' → "ทุกช่องทาง"
@@ -384,29 +388,22 @@ const EmOChaOrderBot = (() => {
       ],
     };
 
-    let productRows;
-    if (summary.products.length === 0) {
-      productRows = [
+    let orderBlocks;
+    if (summary.orders.length === 0) {
+      orderBlocks = [
         { type: 'text', text: 'ไม่มีออเดอร์ในช่วงเวลานี้', color: '#8A8A8E', size: 'sm', align: 'center', margin: 'md' },
       ];
     } else {
-      const sorted = summary.products.slice().sort((a, b) => b.qty - a.qty);
-      const shown = sorted.slice(0, MAX_PRODUCT_ROWS);
-      productRows = shown.map((p, idx) => ({
-        type: 'box',
-        layout: 'horizontal',
-        spacing: 'sm',
-        alignItems: 'center',
-        contents: [
-          { type: 'box', layout: 'vertical', width: '8px', height: '8px', cornerRadius: '4px', backgroundColor: RAINBOW[idx % RAINBOW.length], contents: [] },
-          { type: 'text', text: p.name, wrap: true, size: 'sm', color: '#1C1C1E', flex: 5 },
-          { type: 'text', text: 'x' + p.qty, size: 'sm', color: '#1C1C1E', weight: 'bold', align: 'end', flex: 1 },
-        ],
-      }));
-      if (sorted.length > MAX_PRODUCT_ROWS) {
-        productRows.push({
+      const shown = summary.orders.slice(0, MAX_ORDER_ROWS);
+      orderBlocks = [];
+      shown.forEach((order, idx) => {
+        if (idx > 0) orderBlocks.push({ type: 'separator', margin: 'sm' });
+        orderBlocks.push(buildOrderBlock(order, idx));
+      });
+      if (summary.orders.length > MAX_ORDER_ROWS) {
+        orderBlocks.push({
           type: 'text',
-          text: `และอีก ${sorted.length - MAX_PRODUCT_ROWS} รายการ`,
+          text: `และอีก ${summary.orders.length - MAX_ORDER_ROWS} ออเดอร์`,
           size: 'xs',
           color: '#8A8A8E',
           margin: 'sm',
@@ -420,7 +417,7 @@ const EmOChaOrderBot = (() => {
       paddingAll: '20px',
       spacing: 'md',
       contents: [
-        { type: 'box', layout: 'vertical', spacing: 'sm', contents: productRows },
+        { type: 'box', layout: 'vertical', spacing: 'sm', contents: orderBlocks },
         { type: 'separator', margin: 'lg' },
         {
           type: 'box',
@@ -439,6 +436,45 @@ const EmOChaOrderBot = (() => {
       type: 'bubble',
       header: headerBox,
       body: bodyBox,
+    };
+  }
+
+  // การ์ดของ 1 ออเดอร์: หัวแถวเป็น "ชื่อลูกค้า · #เลขออเดอร์" ตามด้วยรายการสินค้า
+  // ของออเดอร์นั้น แล้วปิดท้ายด้วยยอดรวมเฉพาะออเดอร์นี้
+  function buildOrderBlock(order, idx) {
+    const whoLabel = order.customerName ? `${order.customerName} · #${order.id}` : `#${order.id}`;
+    return {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'xs',
+      contents: [
+        {
+          type: 'box',
+          layout: 'horizontal',
+          spacing: 'xs',
+          alignItems: 'center',
+          contents: [
+            { type: 'box', layout: 'vertical', width: '6px', height: '6px', cornerRadius: '3px', backgroundColor: RAINBOW[idx % RAINBOW.length], contents: [] },
+            { type: 'text', text: whoLabel, size: 'xs', weight: 'bold', color: '#1C1C1E', wrap: true, flex: 1 },
+          ],
+        },
+        ...order.items.map((item) => ({
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            { type: 'text', text: item.name, wrap: true, size: 'xs', color: '#48484A', flex: 5 },
+            { type: 'text', text: 'x' + item.qty, size: 'xs', color: '#48484A', align: 'end', flex: 1 },
+          ],
+        })),
+        {
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            { type: 'text', text: 'ยอดออเดอร์นี้', size: 'xs', color: '#8A8A8E' },
+            { type: 'text', text: formatBaht(order.subtotal) + ' บาท', size: 'xs', color: '#8A8A8E', align: 'end' },
+          ],
+        },
+      ],
     };
   }
 
