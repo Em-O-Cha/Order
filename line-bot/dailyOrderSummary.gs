@@ -607,6 +607,8 @@ const EmOChaOrderBot = (() => {
       const revenueId = row[COL.REVENUE_ID];
       const productName = String(row[COL.PRODUCT_NAME] || '').trim();
       const qty = Number(row[COL.QTY]) || 0;
+      const price = Number(row[COL.PRICE]) || 0;
+      const discount = Number(row[COL.DISCOUNT]) || 0;
       const amount = Number(row[COL.AMOUNT]) || 0;
 
       const isNewOrder = revenueId !== '' && revenueId != null;
@@ -632,7 +634,13 @@ const EmOChaOrderBot = (() => {
         customerName: currentOrder.customerName,
         productName,
         qty,
+        price,
+        discount,
         amount,
+        // Bill Total ของออเดอร์ให้ขึ้นเฉพาะแถวแรกของออเดอร์เท่านั้น (แถวสินค้าอื่นที่เหลือ
+        // เว้นว่างไว้) เหมือนกับที่ชีต Revenue เก็บไว้ — เพื่อให้ SUM คอลัมน์นี้ตรงกับยอด
+        // จริงโดยไม่นับซ้ำ ถ้าออเดอร์เดียวมีหลายรายการสินค้า
+        billTotal: isNewOrder ? (Number(row[COL.BILL_TOTAL]) || 0) : '',
       });
     }
     return rows;
@@ -654,12 +662,19 @@ const EmOChaOrderBot = (() => {
     const tempSs = SpreadsheetApp.create(fileName);
     const sheet = tempSs.getSheets()[0];
 
-    const header = ['วันที่', 'เลขที่ออเดอร์', 'ชื่อลูกค้า', 'สินค้า', 'จำนวน', 'ยอดเงิน (บาท)'];
+    // คอลัมน์ ราคา/ส่วนลด/ราคารวม เป็นค่าต่อบรรทัดสินค้า (เหมือนชีต Revenue) ส่วน Bill Total
+    // เป็นยอดรวมทั้งบิล จะโชว์แค่แถวแรกของแต่ละออเดอร์เท่านั้น แถวสินค้าที่เหลือเว้นว่าง
+    const header = ['วันที่', 'เลขที่ออเดอร์', 'ชื่อลูกค้า', 'สินค้า', 'จำนวน', 'ราคา', 'ส่วนลด', 'ราคารวม', 'Bill Total'];
     sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
 
     if (rows.length > 0) {
-      const data = rows.map((r) => [r.dateLabel, r.orderId, r.customerName, r.productName, r.qty, r.amount]);
+      const data = rows.map((r) => [
+        r.dateLabel, r.orderId, r.customerName, r.productName, r.qty,
+        r.price, r.discount, r.amount, r.billTotal,
+      ]);
       sheet.getRange(2, 1, data.length, header.length).setValues(data);
+      sheet.getRange(2, 6, data.length, 3).setNumberFormat('#,##0.00'); // ราคา/ส่วนลด/ราคารวม
+      sheet.getRange(2, 9, data.length, 1).setNumberFormat('#,##0.00'); // Bill Total
 
       // สลับสีพื้นหลังอ่อนๆ ทีละวัน ให้เห็นชัดว่าแถวไหนอยู่วันเดียวกัน
       let lastDateLabel = null;
@@ -678,13 +693,26 @@ const EmOChaOrderBot = (() => {
     const totalRowIndex = rows.length + 2;
     sheet.getRange(totalRowIndex, 1, 1, 4).merge();
     sheet.getRange(totalRowIndex, 1).setValue('รวมทั้งหมด').setFontWeight('bold');
-    const totalsRange = sheet.getRange(totalRowIndex, 5, 1, 2);
+    // ไม่ sum คอลัมน์ "ราคา" (คอลัมน์ F) เพราะเป็นราคาต่อหน่วย รวมข้ามสินค้าคนละชนิดกันไม่มีความหมาย
+    const qtyCell = sheet.getRange(totalRowIndex, 5);
+    const discountCell = sheet.getRange(totalRowIndex, 7);
+    const amountCell = sheet.getRange(totalRowIndex, 8);
+    const billTotalCell = sheet.getRange(totalRowIndex, 9);
     if (rows.length > 0) {
-      totalsRange.setValues([[`=SUM(E2:E${totalRowIndex - 1})`, `=SUM(F2:F${totalRowIndex - 1})`]]);
+      qtyCell.setValue(`=SUM(E2:E${totalRowIndex - 1})`);
+      discountCell.setValue(`=SUM(G2:G${totalRowIndex - 1})`);
+      amountCell.setValue(`=SUM(H2:H${totalRowIndex - 1})`);
+      billTotalCell.setValue(`=SUM(I2:I${totalRowIndex - 1})`);
     } else {
-      totalsRange.setValues([[0, 0]]); // ไม่มีข้อมูลให้รวม กันสูตรอ้างอิงตัวเองย้อนกลับ
+      qtyCell.setValue(0);
+      discountCell.setValue(0);
+      amountCell.setValue(0);
+      billTotalCell.setValue(0);
     }
-    totalsRange.setFontWeight('bold');
+    [qtyCell, discountCell, amountCell, billTotalCell].forEach((c) => c.setFontWeight('bold'));
+    discountCell.setNumberFormat('#,##0.00');
+    amountCell.setNumberFormat('#,##0.00');
+    billTotalCell.setNumberFormat('#,##0.00');
     sheet.autoResizeColumns(1, header.length);
     SpreadsheetApp.flush();
 
