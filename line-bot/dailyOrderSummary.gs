@@ -182,16 +182,19 @@ const EmOChaOrderBot = (() => {
           + '"สรุป shopee วันนี้"\n'
           + '"สรุป tiktok 01/09/69-07/09/69"\n'
           + '"สรุป ทั้งหมด เมื่อวาน" (รวมทุกช่องทาง)\n\n'
-          + 'พิมพ์คำว่า "excel" แทรกไปด้วยจะได้ไฟล์ Excel แนบมาด้วย เช่น\n'
+          + 'พิมพ์คำว่า "excel" แทรกไปด้วย จะได้รับเป็นไฟล์ Excel แทนการ์ดสรุป เช่น\n'
           + '"สรุป excel 01/09/69-07/09/69"',
       }]);
       return;
     }
 
     const summary = buildSummaryForRange(range.start, range.end, range.adFilter);
-    const messages = [{ type: 'flex', altText: buildAltText(summary), contents: buildRainbowFlexMessage(summary) }];
+    const messages = [];
     if (range.wantExcel) {
+      // มีคำว่า "excel" → ส่งแค่ไฟล์ Excel อย่างเดียว ไม่ส่งการ์ดสรุปด้วย
       appendExcelMessage(messages, range.start, range.end, summary.adFilter, summary.dateLabel);
+    } else {
+      messages.push({ type: 'flex', altText: buildAltText(summary), contents: buildRainbowFlexMessage(summary) });
     }
     replyLineMessages(event.replyToken, messages);
   }
