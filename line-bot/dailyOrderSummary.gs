@@ -92,6 +92,7 @@ const EmOChaOrderBot = (() => {
     BILL_TOTAL: 8,
     CUSTOMER_NAME: 13, // คอลัมน์ "Customer Name" ในชีต Revenue
     AD: 16, // คอลัมน์ "Ad" ในชีต Revenue — ใช้บอกช่องทางขาย เช่น Shopee, TikTok, Line shop
+    PAID_DATE: 30, // คอลัมน์ AE "วันที่ชำระเงิน" — ถ้าว่างแปลว่ายังไม่ชำระเงิน ไม่นับเป็นยอดขาย
   };
 
   // นับเฉพาะออเดอร์ที่คอลัมน์ Ad ตรงกับค่านี้เท่านั้น (ไม่สนตัวพิมพ์เล็ก-ใหญ่/เว้นวรรคหน้า-หลัง)
@@ -316,7 +317,7 @@ const EmOChaOrderBot = (() => {
         if (inRange && adMatches) {
           if (productName === CANCELLED_LABEL) {
             cancelledCount++;
-          } else {
+          } else if (isPaid(row)) {
             orderCount++;
             totalAmount += billTotal;
             currentOrder = {
@@ -328,6 +329,7 @@ const EmOChaOrderBot = (() => {
             };
             orders.push(currentOrder);
           }
+          // ยังไม่ชำระเงิน (ไม่ใช่ยกเลิก) — ไม่นับที่ไหนเลย ถือว่ายังไม่ใช่ยอดขายจริง
         }
       }
 
@@ -341,6 +343,12 @@ const EmOChaOrderBot = (() => {
       : `${formatThaiDate(startDate)} - ${formatThaiDate(endDate)}`;
 
     return { dateLabel, isSingleDay, orders, orderCount, totalAmount, cancelledCount, adFilter: effectiveAdFilter };
+  }
+
+  // เช็คว่าออเดอร์แถวนี้ชำระเงินแล้วหรือยัง — ดูจากคอลัมน์ AE "วันที่ชำระเงิน" มีค่าหรือไม่
+  function isPaid(row) {
+    const value = row[COL.PAID_DATE];
+    return value !== '' && value != null;
   }
 
   // ชื่อช่องทางแบบสวยๆ ไว้โชว์บนการ์ด/altText เช่น "line shop" → "Line Shop", '*' → "ทุกช่องทาง"
@@ -602,10 +610,11 @@ const EmOChaOrderBot = (() => {
       if (!daysByKey[key]) daysByKey[key] = { orderCount: 0, cancelledCount: 0, totalAmount: 0 };
       if (productName === CANCELLED_LABEL) {
         daysByKey[key].cancelledCount++;
-      } else {
+      } else if (isPaid(row)) {
         daysByKey[key].orderCount++;
         daysByKey[key].totalAmount += billTotal;
       }
+      // ยังไม่ชำระเงิน (ไม่ใช่ยกเลิก) — ไม่นับที่ไหนเลย
     }
 
     const rows = [];
@@ -678,6 +687,12 @@ const EmOChaOrderBot = (() => {
       });
     } catch (err) {
       Logger.log('สร้างไฟล์ Excel ไม่สำเร็จ: ' + err);
+      // โชว์ error ตรงในแชทเลย แทนที่จะซ่อนไว้แค่ใน Execution log อย่างเดียว
+      // จะได้เห็นสาเหตุทันทีโดยไม่ต้องเปิด Apps Script ไปดู log
+      messages.push({
+        type: 'text',
+        text: `⚠️ สร้างไฟล์ Excel ไม่สำเร็จ: ${err}\n\nส่วนใหญ่เกิดจากยังไม่ได้ Authorize สิทธิ์ Google Drive ให้โปรเจกต์นี้ — ลองรันฟังก์ชัน EmOChaOrderBot_setupCredentials() หรือ EmOChaOrderBot_sendDailySummary() ตรงๆ ใน Apps Script editor สักครั้งแล้วกด Authorize access เมื่อขึ้นมา`,
+      });
     }
   }
 
