@@ -671,10 +671,23 @@ const EmOChaOrderBot = (() => {
     sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
 
     if (rows.length > 0) {
-      const data = rows.map((r) => [
-        r.dateLabel, r.orderId, r.customerName, r.productName, r.qty,
-        r.price, r.discount, r.amount, r.billTotal,
-      ]);
+      // วันที่/เลขที่ออเดอร์/ชื่อลูกค้า โชว์แค่แถวแรกของกลุ่มนั้นๆ เท่านั้น (วันที่ซ้ำกับ
+      // แถวก่อนหน้า หรือออเดอร์เดียวกัน) แถวที่เหลือเว้นว่างไว้ อ่านง่ายขึ้นไม่ต้องดูซ้ำๆ
+      let prevDateLabel = null;
+      let prevOrderId = null;
+      const data = rows.map((r) => {
+        const sameDate = r.dateLabel === prevDateLabel;
+        const sameOrder = r.orderId === prevOrderId;
+        prevDateLabel = r.dateLabel;
+        prevOrderId = r.orderId;
+        return [
+          sameDate ? '' : r.dateLabel,
+          sameOrder ? '' : r.orderId,
+          sameOrder ? '' : r.customerName,
+          r.productName, r.qty,
+          r.price, r.discount, r.amount, r.billTotal,
+        ];
+      });
       sheet.getRange(2, 1, data.length, header.length).setValues(data);
       sheet.getRange(2, 6, data.length, 3).setNumberFormat('#,##0.00'); // ราคา/ส่วนลด/ราคารวม
       sheet.getRange(2, 9, data.length, 1).setNumberFormat('#,##0.00'); // Bill Total
