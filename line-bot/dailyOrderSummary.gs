@@ -583,50 +583,51 @@ const EmOChaOrderBot = (() => {
   // ── สร้างไฟล์ Excel ยอดขายรายวัน ─────────────────────────────
 
   /**
-   * รวมยอดขายเป็นรายวัน (1 แถวต่อ 1 วัน) สำหรับช่วง [startDate, endDate] — มีแถวครบ
-   * ทุกวันแม้วันที่ไม่มีออเดอร์เลย (ยอด 0) เพื่อให้เห็นครบไม่มีวันขาดหาย
+   * รวบรวมรายละเอียดทุกออเดอร์เป็นแบบ 1 แถวต่อ 1 รายการสินค้า (ออเดอร์ที่มีหลายสินค้า
+   * จะมีหลายแถว) สำหรับช่วง [startDate, endDate] เรียงตามลำดับวันที่ที่เจอในชีต
+   * ตัดออเดอร์ที่ยกเลิกและที่ยังไม่ชำระเงินออกเหมือนกับการ์ดสรุปหลัก
    */
-  function buildDailyRollup(startDate, endDate, adFilter) {
+  function buildOrderDetailRows(startDate, endDate, adFilter) {
     const sheet = getRevenueSheet();
     const values = sheet.getDataRange().getValues();
     const startKey = dateKeyOf(startDate);
     const endKey = dateKeyOf(endDate);
     const effectiveAdFilter = adFilter || AD_FILTER;
 
-    const daysByKey = {};
+    const rows = [];
+    let currentOrder = null; // { dateLabel, orderId, customerName } หรือ null ถ้าออเดอร์นี้ถูกตัดออก
+
     for (let i = 1; i < values.length; i++) {
       const row = values[i];
       const revenueId = row[COL.REVENUE_ID];
-      if (revenueId === '' || revenueId == null) continue; // สนใจแค่แถวหลักของแต่ละออเดอร์
       const productName = String(row[COL.PRODUCT_NAME] || '').trim();
-      const billTotal = Number(row[COL.BILL_TOTAL]) || 0;
+      const qty = Number(row[COL.QTY]) || 0;
+      const amount = Number(row[COL.AMOUNT]) || 0;
 
-      const key = toDateKey(row[COL.TIMESTAMP]);
-      const inRange = key != null && key >= startKey && key <= endKey;
-      const adValue = String(row[COL.AD] || '').trim().toLowerCase();
-      const adMatches = effectiveAdFilter === '*' || adValue === effectiveAdFilter;
-      if (!inRange || !adMatches) continue;
-
-      if (!daysByKey[key]) daysByKey[key] = { orderCount: 0, cancelledCount: 0, totalAmount: 0 };
-      if (productName === CANCELLED_LABEL) {
-        daysByKey[key].cancelledCount++;
-      } else if (isPaid(row)) {
-        daysByKey[key].orderCount++;
-        daysByKey[key].totalAmount += billTotal;
+      const isNewOrder = revenueId !== '' && revenueId != null;
+      if (isNewOrder) {
+        currentOrder = null;
+        const key = toDateKey(row[COL.TIMESTAMP]);
+        const inRange = key != null && key >= startKey && key <= endKey;
+        const adValue = String(row[COL.AD] || '').trim().toLowerCase();
+        const adMatches = effectiveAdFilter === '*' || adValue === effectiveAdFilter;
+        if (inRange && adMatches && productName !== CANCELLED_LABEL && isPaid(row)) {
+          currentOrder = {
+            dateLabel: formatThaiDateFromKey(key),
+            orderId: revenueId,
+            customerName: String(row[COL.CUSTOMER_NAME] || '').trim(),
+          };
+        }
       }
-      // ยังไม่ชำระเงิน (ไม่ใช่ยกเลิก) — ไม่นับที่ไหนเลย
-    }
 
-    const rows = [];
-    for (let cursor = startDate; dateKeyOf(cursor) <= endKey; cursor = addDays(cursor, 1)) {
-      const key = dateKeyOf(cursor);
-      const d = daysByKey[key] || { orderCount: 0, cancelledCount: 0, totalAmount: 0 };
+      if (!productName || !currentOrder || productName === CANCELLED_LABEL) continue;
       rows.push({
-        dateKey: key,
-        dateLabel: formatThaiDateFromKey(key),
-        orderCount: d.orderCount,
-        cancelledCount: d.cancelledCount,
-        totalAmount: d.totalAmount,
+        dateLabel: currentOrder.dateLabel,
+        orderId: currentOrder.orderId,
+        customerName: currentOrder.customerName,
+        productName,
+        qty,
+        amount,
       });
     }
     return rows;
@@ -639,30 +640,46 @@ const EmOChaOrderBot = (() => {
   }
 
   /**
-   * สร้างไฟล์ .xlsx จริงใน Google Drive จากข้อมูลรายวัน แล้วคืนลิงก์ดาวน์โหลด
+   * สร้างไฟล์ .xlsx จริงใน Google Drive จากรายละเอียดออเดอร์ (1 แถวต่อ 1 รายการสินค้า)
+   * แล้วคืนลิงก์ดาวน์โหลด — แต่ละวันจะสลับสีแถวอ่อนๆ ให้แยกวันดูง่าย
    * (สร้าง Google Sheet ชั่วคราวเพื่อ export เป็น xlsx แล้วลบชีตชั่วคราวทิ้ง เหลือแต่ไฟล์ xlsx)
    */
-  function buildDailyRollupExcelLink(rows, fileLabel, adFilter) {
-    const fileName = `ยอดขายรายวัน ${channelLabel(adFilter)} ${fileLabel}`;
+  function buildOrderDetailExcelLink(rows, fileLabel, adFilter) {
+    const fileName = `ยอดขายรายออเดอร์ ${channelLabel(adFilter)} ${fileLabel}`;
     const tempSs = SpreadsheetApp.create(fileName);
     const sheet = tempSs.getSheets()[0];
 
-    const header = ['วันที่', 'จำนวนออเดอร์', 'ยกเลิก', 'ยอดขาย (บาท)'];
+    const header = ['วันที่', 'เลขที่ออเดอร์', 'ชื่อลูกค้า', 'สินค้า', 'จำนวน', 'ยอดเงิน (บาท)'];
     sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
 
     if (rows.length > 0) {
-      const data = rows.map((r) => [r.dateLabel, r.orderCount, r.cancelledCount, r.totalAmount]);
+      const data = rows.map((r) => [r.dateLabel, r.orderId, r.customerName, r.productName, r.qty, r.amount]);
       sheet.getRange(2, 1, data.length, header.length).setValues(data);
+
+      // สลับสีพื้นหลังอ่อนๆ ทีละวัน ให้เห็นชัดว่าแถวไหนอยู่วันเดียวกัน
+      let lastDateLabel = null;
+      let bandOn = false;
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i].dateLabel !== lastDateLabel) {
+          bandOn = !bandOn;
+          lastDateLabel = rows[i].dateLabel;
+        }
+        if (bandOn) {
+          sheet.getRange(i + 2, 1, 1, header.length).setBackground('#F5F0FC');
+        }
+      }
     }
 
     const totalRowIndex = rows.length + 2;
-    const totals = [
-      'รวมทั้งหมด',
-      rows.reduce((s, r) => s + r.orderCount, 0),
-      rows.reduce((s, r) => s + r.cancelledCount, 0),
-      rows.reduce((s, r) => s + r.totalAmount, 0),
-    ];
-    sheet.getRange(totalRowIndex, 1, 1, header.length).setValues([totals]).setFontWeight('bold');
+    sheet.getRange(totalRowIndex, 1, 1, 4).merge();
+    sheet.getRange(totalRowIndex, 1).setValue('รวมทั้งหมด').setFontWeight('bold');
+    const totalsRange = sheet.getRange(totalRowIndex, 5, 1, 2);
+    if (rows.length > 0) {
+      totalsRange.setValues([[`=SUM(E2:E${totalRowIndex - 1})`, `=SUM(F2:F${totalRowIndex - 1})`]]);
+    } else {
+      totalsRange.setValues([[0, 0]]); // ไม่มีข้อมูลให้รวม กันสูตรอ้างอิงตัวเองย้อนกลับ
+    }
+    totalsRange.setFontWeight('bold');
     sheet.autoResizeColumns(1, header.length);
     SpreadsheetApp.flush();
 
@@ -679,8 +696,8 @@ const EmOChaOrderBot = (() => {
   // ไม่ทำให้การ์ดสรุปหลักที่สร้างไว้แล้วส่งไม่ได้ไปด้วย)
   function appendExcelMessage(messages, startDate, endDate, adFilter, dateLabel) {
     try {
-      const rows = buildDailyRollup(startDate, endDate, adFilter);
-      const url = buildDailyRollupExcelLink(rows, dateLabel, adFilter);
+      const rows = buildOrderDetailRows(startDate, endDate, adFilter);
+      const url = buildOrderDetailExcelLink(rows, dateLabel, adFilter);
       messages.push({
         type: 'text',
         text: `📊 ไฟล์ Excel ยอดขายรายวัน (${channelLabel(adFilter)})\n${dateLabel}\nกดลิงก์เพื่อดาวน์โหลด:\n${url}`,
