@@ -962,7 +962,13 @@ function renderOrderHistory(list){
       + '</div>'
       + '</div>';
   }).join('');
-  document.getElementById('historyList').innerHTML = h;
+  // ⚡ เพิ่ม (9/9/69) — โชว์เลขบัญชี/ชื่อบัญชีซ้ำไว้บนสุดของหน้ารอแนบสลิป กันเคสลูกค้าปิดหน้าชำระเงินไป
+  // โดยไม่ได้บันทึก QR/เลขบัญชีไว้ก่อน จะได้กลับมาคัดลอกเลขบัญชีไปโอนได้อีกโดยไม่ต้องกดเข้าไปทีละออเดอร์
+  var bankReminderHtml = paymentInfo ? ('<div class="bank-box" style="margin-bottom:16px">'
+    + '<p style="font-weight:600;color:var(--gd);margin:0 0 8px;text-align:center">💳 บัญชีสำหรับโอนเงิน</p>'
+    + buildBankInfoRows_()
+    + '</div>') : '';
+  document.getElementById('historyList').innerHTML = bankReminderHtml + h;
 }
 
 // ⚡ เพิ่ม (25/8/69) — ปุ่มยกเลิกคำสั่งซื้อที่ยังไม่แนบสลิป (เผื่อกดผิด/ไม่ต้องการซื้อแล้ว) ใช้กล่องยืนยัน
@@ -1411,6 +1417,24 @@ function getFinalTotal(){
   return Math.max(0, beforePoints - getPointsRedeemDiscount());
 }
 
+// ⚡ เพิ่ม (9/9/69) — แยกส่วนแสดงข้อมูลบัญชีธนาคาร (โลโก้/เลขบัญชี+ปุ่มคัดลอก/ชื่อบัญชี) ออกมาเป็นฟังก์ชัน
+// กลาง เพื่อใช้ซ้ำได้ทั้งหน้าเลือกวิธีชำระเงิน และหน้าคำสั่งซื้อรอดำเนินการ (กรณีลูกค้าปิดหน้าชำระเงินไปแล้ว
+// โดยไม่ได้บันทึกเลขบัญชี/QR ไว้ จะได้กลับมาดูเลขบัญชีซ้ำได้จากหน้ารอแนบสลิป)
+function buildBankInfoRows_(){
+  if (!paymentInfo) return '';
+  var bankLogoHtml = '';
+  if (/กสิกรไทย|K-Bank|KBank|KASIKORNBANK/i.test(paymentInfo.bankName || '')) {
+    bankLogoHtml = '<div style="text-align:center;margin-bottom:10px"><img src="' + BANK_LOGO_URL_ + '" alt="กสิกรไทย" style="height:36px;object-fit:contain" onerror="this.style.display=\'none\'"></div>';
+  }
+  return bankLogoHtml
+    + '<div class="row"><span>ธนาคาร</span><span>' + escHtml(paymentInfo.bankName) + '</span></div>'
+    + '<div class="row" style="align-items:center"><span>เลขบัญชี</span><span style="display:flex;align-items:center;gap:8px">'
+    + '<b>' + escHtml(paymentInfo.bankAccount) + '</b>'
+    + '<button type="button" class="copy-account-btn" onclick="copyBankAccount_(this)" title="คัดลอกเลขบัญชี" aria-label="คัดลอกเลขบัญชี" style="width:28px;height:28px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0"><img src="' + COPY_ICON_URL_ + '" alt="" style="width:18px;height:18px;object-fit:contain"></button>'
+    + '</span></div>'
+    + '<div class="row"><span>ชื่อบัญชี</span><span>' + escHtml(paymentInfo.accountName) + '</span></div>';
+}
+
 function renderPaymentDetail(){
   var wrap = document.getElementById('paymentDetail');
   var total = getFinalTotal();
@@ -1435,18 +1459,8 @@ function renderPaymentDetail(){
     var payload = buildPromptPayPayload(paymentInfo.promptPayId, total);
     new QRCode(qrContainer, { text: payload, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
   } else {
-    var bankLogoHtml = '';
-    if (/กสิกรไทย|K-Bank|KBank|KASIKORNBANK/i.test(paymentInfo.bankName || '')) {
-  bankLogoHtml = '<div style="text-align:center;margin-bottom:10px"><img src="' + BANK_LOGO_URL_ + '" alt="กสิกรไทย" style="height:36px;object-fit:contain" onerror="this.style.display=\'none\'"></div>';
-    }
     wrap.innerHTML = '<div class="bank-box">'
-      + bankLogoHtml
-      + '<div class="row"><span>ธนาคาร</span><span>' + escHtml(paymentInfo.bankName) + '</span></div>'
-      + '<div class="row" style="align-items:center"><span>เลขบัญชี</span><span style="display:flex;align-items:center;gap:8px">'
-      + '<b id="bankAccountText">' + escHtml(paymentInfo.bankAccount) + '</b>'
-      + '<button type="button" class="copy-account-btn" id="copyBankAccountBtn" onclick="copyBankAccount_(this)" title="คัดลอกเลขบัญชี" aria-label="คัดลอกเลขบัญชี" style="width:28px;height:28px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0"><img src="' + COPY_ICON_URL_ + '" alt="" style="width:18px;height:18px;object-fit:contain"></button>'
-      + '</span></div>'
-      + '<div class="row"><span>ชื่อบัญชี</span><span>' + escHtml(paymentInfo.accountName) + '</span></div>'
+      + buildBankInfoRows_()
       + '<div class="row"><span>ยอดโอน</span><span>฿' + total.toLocaleString('th-TH') + '</span></div>'
       + '</div>';
   }
