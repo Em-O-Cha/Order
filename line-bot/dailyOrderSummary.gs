@@ -97,6 +97,10 @@ const EmOChaOrderBot = (() => {
   // ถ้าในชีตจริงสะกดคำนี้ต่างจากนี้ (เช่น "LINE Shop" ตัวใหญ่ทั้งหมด หรือ "ไลน์ช้อป") ให้แก้ค่านี้ให้ตรง
   const AD_FILTER = 'line shop';
 
+  // ออเดอร์ที่ถูกยกเลิก: คอลัมน์ ProductName ของแถวจะขึ้นคำนี้แทนชื่อสินค้าจริง
+  // ออเดอร์แบบนี้จะไม่โชว์รายละเอียดในการ์ด ไม่นับยอดขาย/จำนวนออเดอร์ปกติ แต่นับแยกไว้เป็นจำนวนอย่างเดียว
+  const CANCELLED_LABEL = 'ยกเลิก';
+
   const THAI_MONTHS = [
     'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
     'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
@@ -266,6 +270,8 @@ const EmOChaOrderBot = (() => {
    * AD_FILTER ("line shop"); ส่ง '*' เพื่อรวมทุกช่องทาง
    * รองรับแถวสินค้าเพิ่มเติมของออเดอร์เดียวกัน (แถวที่ไม่มี Revenue ID/Timestamp
    * ของตัวเอง) โดยผูกเข้ากับออเดอร์หลักแถวก่อนหน้า
+   * ออเดอร์ที่ถูกยกเลิก (ProductName = CANCELLED_LABEL) จะไม่รวมในยอด/รายการ
+   * แต่นับแยกไว้ที่ cancelledCount
    */
   function buildSummaryForRange(startDate, endDate, adFilter) {
     const sheet = getRevenueSheet();
@@ -278,11 +284,12 @@ const EmOChaOrderBot = (() => {
     let currentOrder = null;
     let orderCount = 0;
     let totalAmount = 0;
+    let cancelledCount = 0;
 
     for (let i = 1; i < values.length; i++) {
       const row = values[i];
       const revenueId = row[COL.REVENUE_ID];
-      const productName = row[COL.PRODUCT_NAME];
+      const productName = String(row[COL.PRODUCT_NAME] || '').trim();
       const qty = Number(row[COL.QTY]) || 0;
       const billTotal = Number(row[COL.BILL_TOTAL]) || 0;
 
@@ -294,19 +301,24 @@ const EmOChaOrderBot = (() => {
         const adValue = String(row[COL.AD] || '').trim().toLowerCase();
         const adMatches = effectiveAdFilter === '*' || adValue === effectiveAdFilter;
         if (inRange && adMatches) {
-          orderCount++;
-          totalAmount += billTotal;
-          currentOrder = {
-            id: revenueId,
-            customerName: String(row[COL.CUSTOMER_NAME] || '').trim(),
-            items: [],
-            subtotal: billTotal,
-          };
-          orders.push(currentOrder);
+          if (productName === CANCELLED_LABEL) {
+            cancelledCount++;
+          } else {
+            orderCount++;
+            totalAmount += billTotal;
+            currentOrder = {
+              id: revenueId,
+              customerName: String(row[COL.CUSTOMER_NAME] || '').trim(),
+              items: [],
+              subtotal: billTotal,
+              dateKey: key,
+            };
+            orders.push(currentOrder);
+          }
         }
       }
 
-      if (!productName || !currentOrder) continue;
+      if (!productName || !currentOrder || productName === CANCELLED_LABEL) continue;
       currentOrder.items.push({ name: productName, qty });
     }
 
@@ -315,7 +327,7 @@ const EmOChaOrderBot = (() => {
       ? formatThaiDate(startDate)
       : `${formatThaiDate(startDate)} - ${formatThaiDate(endDate)}`;
 
-    return { dateLabel, isSingleDay, orders, orderCount, totalAmount, adFilter: effectiveAdFilter };
+    return { dateLabel, isSingleDay, orders, orderCount, totalAmount, cancelledCount, adFilter: effectiveAdFilter };
   }
 
   // ชื่อช่องทางแบบสวยๆ ไว้โชว์บนการ์ด/altText เช่น "line shop" → "Line Shop", '*' → "ทุกช่องทาง"
@@ -393,22 +405,17 @@ const EmOChaOrderBot = (() => {
       orderBlocks = [
         { type: 'text', text: 'ไม่มีออเดอร์ในช่วงเวลานี้', color: '#8A8A8E', size: 'sm', align: 'center', margin: 'md' },
       ];
+    } else if (summary.isSingleDay) {
+      orderBlocks = buildOrderListContents(summary.orders);
     } else {
-      const shown = summary.orders.slice(0, MAX_ORDER_ROWS);
-      orderBlocks = [];
-      shown.forEach((order, idx) => {
-        if (idx > 0) orderBlocks.push({ type: 'separator', margin: 'sm' });
-        orderBlocks.push(buildOrderBlock(order, idx));
-      });
-      if (summary.orders.length > MAX_ORDER_ROWS) {
-        orderBlocks.push({
-          type: 'text',
-          text: `และอีก ${summary.orders.length - MAX_ORDER_ROWS} ออเดอร์`,
-          size: 'xs',
-          color: '#8A8A8E',
-          margin: 'sm',
-        });
-      }
+      orderBlocks = buildOrdersGroupedByDay(summary.orders);
+    }
+
+    const footerContents = [
+      { type: 'text', text: `จำนวน ${summary.orderCount} ออเดอร์`, size: 'xs', color: '#8A8A8E', align: 'end' },
+    ];
+    if (summary.cancelledCount > 0) {
+      footerContents.push({ type: 'text', text: `ยกเลิก ${summary.cancelledCount} ออเดอร์ (ไม่รวมในยอด)`, size: 'xs', color: '#8A8A8E', align: 'end' });
     }
 
     const bodyBox = {
@@ -428,7 +435,7 @@ const EmOChaOrderBot = (() => {
             { type: 'text', text: formatBaht(summary.totalAmount) + ' บาท', size: 'md', weight: 'bold', color: '#FF3B30', align: 'end' },
           ],
         },
-        { type: 'text', text: `จำนวน ${summary.orderCount} ออเดอร์`, size: 'xs', color: '#8A8A8E', align: 'end' },
+        { type: 'box', layout: 'vertical', contents: footerContents },
       ],
     };
 
@@ -437,6 +444,75 @@ const EmOChaOrderBot = (() => {
       header: headerBox,
       body: bodyBox,
     };
+  }
+
+  // รายการออเดอร์แบบเรียบๆ (ใช้ตอนขอสรุปแค่วันเดียว) จำกัดไว้ MAX_ORDER_ROWS ออเดอร์
+  function buildOrderListContents(orders) {
+    const shown = orders.slice(0, MAX_ORDER_ROWS);
+    const blocks = [];
+    shown.forEach((order, idx) => {
+      if (idx > 0) blocks.push({ type: 'separator', margin: 'sm' });
+      blocks.push(buildOrderBlock(order, idx));
+    });
+    if (orders.length > MAX_ORDER_ROWS) {
+      blocks.push({
+        type: 'text',
+        text: `และอีก ${orders.length - MAX_ORDER_ROWS} ออเดอร์`,
+        size: 'xs',
+        color: '#8A8A8E',
+        margin: 'sm',
+      });
+    }
+    return blocks;
+  }
+
+  // เมื่อขอสรุปเป็นช่วงหลายวัน ให้แยกกลุ่มออเดอร์ตามวันที่ (มีหัวข้อวันที่คั่นแต่ละกลุ่ม)
+  // เรียงตามลำดับที่เจอในชีต (เรียงตามวันที่อยู่แล้วเพราะแถวในชีตเรียงตามเวลา)
+  // แต่ยังจำกัดจำนวนออเดอร์รวมทั้งการ์ดไว้ที่ MAX_ORDER_ROWS เหมือนเดิม กันการ์ดยาวเกินไป
+  function buildOrdersGroupedByDay(orders) {
+    const groups = [];
+    const groupIndexByKey = {};
+    orders.forEach((order) => {
+      if (!(order.dateKey in groupIndexByKey)) {
+        groupIndexByKey[order.dateKey] = groups.length;
+        groups.push({ dateKey: order.dateKey, orders: [] });
+      }
+      groups[groupIndexByKey[order.dateKey]].orders.push(order);
+    });
+
+    const blocks = [];
+    let shownCount = 0;
+    for (let g = 0; g < groups.length && shownCount < MAX_ORDER_ROWS; g++) {
+      const group = groups[g];
+      if (g > 0) blocks.push({ type: 'separator', margin: 'md' });
+      blocks.push({
+        type: 'text',
+        text: formatThaiDateFromKey(group.dateKey),
+        size: 'xs',
+        weight: 'bold',
+        color: '#48484A',
+        margin: g > 0 ? 'md' : 'none',
+      });
+      for (let j = 0; j < group.orders.length && shownCount < MAX_ORDER_ROWS; j++) {
+        blocks.push(buildOrderBlock(group.orders[j], shownCount));
+        shownCount++;
+      }
+    }
+    if (orders.length > shownCount) {
+      blocks.push({
+        type: 'text',
+        text: `และอีก ${orders.length - shownCount} ออเดอร์`,
+        size: 'xs',
+        color: '#8A8A8E',
+        margin: 'sm',
+      });
+    }
+    return blocks;
+  }
+
+  function formatThaiDateFromKey(dateKey) {
+    const [y, m, d] = dateKey.split('-').map(Number);
+    return formatThaiDate(bangkokMidnight(y, m, d));
   }
 
   // การ์ดของ 1 ออเดอร์: หัวแถวเป็น "ชื่อลูกค้า · #เลขออเดอร์" ตามด้วยรายการสินค้า
