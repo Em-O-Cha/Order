@@ -346,7 +346,12 @@ const EmOChaOrderBot = (() => {
   }
 
   // เช็คว่าออเดอร์แถวนี้ชำระเงินแล้วหรือยัง — ดูจากคอลัมน์ AE "วันที่ชำระเงิน" มีค่าหรือไม่
+  // เช็คเฉพาะออเดอร์ช่องทาง Line shop เท่านั้น เพราะ Shopee/TikTok เก็บเงินผ่านแพลตฟอร์ม
+  // เองอยู่แล้วก่อนโอนให้ร้าน เลยไม่มีการกรอกคอลัมน์นี้ (ถ้าเช็คทุกช่องทางจะทำให้ออเดอร์
+  // Shopee/TikTok หายไปจากรายงานทั้งหมดทั้งที่จ่ายเงินจริงแล้ว)
   function isPaid(row) {
+    const adValue = String(row[COL.AD] || '').trim().toLowerCase();
+    if (adValue !== AD_FILTER) return true;
     const value = row[COL.PAID_DATE];
     return value !== '' && value != null;
   }
