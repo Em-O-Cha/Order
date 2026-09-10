@@ -686,7 +686,14 @@ function applyShopBootstrap_(r){
   categories = r.categories || [];
   activeAutoCoupons = (r.coupons || []).filter(function(c){ return c.autoApply; });
   renderCatalog();
-  showState('catalogState');
+  // ⚡ แก้ — เดิม showState('catalogState') รันทุกครั้งที่ฟังก์ชันนี้ทำงาน ทั้งที่ฟังก์ชันนี้ถูกเรียก 2 รอบ
+  // ต่อการเปิดหน้า (รอบแคชทันที + รอบ API จริงตอบกลับมาทีหลัง) ถ้าลูกค้ากดไปหน้าชำระเงินไปแล้วก่อนรอบ API
+  // จริงจะตอบกลับมา (เช่นเน็ตช้า) จะโดนดีดกลับมาหน้าแรกกลางคันโดยไม่ตั้งใจทั้งที่กำลังทำรายการอยู่ — สลับไป
+  // catalogState เฉพาะตอนยังอยู่ที่ loadingState (ยังไม่เคยแสดงหน้าไหนเลย) เท่านั้น รอบถัดไปแค่อัปเดตข้อมูล
+  // สินค้า/สิทธิพิเศษ/คูปองเบื้องหลังเงียบๆ ไม่ไปแตะหน้าจอที่ลูกค้ากำลังดูอยู่
+  if (!document.getElementById('loadingState').classList.contains('sh')) {
+    showState('catalogState');
+  }
   renderMyPrivileges_({ success: true, results: r.privileges || [] });
   renderAutoPromoBox_(activeAutoCoupons);
   requestAnimationFrame(function(){ window.scrollTo(0, scrollY_); });
