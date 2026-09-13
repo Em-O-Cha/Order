@@ -132,6 +132,12 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .coupon-ticket.th-gold .ct-sub{color:#9c7128;}
 .coupon-ticket.th-gold .coupon-ticket-side{background:#f5dfa0;}
 .coupon-ticket.th-gold .ct-tagline{color:#7a4d12;}
+.coupon-ticket.th-violet .coupon-ticket-inner{background:#f2e5fa;}
+.coupon-ticket.th-violet .coupon-ticket-stub{background:linear-gradient(135deg,#ab47bc,#6a1b9a);}
+.coupon-ticket.th-violet .ct-title{color:#4a148c;}
+.coupon-ticket.th-violet .ct-sub{color:#8e6ba8;}
+.coupon-ticket.th-violet .coupon-ticket-side{background:#e1bee7;}
+.coupon-ticket.th-violet .ct-tagline{color:#4a148c;}
 .order-box{background:var(--gp);border-radius:12px;padding:18px;text-align:left;margin-top:10px;}
 .order-box .row{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;}
 
@@ -244,6 +250,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
       <div class="history-link"><button type="button" onclick="showHistory()">🧾 คำสั่งซื้อรอดำเนินการ</button></div>
       <div id="myPrivileges" class="sh"></div>
       <div id="autoPromoBox" class="sh"></div>
+      <div id="pointsMultiplierBox" class="sh"></div>
       <div id="prodList"></div>
     </div>
 
@@ -696,6 +703,7 @@ function applyShopBootstrap_(r){
   }
   renderMyPrivileges_({ success: true, results: r.privileges || [] });
   renderAutoPromoBox_(activeAutoCoupons);
+  renderPointsMultiplierBox_(r.pointsMultiplierPromos || []);
   requestAnimationFrame(function(){ window.scrollTo(0, scrollY_); });
 
   savedAddressLoaded = true;
@@ -842,6 +850,40 @@ function renderAutoPromoBox_(coupons){
     + '</div>';
   });
   h += '</div>';
+  box.innerHTML = h;
+  box.classList.remove('sh');
+}
+
+// ⚡ เพิ่ม — โปรแต้มสะสม (คูณแต้ม) เดิมทำงานเงียบๆ อยู่เบื้องหลังตอนสั่งซื้อจริงเท่านั้น ลูกค้าไม่มีทางรู้ว่า
+// มีโปรนี้อยู่เลยจนกว่าจะได้แต้มมากกว่าปกติ — โชว์เป็นการ์ดคูปองแบบตั๋วฉีก (.coupon-ticket) เหมือนคูปอง/
+// สิทธิพิเศษ บนหน้าแรกเลย ใช้โทนสีม่วง (th-violet) แยกจากส้ม/ฟ้า/ชมพู/ทองที่ใช้อยู่แล้ว กันสับสนว่าเป็นคูปอง
+function renderPointsMultiplierBox_(promos){
+  var box = document.getElementById('pointsMultiplierBox');
+  if (!promos || !promos.length) { box.classList.add('sh'); box.innerHTML = ''; return; }
+  var h = '';
+  promos.forEach(function(p){
+    var subParts = [];
+    if (p.minPurchase > 0) subParts.push('เมื่อช้อปครบ ' + p.minPurchase.toLocaleString('th-TH') + '.-');
+    if (p.restriction) subParts.push('เฉพาะ ' + p.restriction);
+    var subText = subParts.join(' • ');
+    h += '<div class="coupon-ticket th-violet">'
+      + '<div class="coupon-ticket-notch top"></div>'
+      + '<div class="coupon-ticket-notch bottom"></div>'
+      + '<div class="coupon-ticket-inner">'
+        + '<div class="coupon-ticket-stub"><small>คูณแต้ม</small><b>x' + p.multiplier + '</b></div>'
+        + '<div class="coupon-ticket-body">'
+          + '<div class="ct-title">' + escHtml(p.name) + '</div>'
+          + (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : '')
+          + (p.expiry ? '<div class="ct-exp">ใช้ได้ถึง ' + escHtml(p.expiry) + '</div>' : '')
+        + '</div>'
+        + '<div class="coupon-ticket-side">'
+          + '<span class="ct-icon">✨</span>'
+          + '<span class="ct-tagline">แต้มสะสม<br>คูณเพิ่ม</span>'
+          + '<div class="coupon-ticket-tag">ใช้อยู่</div>'
+        + '</div>'
+      + '</div>'
+    + '</div>';
+  });
   box.innerHTML = h;
   box.classList.remove('sh');
 }
