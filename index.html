@@ -138,12 +138,12 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .coupon-ticket.th-violet .ct-sub{color:#8e6ba8;}
 .coupon-ticket.th-violet .coupon-ticket-side{background:#e1bee7;}
 .coupon-ticket.th-violet .ct-tagline{color:#4a148c;}
-.coupon-ticket.th-indigo .coupon-ticket-inner{background:#e8eaf6;}
-.coupon-ticket.th-indigo .coupon-ticket-stub{background:linear-gradient(135deg,#5c6bc0,#283593);}
-.coupon-ticket.th-indigo .ct-title{color:#1a237e;}
-.coupon-ticket.th-indigo .ct-sub{color:#7680b3;}
-.coupon-ticket.th-indigo .coupon-ticket-side{background:#c5cae9;}
-.coupon-ticket.th-indigo .ct-tagline{color:#1a237e;}
+.coupon-ticket.th-rose .coupon-ticket-inner{background:#fce4ec;}
+.coupon-ticket.th-rose .coupon-ticket-stub{background:linear-gradient(135deg,#f8bbd0,#d81b60);}
+.coupon-ticket.th-rose .ct-title{color:#880e4f;}
+.coupon-ticket.th-rose .ct-sub{color:#ad1457;}
+.coupon-ticket.th-rose .coupon-ticket-side{background:#f8bbd0;}
+.coupon-ticket.th-rose .ct-tagline{color:#880e4f;}
 .order-box{background:var(--gp);border-radius:12px;padding:18px;text-align:left;margin-top:10px;}
 .order-box .row{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;}
 
@@ -897,9 +897,9 @@ function renderPointsMultiplierBox_(promos){
 }
 
 // ⚡ เพิ่ม — โปร "ซื้อซ้ำภายในเดือน" เดิมโชว์แค่บรรทัดข้อความสีเทาที่หน้าชำระเงิน (ไม่เปลี่ยน ยังอยู่เหมือนเดิม
-// ใน renderDiscountSummary) เพิ่มตั๋วคูปองบนหน้าแรกให้ด้วยตามที่ขอ ใช้โทนสีน้ำเงินคราม (th-indigo) แยกจาก
-// ม่วงของคูณแต้ม — เป็นการ "ประกาศว่ามีโปรนี้เปิดอยู่" เหมือนตั๋วคูณแต้ม/คูปองอัตโนมัติ ไม่ได้เช็คว่าลูกค้าคนนี้
-// ซื้อครั้งแรกไปแล้วหรือยัง (เงื่อนไข "ต้องซื้อครั้งแรกก่อน" ยังคงเช็คจริงตอนคำนวณราคา/สั่งซื้อเหมือนเดิม)
+// ใน renderDiscountSummary) เพิ่มตั๋วคูปองบนหน้าแรกให้ด้วยตามที่ขอ ใช้โทนชมพูอ่อน/กุหลาบ (th-rose) ต่างจาก
+// ชมพูสดของโปรวันเกิด (th-pink) ตามที่ขอ — เป็นการ "ประกาศว่ามีโปรนี้เปิดอยู่" เหมือนตั๋วคูณแต้ม/คูปองอัตโนมัติ
+// ไม่ได้เช็คว่าลูกค้าคนนี้ซื้อครั้งแรกไปแล้วหรือยัง (เงื่อนไขจริงยังคงเช็คตอนคำนวณราคา/สั่งซื้อเหมือนเดิม)
 function renderRepeatPromoBox_(promos){
   var box = document.getElementById('repeatPromoBox');
   if (!promos || !promos.length) { box.classList.add('sh'); box.innerHTML = ''; return; }
@@ -916,7 +916,7 @@ function renderRepeatPromoBox_(promos){
     if (p.minPurchase > 0) condParts.push('เมื่อช้อปครบ ' + p.minPurchase.toLocaleString('th-TH') + '.-');
     if (p.restriction) condParts.push('เฉพาะ ' + p.restriction);
     var subText = rewardParts.join(' + ') + (condParts.length ? ' • ' + condParts.join(' • ') : '');
-    h += '<div class="coupon-ticket th-indigo">'
+    h += '<div class="coupon-ticket th-rose">'
       + '<div class="coupon-ticket-notch top"></div>'
       + '<div class="coupon-ticket-notch bottom"></div>'
       + '<div class="coupon-ticket-inner">'
