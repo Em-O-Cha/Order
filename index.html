@@ -1502,7 +1502,7 @@ function renderDiscountSummary(){
     ? '<span style="text-decoration:line-through;color:#999;margin-right:6px">฿' + Math.round(getShippingCost()).toLocaleString('th-TH') + '</span><span style="color:#c62828;font-weight:700">฿' + Math.round(getFinalShippingCost()).toLocaleString('th-TH') + '</span>'
     : '฿' + Math.round(getShippingCost()).toLocaleString('th-TH');
   h += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>' + shipHtml + '</span></div>';
-  h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดสุทธิ</b></span><span><b>฿' + getFinalTotal().toLocaleString('th-TH') + '</b></span></div>';
+  h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px;align-items:center"><span><b>ยอดสุทธิ</b></span><span style="font-size:22px;font-weight:700;color:var(--gd)">฿' + getFinalTotal().toLocaleString('th-TH') + '</span></div>';
   h += '</div>';
   wrap.innerHTML = h;
   document.getElementById('checkoutBarTotal').textContent = '฿' + getFinalTotal().toLocaleString('th-TH');
