@@ -53,6 +53,7 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
   background:#fff;border-radius:20px;box-shadow:0 10px 28px rgba(0,0,0,.16);
   padding:14px 20px;display:flex;justify-content:space-between;align-items:center;z-index:80;}
 .bd{padding-bottom:96px;}
+#orderDoneBar{flex-direction:column;gap:8px;}
 .cart-total{font-size:13px;color:var(--g6);}
 .cart-total b{font-size:22px;color:#e65100;display:block;}
 .btn{padding:12px 24px;border:none;border-radius:10px;background:var(--gm);color:#fff;
@@ -326,6 +327,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
   </div>
   <div class="cart-bar sh" id="orderDoneBar">
     <button class="btn btn-block" onclick="openSlipUploadPage()">📎 แนบสลิปการโอนเงิน</button>
+    <button class="btn btn-outline btn-block sh" id="backToPaymentBtn" onclick="openPaymentRecallModal_()">🔙 ดูเลขบัญชี/QR อีกครั้ง</button>
   </div>
 </div>
 
@@ -379,6 +381,21 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
   </div>
 </div>
 
+<!-- ⚡ เพิ่ม — ป็อปอัปกลับมาดูเลขบัญชี/QR ซ้ำที่หน้า "สั่งซื้อสำเร็จ" เผื่อลืมคัดลอกตอนอยู่หน้าชำระเงิน -->
+<div class="mo" id="paymentRecallModal">
+  <div class="mo-card">
+    <div class="mo-hd">
+      <h2>💳 ข้อมูลการชำระเงิน</h2>
+      <p style="font-size:12.5px;opacity:.9;margin-top:4px">เลขที่ออเดอร์: <b id="paymentRecallOrderId"></b></p>
+    </div>
+    <div class="mo-bd">
+      <div style="background:#fff3e0;border-radius:10px;padding:9px 12px;font-size:11.5px;color:#7a4d12;text-align:center;margin-bottom:12px;line-height:1.5">🔒 ยอดนี้คือยอดเดิมตอนสั่งซื้อ จะไม่คำนวณใหม่ ต่อให้ตะกร้าปัจจุบันเปลี่ยนไปแล้วก็ตาม</div>
+      <div id="paymentRecallDetail"></div>
+      <button type="button" class="btn btn-outline btn-block" style="margin-top:14px" onclick="closePaymentRecallModal_()">ปิด</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 <script>
 // ⚡ แก้ (1/9/69) — เดิม <script src="...sdk.js"> เป็น tag ปกติ (ไม่มี defer/async) เป็น script แบบบล็อกการ
@@ -414,6 +431,9 @@ var pointsToRedeemInput_ = 0; // ⚡ เพิ่ม (19/8/69) จำนวน�
 var LIFF_LOGIN_GUARD = 'emocha.shop.login-attempted';
 var pendingSlipOrderId = '';
 var currentOrderId = '';
+// ⚡ เพิ่ม — ยอดเงินที่ยืนยันสั่งซื้อไปแล้ว (ไม่ใช่ getFinalTotal() สด) ใช้โชว์ QR/เลขบัญชีซ้ำที่หน้า
+// "สั่งซื้อสำเร็จ" กันปัญหายอดเพี้ยนถ้าตะกร้าปัจจุบันเปลี่ยนไปหลังยืนยันสั่งซื้อแล้ว
+var lastOrderAmount_ = 0;
 var slipUploadData = null;
 var slipTargetOrderId = '';
 var slipUploadSource_ = '';
@@ -462,6 +482,17 @@ function openSlipUploadModal(orderId, source){
 
 function closeSlipUploadModal(){
   document.getElementById('slipUploadModal').classList.remove('show');
+}
+
+// ⚡ เพิ่ม — ป็อปอัป "ดูเลขบัญชี/QR อีกครั้ง" ที่หน้าสั่งซื้อสำเร็จ เผื่อลืมคัดลอกเลขบัญชี/บันทึก QR ตอนอยู่
+// หน้าชำระเงิน ใช้ยอดที่ล็อกไว้ตอนยืนยันสั่งซื้อ (lastOrderAmount_) เสมอ ไม่คำนวณจากตะกร้าปัจจุบันสดๆ
+function openPaymentRecallModal_(){
+  document.getElementById('paymentRecallOrderId').textContent = pendingSlipOrderId || currentOrderId || '';
+  document.getElementById('paymentRecallModal').classList.add('show');
+  renderPaymentDetail('paymentRecallDetail', lastOrderAmount_);
+}
+function closePaymentRecallModal_(){
+  document.getElementById('paymentRecallModal').classList.remove('show');
 }
 
 var shopWindowClosed_ = false;
@@ -1567,9 +1598,15 @@ function buildBankInfoRows_(){
     + '<div class="row"><span>ชื่อบัญชี</span><span>' + escHtml(paymentInfo.accountName) + '</span></div>';
 }
 
-function renderPaymentDetail(){
-  var wrap = document.getElementById('paymentDetail');
-  var total = getFinalTotal();
+// ⚡ แก้ — รับ targetElId/fixedTotal เพิ่มเติม (ทั้งคู่ optional ไม่กระทบจุดเรียกเดิมที่เรียกแบบไม่ใส่ค่า) เพื่อ
+// ใช้ซ้ำฟังก์ชันนี้กับป็อปอัป "ดูเลขบัญชี/QR อีกครั้ง" ที่หน้าสั่งซื้อสำเร็จได้ โดยยอดเงินต้องเป็นค่าที่ล็อกไว้
+// (lastOrderAmount_) ไม่ใช่คำนวณสดจากตะกร้าปัจจุบันเหมือนตอนอยู่หน้าชำระเงิน — ตั้งชื่อ id ของกล่อง QR ตาม
+// targetElId ด้วย กันชนกับ id ซ้ำถ้ามีทั้ง 2 กล่องอยู่ใน DOM พร้อมกัน (แค่กล่องนึงถูกใช้งานจริง แต่ทั้งคู่มีอยู่)
+function renderPaymentDetail(targetElId, fixedTotal){
+  targetElId = targetElId || 'paymentDetail';
+  var wrap = document.getElementById(targetElId);
+  var qrContainerId = targetElId + 'QrContainer';
+  var total = (typeof fixedTotal === 'number') ? fixedTotal : getFinalTotal();
   if (!paymentInfo) { wrap.innerHTML = ''; return; }
   if (total <= 0) {
     wrap.innerHTML = '<div class="bank-box" style="text-align:center"><p style="font-weight:600;color:var(--gd)">🎉 ยอดชำระ ฿0 — ไม่ต้องโอนเงิน</p><p style="font-size:12.5px;color:var(--g6);margin-top:6px">ส่วนลด/สิทธิ์ของคุณครอบคลุมยอดทั้งหมดแล้ว กดยืนยันสั่งซื้อได้เลย ไม่ต้องแนบสลิป</p></div>';
@@ -1577,15 +1614,15 @@ function renderPaymentDetail(){
   }
   if (selectedPayment === 'promptpay') {
     wrap.innerHTML = '<div class="qr-box">'
-      + '<div id="qrcodeContainer" style="display:inline-block"></div>'
+      + '<div id="' + qrContainerId + '" style="display:inline-block"></div>'
       + '<p style="margin-top:10px;font-size:13px;color:var(--g6)">ยอดชำระ ฿' + total.toLocaleString('th-TH') + '</p>'
-      + '<button type="button" onclick="saveQrCode_()" style="margin-top:12px;display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:24px;border:none;background:linear-gradient(135deg,var(--gd),#66bb6a);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:\'Kanit\',sans-serif;box-shadow:0 3px 10px rgba(46,125,50,.25)">⬇️ บันทึก QR ลงเครื่อง</button>'
+      + '<button type="button" onclick="saveQrCode_(\'' + qrContainerId + '\')" style="margin-top:12px;display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:24px;border:none;background:linear-gradient(135deg,var(--gd),#66bb6a);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:\'Kanit\',sans-serif;box-shadow:0 3px 10px rgba(46,125,50,.25)">⬇️ บันทึก QR ลงเครื่อง</button>'
       + '</div>';
-    var qrContainer = document.getElementById('qrcodeContainer');
+    var qrContainer = document.getElementById(qrContainerId);
     qrContainer.innerHTML = '';
     if (typeof QRCode === 'undefined') {
       qrContainer.innerHTML = '<p style="font-size:12px;color:#c62828">กำลังโหลด QR... ถ้าไม่ขึ้นลองปิดเปิดหน้านี้ใหม่</p>';
-      setTimeout(renderPaymentDetail, 400);
+      setTimeout(function(){ renderPaymentDetail(targetElId, fixedTotal); }, 400);
       return;
     }
     var payload = buildPromptPayPayload(paymentInfo.promptPayId, total);
@@ -1598,11 +1635,14 @@ function renderPaymentDetail(){
   }
 }
 
+// ⚡ แก้ — รับ containerId เพิ่มเติม (optional, ค่าเริ่มต้น 'qrcodeContainer' เท่าจุดเรียกเดิม) ให้ตรงกับ id ของ
+// กล่อง QR ที่ renderPaymentDetail() สร้างขึ้นจริงในแต่ละบริบท (หน้าชำระเงิน vs ป็อปอัปดูซ้ำ)
 // บันทึกรูป QR เป็น PNG: ใช้แผงแชร์/บันทึกของเครื่องบน LINE และ Safari หากรองรับ
 // หรือดาวน์โหลดไฟล์โดยตรงสำหรับเบราว์เซอร์ทั่วไป พร้อมรองรับผลลัพธ์ทั้ง canvas และ img จาก QRCode.js
-function saveQrCode_(){
-  var canvas = document.querySelector('#qrcodeContainer canvas');
-  var image = document.querySelector('#qrcodeContainer img');
+function saveQrCode_(containerId){
+  containerId = containerId || 'qrcodeContainer';
+  var canvas = document.querySelector('#' + containerId + ' canvas');
+  var image = document.querySelector('#' + containerId + ' img');
   if (!canvas && !(image && image.src)) return;
 
   // QRCode.js อาจสร้างได้ทั้ง canvas และ img ขึ้นกับเบราว์เซอร์ จึงรองรับทั้งสองแบบ
@@ -1794,12 +1834,14 @@ function confirmSubmitOrder(){
       document.getElementById('orderSummary').innerHTML = summaryHtml;
 
       currentOrderId = r.orderId;
+      lastOrderAmount_ = r.totalAmount;
       savedAddressLoaded = false;
       pointsToRedeemInput_ = 0; // คะแนนของออเดอร์ที่ยังรอแนบสลิปถูกกันไว้แล้ว รีเซ็ตกันใช้ซ้ำในรอบถัดไป
 
       if (r.skipSlipUpload || r.totalAmount <= 0) {
         pendingSlipOrderId = '';
         document.getElementById('orderDoneBar').classList.add('sh');
+        document.getElementById('backToPaymentBtn').classList.add('sh');
         var hintEl = document.getElementById('orderDoneHint');
         if (hintEl) hintEl.textContent = 'ยอด 0 บาท ไม่ต้องโอนเงิน/แนบสลิป ระบบแจ้งทีมงานเรียบร้อยแล้ว';
         var notice = document.getElementById('slipDoneNotice');
@@ -1815,6 +1857,7 @@ function confirmSubmitOrder(){
       }
 
       pendingSlipOrderId = r.orderId;
+      document.getElementById('backToPaymentBtn').classList.remove('sh');
       showState('orderDoneState');
     })
     .catch(function(e){
