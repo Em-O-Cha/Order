@@ -979,8 +979,10 @@ function renderCatalog(){
       var idx = variantList.length;
       variantList.push(v);
       var promoPrice = getBestPromoPrice_(v.skuName, v.price);
+      // ⚡ แก้ — ระบุ font-size:18px ตรงๆ ในทั้ง 2 span แทนที่จะปล่อยให้สืบทอดจาก .prod-price เฉยๆ กันกรณี
+      // เบราว์เซอร์/บริบทไหนไม่สืบทอดขนาดตัวอักษรให้ ราคาที่ลด (ตัวแดง) จะได้ใหญ่เท่าราคาปกติเสมอ
       var priceHtml = promoPrice !== null
-        ? '<span style="text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="color:#c62828;font-weight:700">฿' + Math.round(promoPrice).toLocaleString('th-TH') + '</span>'
+        ? '<span style="font-size:18px;text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="font-size:18px;color:#c62828;font-weight:700">฿' + Math.round(promoPrice).toLocaleString('th-TH') + '</span>'
         : '฿' + v.price.toLocaleString('th-TH');
       h += '<div class="prod-item">'
         + '<div style="flex:1"><div class="prod-name">' + escHtml(v.label) + '</div><div class="prod-price">' + priceHtml + '</div></div>'
