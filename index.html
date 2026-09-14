@@ -1459,11 +1459,13 @@ function renderDiscountSummary(){
       }
       return;
     }
-    h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(p.name) + '</span>'
+    var privBogoNote_ = p.type === 'bogo' ? ' <span style="font-size:10.5px;color:var(--g6);font-weight:400">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
+    h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(p.name) + privBogoNote_ + '</span>'
       + '<span style="display:flex;align-items:center;gap:8px">-฿' + Math.round(p.discount).toLocaleString('th-TH') + removeBtnHtml + '</span></div>';
   });
   if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.discount > 0) {
-    h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + '</span><span>-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
+    var manualCouponBogoNote_ = lastDiscountInfo.coupon.type === 'bogo' ? ' <span style="font-size:10.5px;color:var(--g6);font-weight:400">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
+    h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + manualCouponBogoNote_ + '</span><span>-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
   } else if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.physicalFreeQty > 0) {
     h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + ' — มีของแถม ' + lastDiscountInfo.coupon.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
   }
@@ -1474,7 +1476,8 @@ function renderDiscountSummary(){
       }
       return;
     }
-    h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(c.code) + '</span><span>-฿' + Math.round(c.discount).toLocaleString('th-TH') + '</span></div>';
+    var couponBogoNote_ = c.type === 'bogo' ? ' <span style="font-size:10.5px;color:var(--g6);font-weight:400">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
+    h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(c.code) + couponBogoNote_ + '</span><span>-฿' + Math.round(c.discount).toLocaleString('th-TH') + '</span></div>';
   });
   if (lastDiscountInfo && lastDiscountInfo.repeatPromo) {
     var rp = lastDiscountInfo.repeatPromo;
