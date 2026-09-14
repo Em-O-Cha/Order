@@ -1535,9 +1535,13 @@ function getPointsRedeemDiscount(){
   return (lastDiscountInfo && lastDiscountInfo.pointsRedeemDiscount) ? lastDiscountInfo.pointsRedeemDiscount : 0;
 }
 
+// ⚡ แก้ — ปัดเศษสตางค์ทิ้งด้วย Math.floor (ไม่ปัดขึ้นเด็ดขาด) ตรงจุดเดียวตรงนี้ เพราะทุกที่ที่แสดงยอดสุทธิ
+// (สรุปยอดหน้าชำระเงิน, แถบยอดรวมด้านล่าง, หน้าเลือกวิธีชำระเงิน, ยอด QR พร้อมเพย์) เรียกใช้ฟังก์ชันนี้ทั้งหมด
+// ก่อนแก้จุดนี้ไม่มีการปัดเศษเลย ทำให้บางออเดอร์ (ที่มีส่วนลด % ของแถมแบบ bogo กับสินค้าราคาไม่ลงตัว) โชว์ทศนิยม
+// 3 ตำแหน่งแปลกๆ เช่น ฿393.833
 function getFinalTotal(){
   var beforePoints = Math.max(0, getCartTotal() - getDiscountAmount()) + getFinalShippingCost();
-  return Math.max(0, beforePoints - getPointsRedeemDiscount());
+  return Math.floor(Math.max(0, beforePoints - getPointsRedeemDiscount()));
 }
 
 // ⚡ เพิ่ม (9/9/69) — แยกส่วนแสดงข้อมูลบัญชีธนาคาร (โลโก้/เลขบัญชี+ปุ่มคัดลอก/ชื่อบัญชี) ออกมาเป็นฟังก์ชัน
