@@ -526,14 +526,55 @@ function closeThisShopWindow_(){
 }
 
 // ⚡ เพิ่ม — ฟังสัญญาณจากหน้า slipUpload.html (หน้าแนบสลิปแบบแยกหน้าต่าง เปิดจากลิงก์แจ้งเตือนใน LINE) เผื่อ
-// หน้านั้นแนบสลิปสำเร็จแล้วส่งสัญญาณกลับมา จะได้ปิดหน้าร้านนี้ตามไปด้วยเลย — ใช้ได้เฉพาะกรณีหน้า slipUpload.html
-// ถูกเปิดด้วย window.open() จริงๆ (มี window.opener ชี้กลับมาที่นี่) เท่านั้น ถ้าเปิดจากการแตะลิงก์ใน LINE
-// โดยตรง (พบบ่อยกว่ามากในแอป LINE บนมือถือ) จะเป็นคนละหน้าต่าง/แท็บที่ไม่มีความเกี่ยวข้องกันเลยในระดับเบราว์เซอร์
-// จุดนี้จึงช่วยได้เฉพาะบางกรณีเท่านั้น ไม่ใช่ทุกกรณี
+// หน้านั้นแนบสลิปสำเร็จแล้วส่งสัญญาณกลับมา จะได้ปิดหน้าร้านนี้ตามไปด้วยทันที — ใช้ได้เฉพาะกรณีหน้า slipUpload.html
+// ถูกเปิดด้วย window.open() จริงๆ (มี window.opener ชี้กลับมาที่นี่) เท่านั้น ถือเป็นทางลัดที่เร็วกว่าตอนใช้ได้
+// ส่วนกรณีทั่วไป (เปิดจากการแตะลิงก์ใน LINE โดยตรง ไม่มี window.opener) ให้ระบบ poll ด้านล่างเป็นตัวจัดการหลัก
 window.addEventListener('message', function(e){
   if (e.origin !== 'https://em-o-cha.github.io') return;
-  if (e.data && e.data.type === 'emocha-slip-uploaded') closeThisShopWindow_();
+  if (e.data && e.data.type === 'emocha-slip-uploaded') handleSlipAttachedElsewhere_();
 });
+
+// ⚡ เพิ่ม — ถามเซิร์ฟเวอร์เป็นระยะว่า "ออเดอร์นี้แนบสลิปแล้วหรือยัง" ระหว่างที่หน้าสั่งซื้อกำลังรอลูกค้าแนบสลิป
+// อยู่ ใช้แทนการพึ่ง window.opener/postMessage ที่ไม่เสถียรในแอป LINE บนมือถือ (ดูคอมเมนต์ด้านบน) — ทำให้ถึงแม้
+// ลูกค้าจะไปแนบสลิปจากอีกหน้าต่าง/แท็บที่แยกออกไปเลย (ไม่มีความเกี่ยวข้องกันในระดับเบราว์เซอร์) หน้าสั่งซื้อเดิม
+// ก็ยังรู้ตัวและปิดตามได้เองอยู่ดี เพราะอิงจากสถานะจริงในระบบ ไม่ใช่การเชื่อมต่อระหว่างหน้าต่าง
+var slipStatusPollTimer_ = null;
+function startSlipStatusPoll_(orderId){
+  stopSlipStatusPoll_();
+  slipStatusPollTimer_ = setInterval(function(){
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'checkSlipAttached', orderId: orderId })
+    })
+      .then(function(res){ return res.text(); })
+      .then(function(text){
+        var r; try { r = JSON.parse(text); } catch (e) { return; }
+        if (r && r.success && r.attached) handleSlipAttachedElsewhere_();
+      })
+      .catch(function(){ /* เน็ตสะดุดชั่วคราว ลองรอบถัดไปเงียบๆ ไม่ต้องแจ้ง error ให้ลูกค้าเห็น */ });
+  }, 5000);
+}
+function stopSlipStatusPoll_(){
+  if (slipStatusPollTimer_) { clearInterval(slipStatusPollTimer_); slipStatusPollTimer_ = null; }
+}
+function handleSlipAttachedElsewhere_(){
+  stopSlipStatusPoll_();
+  if (shopWindowClosed_) return; // ปิดไปแล้ว/กำลังปิดอยู่พอดี ไม่ต้องทำซ้ำ
+  document.getElementById('slipUploadModal').classList.remove('show');
+  document.getElementById('orderDoneBar').classList.add('sh');
+  pendingSlipOrderId = '';
+  var hintEl = document.getElementById('orderDoneHint');
+  if (hintEl) hintEl.textContent = 'แนบสลิปเรียบร้อยแล้ว ขอบคุณค่ะ 🙏';
+  var notice = document.getElementById('slipDoneNotice');
+  if (notice) {
+    var closeMsg = isInLineClient_() ? 'กำลังปิดหน้านี้อัตโนมัติ...' : 'ปิดแท็บนี้ได้เลยค่ะ';
+    notice.innerHTML = '✅ แนบสลิปเรียบร้อยแล้ว ขอบคุณค่ะ 🙏<br>' + closeMsg;
+    notice.classList.remove('sh');
+  }
+  setStepper(3);
+  setTimeout(closeThisShopWindow_, 3000);
+}
 
 function handleSlipFile(inp){
   var file = inp.files[0];
@@ -602,6 +643,7 @@ function submitSlipInline(){
         document.getElementById('slipSuccessState').classList.remove('sh');
         prepareCloseUi_();
         if (slipUploadSource_ === 'orderDone') {
+          stopSlipStatusPoll_(); // แนบสำเร็จจากหน้านี้เองแล้ว ไม่ต้อง poll ถามซ้ำอีก
           setStepper(3); // ขั้นตอน "เสร็จสิ้น"
           var notice = document.getElementById('slipDoneNotice');
           if (notice) notice.classList.remove('sh');
@@ -628,6 +670,7 @@ function showState(id){
   document.getElementById('cartBar').classList.toggle('sh', id !== 'catalogState');
   document.getElementById('checkoutBar').classList.toggle('sh', id !== 'checkoutState');
   document.getElementById('orderDoneBar').classList.toggle('sh', id !== 'orderDoneState');
+  if (id !== 'orderDoneState') stopSlipStatusPoll_(); // ออกจากหน้ารอแนบสลิปแล้ว ไม่ต้อง poll ถามสถานะต่อ
   setStepper(STEP_MAP_.hasOwnProperty(id) ? STEP_MAP_[id] : null);
   // ⚡ เพิ่ม (26/8/69) — เลื่อนจอกลับขึ้นบนสุดทุกครั้งที่เปลี่ยนหน้า โดยเฉพาะตอนไปหน้าชำระเงิน (checkoutState)
   // เพราะลูกค้าอาจเลื่อนดูสินค้าลงมาลึกมากแล้วก่อนกดปุ่ม "ไปหน้าชำระเงิน" ถ้าไม่เลื่อนกลับขึ้นบนก่อน จอจะ
@@ -1878,6 +1921,7 @@ function confirmSubmitOrder(){
       pendingSlipOrderId = r.orderId;
       document.getElementById('backToPaymentBtn').classList.remove('sh');
       showState('orderDoneState');
+      startSlipStatusPoll_(r.orderId);
     })
     .catch(function(e){
       btn.disabled = false; btn.textContent = '✅ ยืนยันที่อยู่และสั่งซื้อ';
