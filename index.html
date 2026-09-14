@@ -801,6 +801,13 @@ function renderMyPrivileges_(r){
   document.getElementById('myPrivileges').classList.remove('sh');
 }
 
+// ⚡ เพิ่ม — สร้าง HTML ของกล่องป้ายซ้าย (.coupon-ticket-stub) ให้ตรงกันทุกจุด รองรับ "ข้อความหัวการ์ดกำหนดเอง"
+// (stubText ที่แอดมินพิมพ์เองได้ในฟอร์มสร้างโปร/คูปอง) ถ้ามีให้โชว์บรรทัดเดียวตัวหนา ไม่ต้องมีป้ายเล็กด้านบน
+// (label) เพราะข้อความที่แอดมินพิมพ์เองมักสื่อความหมายครบในตัวอยู่แล้ว ถ้าไม่มีค่อย fallback ไปข้อความที่
+// ระบบสร้างให้อัตโนมัติแบบ 2 บรรทัด (label เล็ก + value ตัวหนา) เหมือนเดิม
+function stubMarkup_(label, value){
+  return (label ? '<small>' + escHtml(label) + '</small>' : '') + '<b>' + escHtml(value) + '</b>';
+}
 // ⚡ เพิ่ม — กล่องแยกต่างหากสำหรับคูปองร้าน (autoApply) ที่ใช้อัตโนมัติตอนนี้ ไม่ปนกับกล่อง "สิทธิพิเศษของคุณ"
 // ด้านบน เพราะเป็นคนละความหมาย: สิทธิพิเศษของคุณ = ของเฉพาะตัวลูกค้าคนนั้น (สมัครสมาชิก/แนะนำเพื่อน/แลกแต้ม)
 // ส่วนกล่องนี้ = โปรร้านที่ลูกค้าทุกคนใช้ได้เหมือนกัน แสดงเป็นการ์ดคูปองแบบตั๋วฉีก (.coupon-ticket) ทีละใบ
@@ -819,6 +826,10 @@ function autoPromoValueText_(c){
 }
 // ⚡ เพิ่ม — ข้อความสั้นสำหรับฝั่งซ้ายของตั๋วคูปอง (ป้าย + ตัวเลขตัวโต)
 function autoPromoStubText_(c){
+  // ⚡ เพิ่ม — ถ้าแอดมินพิมพ์ข้อความหัวการ์ดเองไว้ (stubText) ให้ใช้ข้อความนั้นแทนของที่ระบบสร้างอัตโนมัติ
+  // เพราะบางโปร (เช่น bogo แบบ "ลด X%") สร้างข้อความอัตโนมัติที่คลุมเครือ (เช่น "ซื้อ 1 / ลด 50%" อ่านแล้ว
+  // เข้าใจผิดว่าซื้อ 1 แถม 1) — รายละเอียดจริงโชว์อยู่ในหัวเรื่อง/บรรทัดย่อยของตัวคูปองอยู่แล้ว
+  if (c.stubText) return { label: '', value: c.stubText };
   if (c.type === 'percent') return { label: 'ลดพิเศษ', value: c.value + '%' };
   if (c.type === 'fixed') return { label: 'ลดพิเศษ', value: c.value.toLocaleString('th-TH') + '.-' };
   if (c.type === 'ship_percent') return c.value >= 100 ? { label: 'จัดส่ง', value: 'ฟรี' } : { label: 'ลดค่าส่ง', value: c.value + '%' };
@@ -854,7 +865,7 @@ function renderAutoPromoBox_(coupons){
       + '<div class="coupon-ticket-notch top"></div>'
       + '<div class="coupon-ticket-notch bottom"></div>'
       + '<div class="coupon-ticket-inner">'
-        + '<div class="coupon-ticket-stub"><small>' + escHtml(stub.label) + '</small><b>' + escHtml(stub.value) + '</b></div>'
+        + '<div class="coupon-ticket-stub">' + stubMarkup_(stub.label, stub.value) + '</div>'
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(c.code || valueText) + '</div>'
           + (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : '')
@@ -885,11 +896,12 @@ function renderPointsMultiplierBox_(promos){
     if (p.minPurchase > 0) subParts.push('เมื่อช้อปครบ ' + p.minPurchase.toLocaleString('th-TH') + '.-');
     if (p.restriction) subParts.push('เฉพาะ ' + p.restriction);
     var subText = subParts.join(' • ');
+    var mulStub_ = p.stubText ? { label: '', value: p.stubText } : { label: 'คูณแต้ม', value: 'x' + p.multiplier };
     h += '<div class="coupon-ticket th-violet">'
       + '<div class="coupon-ticket-notch top"></div>'
       + '<div class="coupon-ticket-notch bottom"></div>'
       + '<div class="coupon-ticket-inner">'
-        + '<div class="coupon-ticket-stub"><small>คูณแต้ม</small><b>x' + p.multiplier + '</b></div>'
+        + '<div class="coupon-ticket-stub">' + stubMarkup_(mulStub_.label, mulStub_.value) + '</div>'
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(p.name) + '</div>'
           + (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : '')
@@ -927,11 +939,12 @@ function renderRepeatPromoBox_(promos){
     if (p.minPurchase > 0) condParts.push('เมื่อช้อปครบ ' + p.minPurchase.toLocaleString('th-TH') + '.-');
     if (p.restriction) condParts.push('เฉพาะ ' + p.restriction);
     var subText = rewardParts.join(' + ') + (condParts.length ? ' • ' + condParts.join(' • ') : '');
+    var repStub_ = p.stubText ? { label: '', value: p.stubText } : { label: 'ซื้อซ้ำ', value: stubValue };
     h += '<div class="coupon-ticket th-lime">'
       + '<div class="coupon-ticket-notch top"></div>'
       + '<div class="coupon-ticket-notch bottom"></div>'
       + '<div class="coupon-ticket-inner">'
-        + '<div class="coupon-ticket-stub"><small>ซื้อซ้ำ</small><b>' + escHtml(stubValue) + '</b></div>'
+        + '<div class="coupon-ticket-stub">' + stubMarkup_(repStub_.label, repStub_.value) + '</div>'
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(p.name) + '</div>'
           + (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : '')
