@@ -525,6 +525,16 @@ function closeThisShopWindow_(){
   tryClose();
 }
 
+// ⚡ เพิ่ม — ฟังสัญญาณจากหน้า slipUpload.html (หน้าแนบสลิปแบบแยกหน้าต่าง เปิดจากลิงก์แจ้งเตือนใน LINE) เผื่อ
+// หน้านั้นแนบสลิปสำเร็จแล้วส่งสัญญาณกลับมา จะได้ปิดหน้าร้านนี้ตามไปด้วยเลย — ใช้ได้เฉพาะกรณีหน้า slipUpload.html
+// ถูกเปิดด้วย window.open() จริงๆ (มี window.opener ชี้กลับมาที่นี่) เท่านั้น ถ้าเปิดจากการแตะลิงก์ใน LINE
+// โดยตรง (พบบ่อยกว่ามากในแอป LINE บนมือถือ) จะเป็นคนละหน้าต่าง/แท็บที่ไม่มีความเกี่ยวข้องกันเลยในระดับเบราว์เซอร์
+// จุดนี้จึงช่วยได้เฉพาะบางกรณีเท่านั้น ไม่ใช่ทุกกรณี
+window.addEventListener('message', function(e){
+  if (e.origin !== 'https://em-o-cha.github.io') return;
+  if (e.data && e.data.type === 'emocha-slip-uploaded') closeThisShopWindow_();
+});
+
 function handleSlipFile(inp){
   var file = inp.files[0];
   if (!file) return;
