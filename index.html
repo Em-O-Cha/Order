@@ -1141,11 +1141,31 @@ function showHistory(){
   loadOrderHistory();
 }
 
+// ⚡ เพิ่มชั่วคราว (14/9/69) — จับเวลาจริงฝั่งเว็บ ตั้งแต่กดปุ่มจนได้ผลลัพธ์กลับมา (รวมเวลาเดินทางไป-กลับ +
+// เวลาที่ Apps Script เตรียมตัวก่อนเริ่มรันโค้ด ซึ่งไม่ถูกนับใน Debug_Log ฝั่งเซิร์ฟเวอร์) โชว์เป็นตัวเลขเล็กๆ
+// มุมขวาบนจอ เพื่อเทียบว่า "เวลาที่รอจริง" กับ "เวลาที่เซิร์ฟเวอร์บันทึกไว้" ต่างกันแค่ไหน ใช้วินิจฉัยชั่วคราว
+// เท่านั้น ลบออกได้ทีหลังเมื่อไม่ต้องใช้แล้ว
+function showPerfBadge_(label, ms, isError){
+  var el = document.getElementById('perfDebugBadge');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'perfDebugBadge';
+    el.style.cssText = 'position:fixed;top:8px;right:8px;background:rgba(0,0,0,.75);color:#fff;font-size:11px;padding:7px 10px;border-radius:8px;z-index:500;font-family:monospace;line-height:1.6;max-width:220px;';
+    document.body.appendChild(el);
+  }
+  var lines = (el.getAttribute('data-lines') || '').split('\n').filter(function(l){ return l && l.indexOf(label + ':') !== 0; });
+  lines.push(label + ': ' + (ms / 1000).toFixed(2) + ' วิ' + (isError ? ' (error)' : ''));
+  el.setAttribute('data-lines', lines.join('\n'));
+  el.innerHTML = lines.map(function(l){ return escHtml(l); }).join('<br>');
+}
+
 function loadOrderHistory(){
   document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:var(--g6);padding:20px 0">⏳ กำลังโหลด...</p>';
+  var _perfStart = Date.now();
   getFreshIdToken().then(function(idToken){
     return callApi('getMyOrderHistory', { idToken: idToken });
   }).then(function(r){
+    showPerfBadge_('รถเข็น', Date.now() - _perfStart);
     if (!r || !r.success) {
       document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:#c62828">โหลดรายการไม่สำเร็จ: ' + escHtml(r ? r.error : '') + '</p>';
       return;
@@ -1153,6 +1173,7 @@ function loadOrderHistory(){
     var pending = (r.results || []).filter(function(o){ return !o.hasSlip && !o.cancelled; });
     renderOrderHistory(pending);
   }).catch(function(e){
+    showPerfBadge_('รถเข็น', Date.now() - _perfStart, true);
     if (e && e.alreadyShown) return;
     document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:#c62828">โหลดรายการไม่สำเร็จ: ' + escHtml(e.message) + '</p>';
   });
@@ -1343,9 +1364,11 @@ function refreshDiscounts(idTokenParam){
   var items = Object.keys(cart).map(function(name){ return { name: name, qty: cart[name] }; });
   var itemsB64 = btoa(unescape(encodeURIComponent(JSON.stringify(items))));
   var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
+  var _perfStart = Date.now();
   return tokenPromise.then(function(idToken){
     return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), pointsToRedeem: pointsToRedeemInput_ });
   }).then(function(r){
+    showPerfBadge_('คำนวณส่วนลด', Date.now() - _perfStart, !(r && r.success));
     if (r && r.success) {
       lastDiscountInfo = r;
       discountLoadError_ = null;
@@ -1356,6 +1379,7 @@ function refreshDiscounts(idTokenParam){
     renderDiscountSummary();
     renderPaymentDetail();
   }).catch(function(e){
+    showPerfBadge_('คำนวณส่วนลด', Date.now() - _perfStart, true);
     discountLoadError_ = e && e.message ? e.message : 'เรียก API ไม่สำเร็จ';
     console.warn('checkShopDiscounts ล้มเหลว (network):', discountLoadError_);
     renderDiscountSummary();
