@@ -1431,7 +1431,7 @@ function renderPointsRedeemBox_(){
   if (cfg.minRedeem > 0) h += '<p style="font-size:11.5px;color:var(--g6);margin-bottom:8px">แลกขั้นต่ำ ' + cfg.minRedeem + ' คะแนน</p>';
 
   if (lastDiscountInfo.pointsUsed > 0) {
-    h += '<div class="row" style="align-items:center"><span>ใช้ไปแล้ว ' + lastDiscountInfo.pointsUsed + ' คะแนน (-฿' + Math.round(lastDiscountInfo.pointsRedeemDiscount).toLocaleString('th-TH') + ')</span>'
+    h += '<div class="row" style="align-items:center"><span>ใช้ไปแล้ว ' + lastDiscountInfo.pointsUsed + ' คะแนน <span style="color:#c62828">(-฿' + Math.round(lastDiscountInfo.pointsRedeemDiscount).toLocaleString('th-TH') + ')</span></span>'
       + '<button type="button" onclick="clearPointsRedeem()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ยกเลิก</button></div>';
   } else {
     h += '<div style="display:flex;gap:8px">'
@@ -1548,11 +1548,11 @@ function renderDiscountSummary(){
     }
     var privBogoNote_ = p.type === 'bogo' ? ' <span style="font-size:10.5px;color:var(--g6);font-weight:400">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
     h += '<div class="row" style="align-items:center"><span>🎁 ' + escHtml(p.name) + privBogoNote_ + '</span>'
-      + '<span style="display:flex;align-items:center;gap:8px">-฿' + Math.round(p.discount).toLocaleString('th-TH') + removeBtnHtml + '</span></div>';
+      + '<span style="display:flex;align-items:center;gap:8px"><span style="color:#c62828">-฿' + Math.round(p.discount).toLocaleString('th-TH') + '</span>' + removeBtnHtml + '</span></div>';
   });
   if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.discount > 0) {
     var manualCouponBogoNote_ = lastDiscountInfo.coupon.type === 'bogo' ? ' <span style="font-size:10.5px;color:var(--g6);font-weight:400">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
-    h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + manualCouponBogoNote_ + '</span><span>-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
+    h += '<div class="row"><span>🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + manualCouponBogoNote_ + '</span><span style="color:#c62828">-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
   } else if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.physicalFreeQty > 0) {
     h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + ' — มีของแถม ' + lastDiscountInfo.coupon.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
   }
@@ -1564,12 +1564,12 @@ function renderDiscountSummary(){
       return;
     }
     var couponBogoNote_ = c.type === 'bogo' ? ' <span style="font-size:10.5px;color:var(--g6);font-weight:400">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
-    h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(c.code) + couponBogoNote_ + '</span><span>-฿' + Math.round(c.discount).toLocaleString('th-TH') + '</span></div>';
+    h += '<div class="row"><span>🎉 โปรโมชั่น ' + escHtml(c.code) + couponBogoNote_ + '</span><span style="color:#c62828">-฿' + Math.round(c.discount).toLocaleString('th-TH') + '</span></div>';
   });
   if (lastDiscountInfo && lastDiscountInfo.repeatPromo) {
     var rp = lastDiscountInfo.repeatPromo;
     if (rp.discount > 0) {
-      h += '<div class="row"><span>🔁 ' + escHtml(rp.name) + ' (ซื้อซ้ำเดือนนี้)</span><span>-฿' + Math.round(rp.discount).toLocaleString('th-TH') + '</span></div>';
+      h += '<div class="row"><span>🔁 ' + escHtml(rp.name) + ' (ซื้อซ้ำเดือนนี้)</span><span style="color:#c62828">-฿' + Math.round(rp.discount).toLocaleString('th-TH') + '</span></div>';
     }
     if (rp.bonusPoints > 0) {
       h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>🔁 ' + escHtml(rp.name) + '</span><span>+' + rp.bonusPoints + ' แต้มโบนัส</span></div>';
@@ -1582,7 +1582,7 @@ function renderDiscountSummary(){
     h += '<div class="row" style="color:#c62828"><span colspan="2">⚠️ ' + escHtml(lastDiscountInfo.couponError) + '</span></div>';
   }
   if (lastDiscountInfo && lastDiscountInfo.pointsUsed > 0) {
-    h += '<div class="row"><span>🎯 แลกคะแนน ' + lastDiscountInfo.pointsUsed + ' คะแนน</span><span>-฿' + Math.round(lastDiscountInfo.pointsRedeemDiscount).toLocaleString('th-TH') + '</span></div>';
+    h += '<div class="row"><span>🎯 แลกคะแนน ' + lastDiscountInfo.pointsUsed + ' คะแนน</span><span style="color:#c62828">-฿' + Math.round(lastDiscountInfo.pointsRedeemDiscount).toLocaleString('th-TH') + '</span></div>';
   }
   var shipDiscount = getShippingDiscount();
   var shipHtml = shipDiscount > 0
@@ -1878,7 +1878,7 @@ function confirmSubmitOrder(){
         + '<div class="row"><span>ยอดสินค้า</span><span>฿' + r.subtotal.toLocaleString('th-TH') + '</span></div>';
       // แสดงเฉพาะส่วนลดแต่ละรายการจริง ห้ามแสดง "ส่วนลดรวม" เพราะทำให้ยอดซ้ำกับคะแนน/คูปอง
       if (r.pointsRedeemed > 0) {
-        summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>🎯 แลกคะแนน ' + r.pointsRedeemed + ' คะแนน</span><span>-฿' + Math.round(r.pointsRedeemDiscount).toLocaleString('th-TH') + '</span></div>';
+        summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>🎯 แลกคะแนน ' + r.pointsRedeemed + ' คะแนน</span><span style="color:#c62828">-฿' + Math.round(r.pointsRedeemDiscount).toLocaleString('th-TH') + '</span></div>';
       }
       var detailDiscounts = Array.isArray(r.discountDetail) ? r.discountDetail : [];
       detailDiscounts.forEach(function(detail){
@@ -1888,7 +1888,7 @@ function confirmSubmitOrder(){
         var amountMatch = detail.match(/\(-([0-9,.]+)\)/);
         var label = detail.replace(/\s*\(-[0-9,.]+\)/, '').trim();
         if (!amountMatch || !label) return;
-        summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>' + escHtml(label) + '</span><span>-฿' + amountMatch[1] + '</span></div>';
+        summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>' + escHtml(label) + '</span><span style="color:#c62828">-฿' + amountMatch[1] + '</span></div>';
       });
       summaryHtml += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(r.shippingCost || 0).toLocaleString('th-TH') + '</span></div>';
       summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span><b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
