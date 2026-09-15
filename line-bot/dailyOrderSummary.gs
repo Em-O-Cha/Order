@@ -288,7 +288,9 @@ const EmOChaOrderBot = (() => {
    * รองรับแถวสินค้าเพิ่มเติมของออเดอร์เดียวกัน (แถวที่ไม่มี Revenue ID/Timestamp
    * ของตัวเอง) โดยผูกเข้ากับออเดอร์หลักแถวก่อนหน้า
    * ออเดอร์ที่ถูกยกเลิก (ProductName = CANCELLED_LABEL) จะไม่รวมในยอด/รายการ
-   * แต่นับแยกไว้ที่ cancelledCount
+   * แต่นับแยกไว้ที่ cancelledCount — นับตามวันที่สั่งซื้อ (Timestamp)
+   * ออเดอร์ปกติที่เป็น Line shop จะนับตาม "วันที่ชำระเงิน" (ดู effectiveOrderDateKey)
+   * แทนวันที่สั่งซื้อ เพื่อให้ยอดขายไปลงวันที่ลูกค้าโอนเงินจริง ไม่ใช่วันที่กดสั่งซื้อ
    */
   function buildSummaryForRange(startDate, endDate, adFilter) {
     const sheet = getRevenueSheet();
@@ -313,14 +315,20 @@ const EmOChaOrderBot = (() => {
       const isNewOrder = revenueId !== '' && revenueId != null;
       if (isNewOrder) {
         currentOrder = null;
-        const key = toDateKey(row[COL.TIMESTAMP]);
-        const inRange = key != null && key >= startKey && key <= endKey;
         const adValue = String(row[COL.AD] || '').trim().toLowerCase();
         const adMatches = effectiveAdFilter === '*' || adValue === effectiveAdFilter;
-        if (inRange && adMatches) {
-          if (productName === CANCELLED_LABEL) {
-            cancelledCount++;
-          } else if (isPaid(row)) {
+
+        if (productName === CANCELLED_LABEL) {
+          // ออเดอร์ยกเลิก: นับตามวันที่สั่งซื้อ (Timestamp) เหมือนเดิม ไม่เกี่ยวกับการชำระเงิน
+          const key = toDateKey(row[COL.TIMESTAMP]);
+          const inRange = key != null && key >= startKey && key <= endKey;
+          if (inRange && adMatches) cancelledCount++;
+        } else {
+          // ออเดอร์ปกติ: Line shop ใช้วันที่ชำระเงินเป็นหลัก ถ้ายังไม่จ่ายเงินจะได้ key เป็น
+          // null แล้วไม่ถูกนับที่ไหนเลยจนกว่าจะมีการจ่ายจริง
+          const key = effectiveOrderDateKey(row, adValue);
+          const inRange = key != null && key >= startKey && key <= endKey;
+          if (inRange && adMatches) {
             orderCount++;
             totalAmount += billTotal;
             currentOrder = {
@@ -332,7 +340,6 @@ const EmOChaOrderBot = (() => {
             };
             orders.push(currentOrder);
           }
-          // ยังไม่ชำระเงิน (ไม่ใช่ยกเลิก) — ไม่นับที่ไหนเลย ถือว่ายังไม่ใช่ยอดขายจริง
         }
       }
 
@@ -348,15 +355,21 @@ const EmOChaOrderBot = (() => {
     return { dateLabel, isSingleDay, orders, orderCount, totalAmount, cancelledCount, adFilter: effectiveAdFilter };
   }
 
-  // เช็คว่าออเดอร์แถวนี้ชำระเงินแล้วหรือยัง — ดูจากคอลัมน์ AE "วันที่ชำระเงิน" มีค่าหรือไม่
-  // เช็คเฉพาะออเดอร์ช่องทาง Line shop เท่านั้น เพราะ Shopee/TikTok เก็บเงินผ่านแพลตฟอร์ม
-  // เองอยู่แล้วก่อนโอนให้ร้าน เลยไม่มีการกรอกคอลัมน์นี้ (ถ้าเช็คทุกช่องทางจะทำให้ออเดอร์
-  // Shopee/TikTok หายไปจากรายงานทั้งหมดทั้งที่จ่ายเงินจริงแล้ว)
-  function isPaid(row) {
-    const adValue = String(row[COL.AD] || '').trim().toLowerCase();
-    if (adValue !== AD_FILTER) return true;
-    const value = row[COL.PAID_DATE];
-    return value !== '' && value != null;
+  /**
+   * วันที่ที่ใช้ตัดสินว่าออเดอร์นี้ "อยู่วันไหน" สำหรับนับยอด/แสดงผล
+   * - ออเดอร์ Line shop: ใช้คอลัมน์ AE "วันที่ชำระเงิน" เป็นหลัก เพราะลูกค้าอาจสั่งซื้อวันหนึ่ง
+   *   แต่โอนเงินอีกวันหนึ่ง จะได้นับเป็นยอดขายของวันที่จ่ายเงินจริง ไม่ใช่วันที่กดสั่ง —
+   *   ถ้ายังไม่มีวันที่ชำระเงิน (ยังไม่จ่าย) จะคืนค่า null คือไม่นับเป็นวันไหนเลยจนกว่าจะจ่าย
+   * - ช่องทางอื่น (Shopee/TikTok ฯลฯ) ไม่มีคอลัมน์นี้ให้ใช้ (แพลตฟอร์มเก็บเงินเองอยู่แล้ว)
+   *   จึงใช้คอลัมน์ Timestamp (วันที่บันทึกออเดอร์) เหมือนเดิม
+   */
+  function effectiveOrderDateKey(row, adValue) {
+    if (adValue === AD_FILTER) {
+      const paidValue = row[COL.PAID_DATE];
+      if (paidValue === '' || paidValue == null) return null;
+      return toDateKey(paidValue);
+    }
+    return toDateKey(row[COL.TIMESTAMP]);
   }
 
   // ชื่อช่องทางแบบสวยๆ ไว้โชว์บนการ์ด/altText เช่น "line shop" → "Line Shop", '*' → "ทุกช่องทาง"
@@ -617,16 +630,18 @@ const EmOChaOrderBot = (() => {
       const isNewOrder = revenueId !== '' && revenueId != null;
       if (isNewOrder) {
         currentOrder = null;
-        const key = toDateKey(row[COL.TIMESTAMP]);
-        const inRange = key != null && key >= startKey && key <= endKey;
-        const adValue = String(row[COL.AD] || '').trim().toLowerCase();
-        const adMatches = effectiveAdFilter === '*' || adValue === effectiveAdFilter;
-        if (inRange && adMatches && productName !== CANCELLED_LABEL && isPaid(row)) {
-          currentOrder = {
-            dateLabel: formatThaiDateFromKey(key),
-            orderId: revenueId,
-            customerName: String(row[COL.CUSTOMER_NAME] || '').trim(),
-          };
+        if (productName !== CANCELLED_LABEL) {
+          const adValue = String(row[COL.AD] || '').trim().toLowerCase();
+          const adMatches = effectiveAdFilter === '*' || adValue === effectiveAdFilter;
+          const key = effectiveOrderDateKey(row, adValue);
+          const inRange = key != null && key >= startKey && key <= endKey;
+          if (inRange && adMatches) {
+            currentOrder = {
+              dateLabel: formatThaiDateFromKey(key),
+              orderId: revenueId,
+              customerName: String(row[COL.CUSTOMER_NAME] || '').trim(),
+            };
+          }
         }
       }
 
