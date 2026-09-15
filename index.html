@@ -396,6 +396,30 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
   </div>
 </div>
 
+<!-- ⚡ เพิ่ม — ป๊อปอัปเตือนยอดเปลี่ยนแปลง เมื่อกด "ดำเนินการต่อ" จากหน้ารถเข็นสำหรับออเดอร์ที่ค้างจ่ายอยู่ และ
+     สิทธิ์/โปรที่เคยใช้ตอนสั่งซื้อมีการเปลี่ยนแปลงไปแล้ว (ดูฟังก์ชัน continueToSlipUpload) -->
+<div class="mo" id="promoRecheckModal">
+  <div class="mo-card">
+    <div class="mo-hd">
+      <h2>⚠️ ยอดชำระมีการเปลี่ยนแปลง</h2>
+      <p style="font-size:12.5px;opacity:.9;margin-top:4px">เลขที่ออเดอร์: <b id="promoRecheckOrderId"></b></p>
+    </div>
+    <div class="mo-bd">
+      <p style="font-size:12.5px;color:var(--g6);line-height:1.6;margin-bottom:14px">สิทธิ์/โปรโมชั่นที่ใช้ตอนสั่งซื้อมีการเปลี่ยนแปลงระหว่างที่รอชำระเงิน ระบบคำนวณยอดตามสิทธิ์/โปรที่ใช้ได้ ณ ตอนนี้ให้ใหม่แล้ว</p>
+      <div class="bank-box" style="margin-top:0;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12.5px;color:var(--g6)">ยอดที่ต้องชำระ</span>
+        <span>
+          <span style="font-size:13px;color:#9a9a9a;text-decoration:line-through;margin-right:8px" id="promoRecheckOldAmount"></span>
+          <span style="font-size:20px;font-weight:700;color:#e65100" id="promoRecheckNewAmount"></span>
+        </span>
+      </div>
+      <div class="err" id="promoRecheckErrBox" style="margin-top:12px;margin-bottom:0"></div>
+      <button type="button" class="btn btn-block" style="margin-top:14px" id="promoRecheckConfirmBtn" onclick="confirmPromoRecheck_()">ยืนยันยอดใหม่แล้วไปต่อ</button>
+      <button type="button" class="btn btn-outline btn-block" style="margin-top:10px" onclick="closePromoRecheckModal_()">ยังไม่แนบสลิปตอนนี้</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 <script>
 // ⚡ แก้ (1/9/69) — เดิม <script src="...sdk.js"> เป็น tag ปกติ (ไม่มี defer/async) เป็น script แบบบล็อกการ
@@ -682,7 +706,7 @@ function showErrorState(msg){
   showState('errorState');
 }
 
-var NON_IDEMPOTENT_ACTIONS_ = ['registerMember', 'createShopOrder', 'redeemReward', 'updateMemberProfile', 'cancelShopOrder'];
+var NON_IDEMPOTENT_ACTIONS_ = ['registerMember', 'createShopOrder', 'redeemReward', 'updateMemberProfile', 'cancelShopOrder', 'confirmPendingOrderRecalc'];
 
 function callApi(action, payload, _attempt){
   payload = payload || {};
@@ -1215,8 +1239,67 @@ function confirmCancelOrder_(orderId){
   });
 }
 
+// ⚡ แก้ — เช็คว่าสิทธิ์/โปรที่เคยใช้ตอนสั่งซื้อออเดอร์นี้ยังใช้ได้อยู่ไหมก่อนเปิดหน้าแนบสลิป เฉพาะทางเข้านี้
+// (จากรถเข็น) เท่านั้น เพราะเป็นจุดเดียวที่มีโอกาสให้เวลาผ่านไปนานจนโปรที่เคยใช้ตอนสั่งซื้อหมดอายุได้จริง —
+// ต่างจากกด "แนบสลิปการโอนเงิน" ทันทีหลังสั่งซื้อ (openSlipUploadModal ทางอื่น) ซึ่งเพิ่งคำนวณสดๆ ไปเมื่อกี้
+// ไม่มีทางเปลี่ยน จึงไม่ต้องเช็คซ้ำให้เสียเวลา ถ้ายอดเปลี่ยนจะเด้งป๊อปอัปให้ยืนยันก่อน ถ้าเท่าเดิม/เช็คไม่สำเร็จ
+// (เช่นเน็ตหลุด) จะข้ามไปหน้าแนบสลิปตามปกติเลย ไม่บล็อกลูกค้า
 function continueToSlipUpload(orderId){
-  openSlipUploadModal(orderId, 'history');
+  getFreshIdToken().then(function(idToken){
+    return callApi('checkPendingOrderPromoStillValid', { idToken: idToken, orderId: orderId });
+  }).then(function(r){
+    if (r && r.success && r.changed) {
+      openPromoRecheckModal_(orderId, r.oldAmount, r.newAmount);
+    } else {
+      openSlipUploadModal(orderId, 'history');
+    }
+  }).catch(function(){
+    openSlipUploadModal(orderId, 'history');
+  });
+}
+
+var promoRecheckOrderId_ = '';
+var promoRecheckInFlight_ = false;
+function openPromoRecheckModal_(orderId, oldAmount, newAmount){
+  promoRecheckOrderId_ = orderId;
+  document.getElementById('promoRecheckOrderId').textContent = orderId;
+  document.getElementById('promoRecheckOldAmount').textContent = '฿' + oldAmount.toLocaleString('th-TH');
+  document.getElementById('promoRecheckNewAmount').textContent = '฿' + newAmount.toLocaleString('th-TH');
+  document.getElementById('promoRecheckConfirmBtn').textContent = 'ยืนยันยอดใหม่ ฿' + newAmount.toLocaleString('th-TH') + ' แล้วไปต่อ';
+  document.getElementById('promoRecheckErrBox').classList.remove('show');
+  document.getElementById('promoRecheckModal').classList.add('show');
+}
+function closePromoRecheckModal_(){
+  document.getElementById('promoRecheckModal').classList.remove('show');
+}
+function confirmPromoRecheck_(){
+  if (promoRecheckInFlight_) return;
+  promoRecheckInFlight_ = true;
+  var btn = document.getElementById('promoRecheckConfirmBtn');
+  var originalText = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...';
+  getFreshIdToken().then(function(idToken){
+    return callApi('confirmPendingOrderRecalc', { idToken: idToken, orderId: promoRecheckOrderId_ });
+  }).then(function(r){
+    promoRecheckInFlight_ = false;
+    btn.disabled = false; btn.textContent = originalText;
+    if (!r || !r.success) {
+      var errBox = document.getElementById('promoRecheckErrBox');
+      errBox.textContent = '⚠️ ' + (r ? r.error : 'เกิดข้อผิดพลาด');
+      errBox.classList.add('show');
+      return;
+    }
+    var confirmedOrderId = promoRecheckOrderId_;
+    closePromoRecheckModal_();
+    openSlipUploadModal(confirmedOrderId, 'history');
+    loadOrderHistory(); // รีเฟรชยอดในหน้ารถเข็นให้ตรงกับยอดใหม่ด้วย
+  }).catch(function(e){
+    promoRecheckInFlight_ = false;
+    btn.disabled = false; btn.textContent = originalText;
+    var errBox = document.getElementById('promoRecheckErrBox');
+    errBox.textContent = '⚠️ ' + e.message;
+    errBox.classList.add('show');
+  });
 }
 
 function withTimeout_(promise, ms, message){
