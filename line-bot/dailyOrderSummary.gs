@@ -655,9 +655,11 @@ const EmOChaOrderBot = (() => {
         price,
         discount,
         amount,
-        // Bill Total ของออเดอร์ให้ขึ้นเฉพาะแถวแรกของออเดอร์เท่านั้น (แถวสินค้าอื่นที่เหลือ
-        // เว้นว่างไว้) เหมือนกับที่ชีต Revenue เก็บไว้ — เพื่อให้ SUM คอลัมน์นี้ตรงกับยอด
-        // จริงโดยไม่นับซ้ำ ถ้าออเดอร์เดียวมีหลายรายการสินค้า
+        // ค่าส่งและ Bill Total เป็นค่าระดับออเดอร์ (ไม่ใช่ต่อรายการสินค้า) จึงขึ้นเฉพาะ
+        // แถวแรกของออเดอร์เท่านั้น (แถวสินค้าอื่นที่เหลือเว้นว่างไว้) เหมือนกับที่ชีต
+        // Revenue เก็บไว้ — เพื่อให้ SUM คอลัมน์นี้ตรงกับยอดจริงโดยไม่นับซ้ำ ถ้าออเดอร์
+        // เดียวมีหลายรายการสินค้า
+        delivery: isNewOrder ? (Number(row[COL.DELIVERY]) || 0) : '',
         billTotal: isNewOrder ? (Number(row[COL.BILL_TOTAL]) || 0) : '',
       });
     }
@@ -680,9 +682,9 @@ const EmOChaOrderBot = (() => {
     const tempSs = SpreadsheetApp.create(fileName);
     const sheet = tempSs.getSheets()[0];
 
-    // คอลัมน์ ราคา/ส่วนลด/ราคารวม เป็นค่าต่อบรรทัดสินค้า (เหมือนชีต Revenue) ส่วน Bill Total
-    // เป็นยอดรวมทั้งบิล จะโชว์แค่แถวแรกของแต่ละออเดอร์เท่านั้น แถวสินค้าที่เหลือเว้นว่าง
-    const header = ['วันที่', 'เลขที่ออเดอร์', 'ชื่อลูกค้า', 'สินค้า', 'จำนวน', 'ราคา', 'ส่วนลด', 'ราคารวม', 'Bill Total'];
+    // คอลัมน์ ราคา/ส่วนลด/ราคารวม เป็นค่าต่อบรรทัดสินค้า (เหมือนชีต Revenue) ส่วนค่าส่ง/Bill Total
+    // เป็นยอดรวมระดับออเดอร์ จะโชว์แค่แถวแรกของแต่ละออเดอร์เท่านั้น แถวสินค้าที่เหลือเว้นว่าง
+    const header = ['วันที่', 'เลขที่ออเดอร์', 'ชื่อลูกค้า', 'สินค้า', 'จำนวน', 'ราคา', 'ส่วนลด', 'ราคารวม', 'ค่าส่ง', 'Bill Total'];
     sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
 
     if (rows.length > 0) {
@@ -700,12 +702,11 @@ const EmOChaOrderBot = (() => {
           sameOrder ? '' : r.orderId,
           sameOrder ? '' : r.customerName,
           r.productName, r.qty,
-          r.price, r.discount, r.amount, r.billTotal,
+          r.price, r.discount, r.amount, r.delivery, r.billTotal,
         ];
       });
       sheet.getRange(2, 1, data.length, header.length).setValues(data);
-      sheet.getRange(2, 6, data.length, 3).setNumberFormat('#,##0.00'); // ราคา/ส่วนลด/ราคารวม
-      sheet.getRange(2, 9, data.length, 1).setNumberFormat('#,##0.00'); // Bill Total
+      sheet.getRange(2, 6, data.length, 5).setNumberFormat('#,##0.00'); // ราคา/ส่วนลด/ราคารวม/ค่าส่ง/Bill Total
 
       // สลับสีพื้นหลังอ่อนๆ ทีละวัน ให้เห็นชัดว่าแถวไหนอยู่วันเดียวกัน
       let lastDateLabel = null;
@@ -728,21 +729,25 @@ const EmOChaOrderBot = (() => {
     const qtyCell = sheet.getRange(totalRowIndex, 5);
     const discountCell = sheet.getRange(totalRowIndex, 7);
     const amountCell = sheet.getRange(totalRowIndex, 8);
-    const billTotalCell = sheet.getRange(totalRowIndex, 9);
+    const deliveryCell = sheet.getRange(totalRowIndex, 9);
+    const billTotalCell = sheet.getRange(totalRowIndex, 10);
     if (rows.length > 0) {
       qtyCell.setValue(`=SUM(E2:E${totalRowIndex - 1})`);
       discountCell.setValue(`=SUM(G2:G${totalRowIndex - 1})`);
       amountCell.setValue(`=SUM(H2:H${totalRowIndex - 1})`);
-      billTotalCell.setValue(`=SUM(I2:I${totalRowIndex - 1})`);
+      deliveryCell.setValue(`=SUM(I2:I${totalRowIndex - 1})`);
+      billTotalCell.setValue(`=SUM(J2:J${totalRowIndex - 1})`);
     } else {
       qtyCell.setValue(0);
       discountCell.setValue(0);
       amountCell.setValue(0);
+      deliveryCell.setValue(0);
       billTotalCell.setValue(0);
     }
-    [qtyCell, discountCell, amountCell, billTotalCell].forEach((c) => c.setFontWeight('bold'));
+    [qtyCell, discountCell, amountCell, deliveryCell, billTotalCell].forEach((c) => c.setFontWeight('bold'));
     discountCell.setNumberFormat('#,##0.00');
     amountCell.setNumberFormat('#,##0.00');
+    deliveryCell.setNumberFormat('#,##0.00');
     billTotalCell.setNumberFormat('#,##0.00');
     sheet.autoResizeColumns(1, header.length);
     SpreadsheetApp.flush();
