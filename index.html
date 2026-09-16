@@ -429,11 +429,43 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
 // ให้ตรงจุดแบบเดียวกับที่แก้ไปแล้วใน slipUpload.html: โหลด SDK แบบ inject เข้ามาด้วยโค้ดเองแทน ฟังก์ชันหลัก
 // ของหน้านี้ประกาศพร้อมใช้งานได้ทันทีไม่ต้องรอ SDK เลย ส่วน liff.init() (ผ่าน initLiff()) จะถูกเรียกก็ต่อเมื่อ
 // SDK โหลดเสร็จจริงๆ เท่านั้น (ผ่าน onload ของ script ที่ inject เอง)
-var liffSdkScript_ = document.createElement('script');
-liffSdkScript_.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
-liffSdkScript_.onload = function(){ initLiff(); };
-liffSdkScript_.onerror = function(){ showErrorState('โหลด LIFF SDK ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'); };
-document.head.appendChild(liffSdkScript_);
+// ⚡ แก้ (บั๊ก 16/9/69 — แก้จุดเดียวกันกับหน้าสมัครสมาชิก) — ถ้า request โหลด sdk.js จาก LINE ค้างกลางทาง
+// (เน็ตมือถือสะดุด/CDN ไม่ตอบ) เบราว์เซอร์จะไม่ยิงทั้ง onload และ onerror เลย — initLiff() จึงไม่ถูกเรียก และตัวจับเวลา
+// ข้างใน initLiff() ก็ไม่เริ่มนับ ลูกค้าค้างหน้าโหลดตลอดไป ไม่มีข้อความผิดพลาดและกดลองใหม่ไม่ได้
+// — คุมการโหลด SDK ด้วยตัวจับเวลาเอง: ไม่ขึ้นใน 7 วิ โหลดซ้ำใหม่อีกครั้ง ถ้ายังไม่ขึ้นอีกจึงขึ้นข้อความพร้อมปุ่มลองใหม่
+var LIFF_SDK_URL_ = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
+var liffSdkAttempt_ = 0;
+var liffStarted_ = false;
+var liffSdkWatchdog_ = null;
+function liffSdkReady_(){ return (typeof liff !== 'undefined') && liff && typeof liff.init === 'function'; }
+function startLiffWhenReady_(){
+  if (liffStarted_ || !liffSdkReady_()) return;
+  liffStarted_ = true;
+  if (liffSdkWatchdog_) { clearTimeout(liffSdkWatchdog_); liffSdkWatchdog_ = null; }
+  initLiff();
+}
+function showLiffSdkFailed_(){
+  if (liffStarted_) return;
+  document.getElementById('errorState').innerHTML = '<div class="ico">⚠️</div>'
+    + '<div id="errorMsg">เชื่อมต่อกับ LINE ไม่สำเร็จ (โหลดตัวเชื่อมต่อ LIFF ไม่ขึ้น) สัญญาณอินเทอร์เน็ตอาจไม่เสถียร'
+    +   '<br><button class="btn" style="margin-top:10px;width:auto;padding:0 16px" onclick="location.reload()">🔄 ลองใหม่อีกครั้ง</button></div>';
+  showState('errorState');
+}
+function loadLiffSdk_(){
+  liffSdkAttempt_++;
+  var s = document.createElement('script');
+  s.src = LIFF_SDK_URL_ + (liffSdkAttempt_ > 1 ? ('?r=' + Date.now()) : '');
+  s.onload = startLiffWhenReady_;
+  s.onerror = function(){ if (liffSdkAttempt_ < 2) loadLiffSdk_(); else showLiffSdkFailed_(); };
+  document.head.appendChild(s);
+  if (liffSdkWatchdog_) clearTimeout(liffSdkWatchdog_);
+  liffSdkWatchdog_ = setTimeout(function(){
+    if (liffStarted_) return;
+    if (liffSdkReady_()) { startLiffWhenReady_(); return; }  // ไฟล์มาแล้วแต่ onload ไม่ยิง
+    if (liffSdkAttempt_ < 2) loadLiffSdk_(); else showLiffSdkFailed_();
+  }, liffSdkAttempt_ < 2 ? 7000 : 12000);
+}
+loadLiffSdk_();
 
 var LIFF_ID = '2010892131-3XYQXNzq';
 var API_URL = 'https://script.google.com/macros/s/AKfycbw4EpQS0JlG_MGw8Tt08kYOM730cb0J4nHZ5Bbz54AUTXgodPsSn8xjTwWiALBp0nYK/exec';
