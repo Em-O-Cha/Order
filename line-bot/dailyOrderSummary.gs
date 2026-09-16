@@ -80,21 +80,44 @@ const EmOChaOrderBot = (() => {
 
   const RAINBOW = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#0A84FF', '#5E5CE6', '#AF52DE'];
 
-  const COL = {
-    REVENUE_ID: 0,
-    TIMESTAMP: 1,
-    PRODUCT_NAME: 2,
-    QTY: 3,
-    PRICE: 4,
-    DISCOUNT: 5,
-    AMOUNT: 6,
-    DELIVERY: 7,
-    BILL_TOTAL: 8,
-    CUSTOMER_NAME: 13, // คอลัมน์ "Customer Name" ในชีต Revenue
-    AD: 16, // คอลัมน์ "Ad" ในชีต Revenue — ใช้บอกช่องทางขาย เช่น Shopee, TikTok, Line shop
-    REMARK: 19, // คอลัมน์ T "Remark" — มีข้อความ "แลกคะแนน: N คะแนน (-X)" ปนอยู่เวลาลูกค้าใช้คะแนนเป็นส่วนลด
-    PAID_DATE: 30, // คอลัมน์ AE "วันที่ชำระเงิน" — ถ้าว่างแปลว่ายังไม่ชำระเงิน ไม่นับเป็นยอดขาย
+  // แต่ละชื่อคือ "ข้อความที่ต้องเจอเป๊ะๆ" ในแถวหัวตาราง (แถวที่ 1) ของชีต Revenue
+  // สคริปต์จะค้นหาตำแหน่งคอลัมน์จากชื่อหัวตารางนี้ใหม่ทุกครั้งที่เปิดชีต (ดูฟังก์ชัน
+  // getColumnMap/findColumnIndex ด้านล่าง) แทนการจำตำแหน่งเป็นเลขคอลัมน์ตายตัว เพื่อไม่ให้
+  // สคริปต์พังถ้ามีการแทรก/ลบ/ย้ายคอลัมน์ในชีต Revenue ภายหลัง — ตราบใดที่ชื่อหัวตาราง
+  // เดิมยังอยู่ (ไม่ว่าจะย้ายไปอยู่ตำแหน่งไหน) สคริปต์จะหาเจอเองโดยอัตโนมัติ
+  const COLUMN_KEYWORDS = {
+    REVENUE_ID: 'Revenue ID',
+    TIMESTAMP: 'Timestamp',
+    PRODUCT_NAME: 'ProductName',
+    QTY: 'Qty',
+    PRICE: 'Price',
+    DISCOUNT: 'Discount',
+    AMOUNT: 'Amount',
+    DELIVERY: 'Delivery',
+    BILL_TOTAL: 'Bill Total',
+    CUSTOMER_NAME: 'Customer Name',
+    AD: 'Ad', // บอกช่องทางขาย เช่น Shopee, TikTok, Line shop
+    REMARK: 'Remark', // มีข้อความ "แลกคะแนน: N คะแนน (-X)" ปนอยู่เวลาลูกค้าใช้คะแนนเป็นส่วนลด
+    PAID_DATE: 'วันที่ชำระเงิน', // ถ้าว่างแปลว่ายังไม่ชำระเงิน ไม่นับเป็นยอดขาย
   };
+
+  // หาตำแหน่งคอลัมน์จาก "คำ" ในหัวตาราง แทนเลขคอลัมน์ตายตัว — ถ้าหาไม่เจอจะโยน error
+  // ทันทีพร้อมบอกชื่อคอลัมน์ที่หา จะได้รู้ทันทีว่าหัวตารางในชีตถูกเปลี่ยนชื่อไปแล้ว
+  function findColumnIndex(headerRow, keyword) {
+    const idx = headerRow.findIndex((h) => String(h || '').trim() === keyword);
+    if (idx === -1) {
+      throw new Error(`หาคอลัมน์ "${keyword}" ในแถวหัวตาราง (แถวที่ 1) ของชีต Revenue ไม่เจอ — เช็คว่าชื่อคอลัมน์ในชีตตรงกับที่สคริปต์ค้นหาหรือไม่`);
+    }
+    return idx;
+  }
+
+  function getColumnMap(headerRow) {
+    const map = {};
+    Object.keys(COLUMN_KEYWORDS).forEach((name) => {
+      map[name] = findColumnIndex(headerRow, COLUMN_KEYWORDS[name]);
+    });
+    return map;
+  }
 
   // นับเฉพาะออเดอร์ที่คอลัมน์ Ad ตรงกับค่านี้เท่านั้น (ไม่สนตัวพิมพ์เล็ก-ใหญ่/เว้นวรรคหน้า-หลัง)
   // ถ้าในชีตจริงสะกดคำนี้ต่างจากนี้ (เช่น "LINE Shop" ตัวใหญ่ทั้งหมด หรือ "ไลน์ช้อป") ให้แก้ค่านี้ให้ตรง
@@ -281,6 +304,12 @@ const EmOChaOrderBot = (() => {
     return ss.getSheetByName(REVENUE_SHEET_NAME) || ss.getSheets()[0];
   }
 
+  // อ่านข้อมูลทั้งชีต พร้อมหาตำแหน่งคอลัมน์จากชื่อหัวตารางสดๆ ทุกครั้ง (ดู COLUMN_KEYWORDS)
+  function getRevenueData() {
+    const values = getRevenueSheet().getDataRange().getValues();
+    return { values, colMap: getColumnMap(values[0]) };
+  }
+
   /**
    * รวบรวมออเดอร์ (แต่ละออเดอร์แยกกัน พร้อมรายการสินค้าของออเดอร์นั้น) ในช่วง
    * [startDate, endDate] (รวมวันที่ปลายทั้งสองด้าน) นับเฉพาะออเดอร์ที่คอลัมน์ Ad
@@ -294,8 +323,7 @@ const EmOChaOrderBot = (() => {
    * แทนวันที่สั่งซื้อ เพื่อให้ยอดขายไปลงวันที่ลูกค้าโอนเงินจริง ไม่ใช่วันที่กดสั่งซื้อ
    */
   function buildSummaryForRange(startDate, endDate, adFilter) {
-    const sheet = getRevenueSheet();
-    const values = sheet.getDataRange().getValues();
+    const { values, colMap } = getRevenueData();
     const startKey = dateKeyOf(startDate);
     const endKey = dateKeyOf(endDate);
     const effectiveAdFilter = adFilter || AD_FILTER;
@@ -308,34 +336,34 @@ const EmOChaOrderBot = (() => {
 
     for (let i = 1; i < values.length; i++) {
       const row = values[i];
-      const revenueId = row[COL.REVENUE_ID];
-      const productName = String(row[COL.PRODUCT_NAME] || '').trim();
-      const qty = Number(row[COL.QTY]) || 0;
-      const billTotal = Number(row[COL.BILL_TOTAL]) || 0;
+      const revenueId = row[colMap.REVENUE_ID];
+      const productName = String(row[colMap.PRODUCT_NAME] || '').trim();
+      const qty = Number(row[colMap.QTY]) || 0;
+      const billTotal = Number(row[colMap.BILL_TOTAL]) || 0;
 
       const isNewOrder = revenueId !== '' && revenueId != null;
       if (isNewOrder) {
         currentOrder = null;
-        const adValue = String(row[COL.AD] || '').trim().toLowerCase();
+        const adValue = String(row[colMap.AD] || '').trim().toLowerCase();
         const adMatches = effectiveAdFilter === '*' || adValue === effectiveAdFilter;
 
         if (productName === CANCELLED_LABEL) {
           // ออเดอร์ยกเลิก: นับตามวันที่สั่งซื้อ (Timestamp) เหมือนเดิม ไม่เกี่ยวกับการชำระเงิน
-          const key = toDateKey(row[COL.TIMESTAMP]);
+          const key = toDateKey(row[colMap.TIMESTAMP]);
           const inRange = key != null && key >= startKey && key <= endKey;
           if (inRange && adMatches) cancelledCount++;
         } else {
           // ออเดอร์ปกติ: Line shop ใช้วันที่ชำระเงินเป็นหลัก ถ้ายังไม่จ่ายเงินจะได้ key เป็น
           // null แล้วไม่ถูกนับที่ไหนเลยจนกว่าจะมีการจ่ายจริง
-          const key = effectiveOrderDateKey(row, adValue);
+          const key = effectiveOrderDateKey(row, adValue, colMap);
           const inRange = key != null && key >= startKey && key <= endKey;
           if (inRange && adMatches) {
             orderCount++;
             totalAmount += billTotal;
-            const pointsInfo = extractPointsDiscount(row[COL.REMARK]);
+            const pointsInfo = extractPointsDiscount(row[colMap.REMARK]);
             currentOrder = {
               id: revenueId,
-              customerName: String(row[COL.CUSTOMER_NAME] || '').trim(),
+              customerName: String(row[colMap.CUSTOMER_NAME] || '').trim(),
               items: [],
               subtotal: billTotal,
               dateKey: key,
@@ -367,13 +395,13 @@ const EmOChaOrderBot = (() => {
    * - ช่องทางอื่น (Shopee/TikTok ฯลฯ) ไม่มีคอลัมน์นี้ให้ใช้ (แพลตฟอร์มเก็บเงินเองอยู่แล้ว)
    *   จึงใช้คอลัมน์ Timestamp (วันที่บันทึกออเดอร์) เหมือนเดิม
    */
-  function effectiveOrderDateKey(row, adValue) {
+  function effectiveOrderDateKey(row, adValue, colMap) {
     if (adValue === AD_FILTER) {
-      const paidValue = row[COL.PAID_DATE];
+      const paidValue = row[colMap.PAID_DATE];
       if (paidValue === '' || paidValue == null) return null;
       return toDateKey(paidValue);
     }
-    return toDateKey(row[COL.TIMESTAMP]);
+    return toDateKey(row[colMap.TIMESTAMP]);
   }
 
   // ชื่อช่องทางแบบสวยๆ ไว้โชว์บนการ์ด/altText เช่น "line shop" → "Line Shop", '*' → "ทุกช่องทาง"
@@ -633,8 +661,7 @@ const EmOChaOrderBot = (() => {
    * ตัดออเดอร์ที่ยกเลิกและที่ยังไม่ชำระเงินออกเหมือนกับการ์ดสรุปหลัก
    */
   function buildOrderDetailRows(startDate, endDate, adFilter) {
-    const sheet = getRevenueSheet();
-    const values = sheet.getDataRange().getValues();
+    const { values, colMap } = getRevenueData();
     const startKey = dateKeyOf(startDate);
     const endKey = dateKeyOf(endDate);
     const effectiveAdFilter = adFilter || AD_FILTER;
@@ -644,27 +671,27 @@ const EmOChaOrderBot = (() => {
 
     for (let i = 1; i < values.length; i++) {
       const row = values[i];
-      const revenueId = row[COL.REVENUE_ID];
-      const productName = String(row[COL.PRODUCT_NAME] || '').trim();
-      const qty = Number(row[COL.QTY]) || 0;
-      const price = Number(row[COL.PRICE]) || 0;
-      const discount = Number(row[COL.DISCOUNT]) || 0;
-      const amount = Number(row[COL.AMOUNT]) || 0;
+      const revenueId = row[colMap.REVENUE_ID];
+      const productName = String(row[colMap.PRODUCT_NAME] || '').trim();
+      const qty = Number(row[colMap.QTY]) || 0;
+      const price = Number(row[colMap.PRICE]) || 0;
+      const discount = Number(row[colMap.DISCOUNT]) || 0;
+      const amount = Number(row[colMap.AMOUNT]) || 0;
 
       const isNewOrder = revenueId !== '' && revenueId != null;
       if (isNewOrder) {
         currentOrder = null;
         if (productName !== CANCELLED_LABEL) {
-          const adValue = String(row[COL.AD] || '').trim().toLowerCase();
+          const adValue = String(row[colMap.AD] || '').trim().toLowerCase();
           const adMatches = effectiveAdFilter === '*' || adValue === effectiveAdFilter;
-          const key = effectiveOrderDateKey(row, adValue);
+          const key = effectiveOrderDateKey(row, adValue, colMap);
           const inRange = key != null && key >= startKey && key <= endKey;
           if (inRange && adMatches) {
-            const pointsInfo = extractPointsDiscount(row[COL.REMARK]);
+            const pointsInfo = extractPointsDiscount(row[colMap.REMARK]);
             currentOrder = {
               dateLabel: formatThaiDateFromKey(key),
               orderId: revenueId,
-              customerName: String(row[COL.CUSTOMER_NAME] || '').trim(),
+              customerName: String(row[colMap.CUSTOMER_NAME] || '').trim(),
               pointsUsed: pointsInfo ? pointsInfo.points : 0,
               pointsDiscount: pointsInfo ? pointsInfo.discount : 0,
             };
@@ -688,8 +715,8 @@ const EmOChaOrderBot = (() => {
         // ถ้าออเดอร์เดียวมีหลายรายการสินค้า
         pointsUsed: isNewOrder ? currentOrder.pointsUsed : '',
         pointsDiscount: isNewOrder ? currentOrder.pointsDiscount : '',
-        delivery: isNewOrder ? (Number(row[COL.DELIVERY]) || 0) : '',
-        billTotal: isNewOrder ? (Number(row[COL.BILL_TOTAL]) || 0) : '',
+        delivery: isNewOrder ? (Number(row[colMap.DELIVERY]) || 0) : '',
+        billTotal: isNewOrder ? (Number(row[colMap.BILL_TOTAL]) || 0) : '',
       });
     }
     return rows;
@@ -711,10 +738,11 @@ const EmOChaOrderBot = (() => {
     const tempSs = SpreadsheetApp.create(fileName);
     const sheet = tempSs.getSheets()[0];
 
-    // คอลัมน์ ราคา/ส่วนลด/ราคารวม เป็นค่าต่อบรรทัดสินค้า (เหมือนชีต Revenue) ส่วนคะแนนที่ใช้/
-    // ส่วนลดคะแนน/ค่าส่ง/Bill Total เป็นยอดรวมระดับออเดอร์ จะโชว์แค่แถวแรกของแต่ละออเดอร์
-    // เท่านั้น แถวสินค้าที่เหลือเว้นว่าง
-    const header = ['วันที่', 'เลขที่ออเดอร์', 'ชื่อลูกค้า', 'สินค้า', 'จำนวน', 'ราคา', 'ส่วนลด', 'ราคารวม', 'คะแนนที่ใช้', 'ส่วนลดคะแนน', 'ค่าส่ง', 'Bill Total'];
+    // คอลัมน์ ราคา/ส่วนลด/ราคารวม เป็นค่าต่อบรรทัดสินค้า (เหมือนชีต Revenue) ส่วนค่าส่ง/
+    // Bill Total/คะแนนที่ใช้/ส่วนลดคะแนน เป็นยอดรวมระดับออเดอร์ จะโชว์แค่แถวแรกของแต่ละ
+    // ออเดอร์เท่านั้น แถวสินค้าที่เหลือเว้นว่าง
+    // ***คอลัมน์ใหม่ให้ต่อท้ายเสมอ ห้ามแทรกกลาง*** เพื่อไม่ให้ตำแหน่งคอลัมน์เดิมขยับ
+    const header = ['วันที่', 'เลขที่ออเดอร์', 'ชื่อลูกค้า', 'สินค้า', 'จำนวน', 'ราคา', 'ส่วนลด', 'ราคารวม', 'ค่าส่ง', 'Bill Total', 'คะแนนที่ใช้', 'ส่วนลดคะแนน'];
     sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
 
     if (rows.length > 0) {
@@ -732,13 +760,13 @@ const EmOChaOrderBot = (() => {
           sameOrder ? '' : r.orderId,
           sameOrder ? '' : r.customerName,
           r.productName, r.qty,
-          r.price, r.discount, r.amount, r.pointsUsed, r.pointsDiscount, r.delivery, r.billTotal,
+          r.price, r.discount, r.amount, r.delivery, r.billTotal, r.pointsUsed, r.pointsDiscount,
         ];
       });
       sheet.getRange(2, 1, data.length, header.length).setValues(data);
-      sheet.getRange(2, 6, data.length, 3).setNumberFormat('#,##0.00'); // ราคา/ส่วนลด/ราคารวม
-      sheet.getRange(2, 9, data.length, 1).setNumberFormat('#,##0'); // คะแนนที่ใช้ (จำนวนเต็ม ไม่ใช่เงิน)
-      sheet.getRange(2, 10, data.length, 3).setNumberFormat('#,##0.00'); // ส่วนลดคะแนน/ค่าส่ง/Bill Total
+      sheet.getRange(2, 6, data.length, 5).setNumberFormat('#,##0.00'); // ราคา/ส่วนลด/ราคารวม/ค่าส่ง/Bill Total
+      sheet.getRange(2, 11, data.length, 1).setNumberFormat('#,##0'); // คะแนนที่ใช้ (จำนวนแต้ม ไม่ใช่เงิน)
+      sheet.getRange(2, 12, data.length, 1).setNumberFormat('#,##0.00'); // ส่วนลดคะแนน (บาท)
 
       // สลับสีพื้นหลังอ่อนๆ ทีละวัน ให้เห็นชัดว่าแถวไหนอยู่วันเดียวกัน
       let lastDateLabel = null;
@@ -761,34 +789,34 @@ const EmOChaOrderBot = (() => {
     const qtyCell = sheet.getRange(totalRowIndex, 5);
     const discountCell = sheet.getRange(totalRowIndex, 7);
     const amountCell = sheet.getRange(totalRowIndex, 8);
-    const pointsUsedCell = sheet.getRange(totalRowIndex, 9);
-    const pointsDiscountCell = sheet.getRange(totalRowIndex, 10);
-    const deliveryCell = sheet.getRange(totalRowIndex, 11);
-    const billTotalCell = sheet.getRange(totalRowIndex, 12);
+    const deliveryCell = sheet.getRange(totalRowIndex, 9);
+    const billTotalCell = sheet.getRange(totalRowIndex, 10);
+    const pointsUsedCell = sheet.getRange(totalRowIndex, 11);
+    const pointsDiscountCell = sheet.getRange(totalRowIndex, 12);
     if (rows.length > 0) {
       qtyCell.setValue(`=SUM(E2:E${totalRowIndex - 1})`);
       discountCell.setValue(`=SUM(G2:G${totalRowIndex - 1})`);
       amountCell.setValue(`=SUM(H2:H${totalRowIndex - 1})`);
-      pointsUsedCell.setValue(`=SUM(I2:I${totalRowIndex - 1})`);
-      pointsDiscountCell.setValue(`=SUM(J2:J${totalRowIndex - 1})`);
-      deliveryCell.setValue(`=SUM(K2:K${totalRowIndex - 1})`);
-      billTotalCell.setValue(`=SUM(L2:L${totalRowIndex - 1})`);
+      deliveryCell.setValue(`=SUM(I2:I${totalRowIndex - 1})`);
+      billTotalCell.setValue(`=SUM(J2:J${totalRowIndex - 1})`);
+      pointsUsedCell.setValue(`=SUM(K2:K${totalRowIndex - 1})`);
+      pointsDiscountCell.setValue(`=SUM(L2:L${totalRowIndex - 1})`);
     } else {
       qtyCell.setValue(0);
       discountCell.setValue(0);
       amountCell.setValue(0);
-      pointsUsedCell.setValue(0);
-      pointsDiscountCell.setValue(0);
       deliveryCell.setValue(0);
       billTotalCell.setValue(0);
+      pointsUsedCell.setValue(0);
+      pointsDiscountCell.setValue(0);
     }
-    [qtyCell, discountCell, amountCell, pointsUsedCell, pointsDiscountCell, deliveryCell, billTotalCell].forEach((c) => c.setFontWeight('bold'));
+    [qtyCell, discountCell, amountCell, deliveryCell, billTotalCell, pointsUsedCell, pointsDiscountCell].forEach((c) => c.setFontWeight('bold'));
     discountCell.setNumberFormat('#,##0.00');
     amountCell.setNumberFormat('#,##0.00');
-    pointsUsedCell.setNumberFormat('#,##0');
-    pointsDiscountCell.setNumberFormat('#,##0.00');
     deliveryCell.setNumberFormat('#,##0.00');
     billTotalCell.setNumberFormat('#,##0.00');
+    pointsUsedCell.setNumberFormat('#,##0');
+    pointsDiscountCell.setNumberFormat('#,##0.00');
     sheet.autoResizeColumns(1, header.length);
     SpreadsheetApp.flush();
 
