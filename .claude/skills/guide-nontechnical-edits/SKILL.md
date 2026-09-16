@@ -19,6 +19,51 @@ project: there were two functions named `setupCredentials` and
 because nothing distinguished them clearly enough. The fix isn't more caution
 in general — it's specificity, every single time.
 
+## MANDATORY: sync with the live Google Drive code before every edit
+
+This is not a "when in doubt" precaution — it is a required first step, every
+single time you are about to change the LINE bot / Apps Script code, even if
+you edited this exact file five minutes ago in this same conversation. The
+user has explicitly required this after finding that an assumed-in-sync local
+copy was stale. Never skip it and never ask the user to paste their code to
+you as a substitute for doing this yourself.
+
+**The rule: if the edit you're about to make is not already based on a file
+you just pulled fresh from Google Drive, pull it before writing a single line
+of the change.**
+
+Workflow, every time:
+
+1. **Pull the live source from Drive.**
+   - `mcp__Google_Drive__search_files` with
+     `mimeType = 'application/vnd.google-apps.script'` to find the project
+     (e.g. by title "Line Bot Report") and get its `fileId`.
+   - `mcp__Google_Drive__read_file_content` will FAIL on this fileId
+     ("unsupported mime type") — expected, ignore it and continue.
+   - `mcp__Google_Drive__download_file_content` with that `fileId` and
+     `exportMimeType: "application/vnd.google-apps.script+json"` returns
+     `{content, id, mimeType, title}` where `content` is base64.
+   - Decode it (`base64.b64decode(data['content']).decode('utf-8')`) to get
+     `{"files": [{"name", "type", "source"}, ...]}` — the real, current
+     source of every file in the project.
+2. **Diff it against the tracked file in this repo**
+   (`line-bot/dailyOrderSummary.gs` or whichever file corresponds). Do this
+   with an actual `diff`, not by eyeballing — small changes (a number, a
+   string, a formula) are easy to miss by reading alone.
+3. **If they match:** proceed with the requested edit on the tracked file as
+   normal.
+4. **If they don't match:** the live Drive copy is ground truth, not the
+   tracked file. Reconcile the tracked file to the live version first (so the
+   repo reflects what's actually deployed), THEN make the requested change on
+   top of that reconciled version. Only mention the discrepancy to the user
+   if it looks like a real manual edit they made on purpose (not just "my
+   last update hasn't been pasted in yet") — otherwise just fix it silently
+   and move on.
+5. **Always send the complete resulting file back** via SendUserFile (not a
+   snippet or a diff) so the user can select-all-and-replace in the Apps
+   Script editor, and commit the same content to git. Never leave the user to
+   merge a partial patch into code you haven't actually verified.
+
 ## Before telling the user to change anything
 
 **Re-read the actual current file first.** Don't recall line numbers from
@@ -77,37 +122,6 @@ When a change involves a whole file rather than a small edit, prefer handing
 them the finished file directly (via SendUserFile, or a GitHub link with the
 "copy raw file" button called out explicitly) over asking them to
 hand-transcribe a diff.
-
-## Verify the live deployed code yourself — don't ask the user to paste it
-
-The user has explicitly objected to being asked to copy-paste their live Apps
-Script source back for comparison: they sometimes make manual edits directly
-in the Apps Script editor, and it's on us to check, not on them to prove it.
-Do NOT tell them "I can't read your live project, please paste it" — that tool
-limitation is real for one tool, but there is a working method:
-
-1. `mcp__Google_Drive__search_files` with `mimeType = 'application/vnd.google-apps.script'`
-   to list the user's Apps Script projects and find the right one by title
-   (e.g. "Line Bot Report"). Get its `fileId`.
-2. `mcp__Google_Drive__read_file_content` will FAIL on this fileId ("unsupported
-   mime type") — that's expected, don't stop here.
-3. `mcp__Google_Drive__download_file_content` with `fileId` and
-   `exportMimeType: "application/vnd.google-apps.script+json"` DOES work. It
-   returns `{content, id, mimeType, title}` where `content` is a base64 string.
-4. Decode it: `base64.b64decode(data['content']).decode('utf-8')` gives a JSON
-   object `{"files": [{"name", "type", "source"}, ...]}` — one entry per file
-   in their Apps Script project, each with the real, current source text.
-5. Write each `source` to a scratch file and `diff` it against the tracked
-   `.gs` file in this repo. Only raise it with the user if there's a
-   substantive conflict (a manual edit that isn't just "my last delivered
-   version hasn't been pasted in yet") — don't make them re-explain something
-   the diff already answers.
-
-This works even though `application/vnd.google-apps.script` isn't in
-`read_file_content`'s documented supported-mimetypes list — the export path
-via `download_file_content` covers it. Use this proactively before claiming
-"the live project should now have X" or before debugging a reported error,
-rather than assuming your local tracked copy is what's actually deployed.
 
 ## When something goes wrong
 
