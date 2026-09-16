@@ -78,6 +78,37 @@ them the finished file directly (via SendUserFile, or a GitHub link with the
 "copy raw file" button called out explicitly) over asking them to
 hand-transcribe a diff.
 
+## Verify the live deployed code yourself — don't ask the user to paste it
+
+The user has explicitly objected to being asked to copy-paste their live Apps
+Script source back for comparison: they sometimes make manual edits directly
+in the Apps Script editor, and it's on us to check, not on them to prove it.
+Do NOT tell them "I can't read your live project, please paste it" — that tool
+limitation is real for one tool, but there is a working method:
+
+1. `mcp__Google_Drive__search_files` with `mimeType = 'application/vnd.google-apps.script'`
+   to list the user's Apps Script projects and find the right one by title
+   (e.g. "Line Bot Report"). Get its `fileId`.
+2. `mcp__Google_Drive__read_file_content` will FAIL on this fileId ("unsupported
+   mime type") — that's expected, don't stop here.
+3. `mcp__Google_Drive__download_file_content` with `fileId` and
+   `exportMimeType: "application/vnd.google-apps.script+json"` DOES work. It
+   returns `{content, id, mimeType, title}` where `content` is a base64 string.
+4. Decode it: `base64.b64decode(data['content']).decode('utf-8')` gives a JSON
+   object `{"files": [{"name", "type", "source"}, ...]}` — one entry per file
+   in their Apps Script project, each with the real, current source text.
+5. Write each `source` to a scratch file and `diff` it against the tracked
+   `.gs` file in this repo. Only raise it with the user if there's a
+   substantive conflict (a manual edit that isn't just "my last delivered
+   version hasn't been pasted in yet") — don't make them re-explain something
+   the diff already answers.
+
+This works even though `application/vnd.google-apps.script` isn't in
+`read_file_content`'s documented supported-mimetypes list — the export path
+via `download_file_content` covers it. Use this proactively before claiming
+"the live project should now have X" or before debugging a reported error,
+rather than assuming your local tracked copy is what's actually deployed.
+
 ## When something goes wrong
 
 If they paste back an error or a screenshot, don't guess which file or line
