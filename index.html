@@ -672,6 +672,10 @@ function submitSlipInline(){
           var notice = document.getElementById('slipDoneNotice');
           if (notice) notice.classList.remove('sh');
         } else if (slipUploadSource_ === 'history') {
+          var attachedOrderId_ = slipTargetOrderId;
+          orderHistoryCache_.update(function(cached){
+            cached.results = (cached.results || []).filter(function(o){ return String(o.orderId) !== String(attachedOrderId_); });
+          });
           loadOrderHistory(); // รีเฟรชรายการ ตัดออเดอร์นี้ออกไปเพราะแนบสลิปครบแล้ว (เผื่อปิดหน้าไม่สำเร็จ)
         }
         setTimeout(closeThisShopWindow_, 4000);
@@ -796,6 +800,76 @@ function saveCachedShopBootstrap_(uid, result){
   if (!uid) return;
   try { localStorage.setItem(shopBootstrapCacheKey_(uid), JSON.stringify(result)); } catch (e) {}
 }
+
+// ⚡ เพิ่ม — เช็คว่ามี ID token ที่ยังไม่หมดอายุอยู่ในมือไหม แบบ "ถามเฉยๆ ไม่ทำอะไรต่อ" ต่างจาก
+// getFreshIdToken() ที่ถ้าโทเคนหมดอายุจะเด้งไปหน้า login ของ LINE ทันที — งานที่วิ่งเบื้องหลังเงียบๆ
+// (prefetch) ต้องใช้ตัวนี้เช็คก่อนเสมอ ไม่งั้นลูกค้าที่กำลังเลือกสินค้าเพลินๆ อาจโดนดีดออกไปหน้า login
+// กลางคันโดยไม่ได้กดอะไรเลย
+function hasUsableIdToken_(){
+  if (!currentIdToken) return false;
+  var expiryMs = getIdTokenExpiryMs_(currentIdToken);
+  return !(expiryMs && Date.now() >= expiryMs - 60000);
+}
+
+// ⚡ เพิ่ม — โรงงานสร้าง "แคชข้อมูลที่ต้องเรียก API ซ้ำๆ" (แนวเดียวกับที่หน้าสมาชิกใช้อยู่แล้ว) รวม 3 อย่าง
+// ไว้ในที่เดียว: (1) จำผลไว้ในหน่วยความจำพร้อมอายุ (TTL) กันยิงซ้ำถี่ๆ (2) จำลง localStorage ต่อ LINE UID
+// เพื่อให้กดเข้าเมนูแล้วเห็นของเดิมทันทีแม้เพิ่งเปิดหน้าใหม่ (3) รวมคำขอชุดเดียวกันที่กำลังวิ่งอยู่ให้เหลือ
+// คำขอเดียว (in-flight de-dup) — Apps Script ตอบช้าหลายวินาทีเป็นปกติ การไม่ต้องรอมันใหม่ทุกครั้งคือ
+// จุดที่ทำให้รู้สึกว่าเร็วขึ้นจริง
+function createDataCache_(storageKeyPrefix, ttlMs, fetcher){
+  var mem = null, memTime = 0, inFlight = null;
+  function storageKey(){ return storageKeyPrefix + '.' + (currentLineUserId || '-'); }
+  function loadStale(){
+    if (mem) return mem;
+    try { var raw = localStorage.getItem(storageKey()); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+  function isFresh(){ return !!mem && (Date.now() - memTime < ttlMs); }
+  function persist(){ try { localStorage.setItem(storageKey(), JSON.stringify(mem)); } catch (e) {} }
+  function fetchNow(){
+    if (isFresh()) return Promise.resolve(mem);
+    if (inFlight) return inFlight;
+    inFlight = fetcher().then(function(r){
+      inFlight = null;
+      if (r && r.success) { mem = r; memTime = Date.now(); persist(); }
+      return r;
+    }).catch(function(e){ inFlight = null; throw e; });
+    return inFlight;
+  }
+  // แก้ข้อมูลในแคชเองแบบทันที (เช่น ยกเลิกออเดอร์แล้วตัดแถวนั้นออกเลย ไม่ต้องรอ API รอบใหม่ตอบก่อนถึงจะเห็นผล)
+  // พร้อมตีตราว่า "เก่าแล้ว" เพื่อให้รอบถัดไปยังไปถามเซิร์ฟเวอร์จริงเสมอ ไม่ยึดของที่เราแก้เองเป็นความจริงถาวร
+  function update(mutator){
+    var cur = loadStale();
+    if (!cur) return;
+    mutator(cur);
+    mem = cur; memTime = 0; persist();
+  }
+  function invalidate(){
+    mem = null; memTime = 0;
+    try { localStorage.removeItem(storageKey()); } catch (e) {}
+  }
+  return { loadStale: loadStale, isFresh: isFresh, fetch: fetchNow, update: update, invalidate: invalidate };
+}
+
+var ORDER_HISTORY_TTL_ = 30000;
+var orderHistoryCache_ = createDataCache_('emocha.order.historyCache', ORDER_HISTORY_TTL_, function(){
+  return getFreshIdToken().then(function(idToken){
+    return callApi('getMyOrderHistory', { idToken: idToken });
+  });
+});
+var orderHistoryWarmStarted_ = false;
+// ⚡ เพิ่ม — ดึงรายการ "รอแนบสลิป" ไว้ล่วงหน้าตั้งแต่ตอนที่ลูกค้ายังดูรายการสินค้าอยู่ (หลังหน้าแรกวาดเสร็จแล้ว
+// จึงไม่หน่วงหน้าแรก) พอกดปุ่ม "🛒 รถเข็น" ข้อมูลรออยู่แล้ว ไม่ต้องเริ่มนับหนึ่งรอ Apps Script ตอนนั้น
+function warmOrderHistory_(){
+  if (orderHistoryWarmStarted_) return;
+  orderHistoryWarmStarted_ = true;
+  setTimeout(function(){
+    if (!hasUsableIdToken_()) return;
+    orderHistoryCache_.fetch().catch(function(){});
+  }, 600);
+}
+function filterPendingOrders_(results){
+  return (results || []).filter(function(o){ return !o.hasSlip && !o.cancelled; });
+}
 function applyShopBootstrap_(r){
   if (r.purchaseReferralEnabled) {
     document.getElementById('purchaseReferrerField').classList.remove('sh');
@@ -828,6 +902,8 @@ function applyShopBootstrap_(r){
   if (r.address) savedAddress = r.address;
 
   if (r.paymentInfo) paymentInfo = r.paymentInfo;
+
+  warmOrderHistory_();
 }
 function loadProducts(){
   var cached_ = loadCachedShopBootstrap_(currentLineUserId);
@@ -1119,6 +1195,7 @@ function changeQty(idx, delta){
   if (cur === 0) delete cart[skuName]; else cart[skuName] = cur;
   document.getElementById('qty_' + idx).textContent = cur;
   updateCartBar();
+  scheduleDiscountPrefetch_();
 }
 
 function updateCartBar(){
@@ -1141,20 +1218,31 @@ function showHistory(){
   loadOrderHistory();
 }
 
+// ⚡ แก้ — เดิมกด "🛒 รถเข็น" ทีไรก็ล้างหน้าจอทิ้งแล้วขึ้น "⏳ กำลังโหลด..." ค้างไว้ รอ Apps Script ตอบ
+// ใหม่ทุกครั้ง (หลายวินาที) ทั้งที่ข้อมูลชุดเดิมเพิ่งโหลดไปเมื่อกี้เอง — ตอนนี้วาดจากของที่แคชไว้ให้เห็นทันที
+// (ทั้งจาก prefetch ตอนอยู่หน้าเลือกสินค้า และจาก localStorage ของรอบก่อน) แล้วค่อยเช็คกับเซิร์ฟเวอร์
+// เบื้องหลังแล้ววาดทับให้ตรงล่าสุด (stale-while-revalidate) ลูกค้าจึงไม่ต้องนั่งดูจอโหลดเปล่าๆ อีก
 function loadOrderHistory(){
-  document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:var(--g6);padding:20px 0">⏳ กำลังโหลด...</p>';
-  getFreshIdToken().then(function(idToken){
-    return callApi('getMyOrderHistory', { idToken: idToken });
-  }).then(function(r){
+  var listEl = document.getElementById('historyList');
+  var stale_ = orderHistoryCache_.loadStale();
+  var paintedStale_ = false;
+  if (stale_ && stale_.success) {
+    paintedStale_ = true;
+    renderOrderHistory(filterPendingOrders_(stale_.results), !orderHistoryCache_.isFresh());
+  } else {
+    listEl.innerHTML = '<p style="text-align:center;color:var(--g6);padding:20px 0">⏳ กำลังโหลด...</p>';
+  }
+  return orderHistoryCache_.fetch().then(function(r){
     if (!r || !r.success) {
-      document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:#c62828">โหลดรายการไม่สำเร็จ: ' + escHtml(r ? r.error : '') + '</p>';
+      if (paintedStale_) return; // มีรายการของเดิมโชว์อยู่แล้ว อย่าล้างทิ้งเพราะรอบนี้ดึงไม่ผ่าน
+      listEl.innerHTML = '<p style="text-align:center;color:#c62828">โหลดรายการไม่สำเร็จ: ' + escHtml(r ? r.error : '') + '</p>';
       return;
     }
-    var pending = (r.results || []).filter(function(o){ return !o.hasSlip && !o.cancelled; });
-    renderOrderHistory(pending);
+    renderOrderHistory(filterPendingOrders_(r.results), false);
   }).catch(function(e){
     if (e && e.alreadyShown) return;
-    document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:#c62828">โหลดรายการไม่สำเร็จ: ' + escHtml(e.message) + '</p>';
+    if (paintedStale_) return;
+    listEl.innerHTML = '<p style="text-align:center;color:#c62828">โหลดรายการไม่สำเร็จ: ' + escHtml(e.message) + '</p>';
   });
 }
 
@@ -1165,9 +1253,12 @@ var ICON_PAPERCLIP_ = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 var ICON_CHECK_ = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
 var ICON_X_ = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
 
-function renderOrderHistory(list){
+function renderOrderHistory(list, isStale){
+  // แถบบางๆ บอกว่ากำลังเช็คกับเซิร์ฟเวอร์อยู่เบื้องหลัง (รายการที่เห็นอาจเก่าไปนิดหน่อย) — บอกให้รู้ แต่ไม่บัง
+  // รายการจริงเหมือนจอ "กำลังโหลด..." แบบเดิม ลูกค้ากดใช้งานต่อได้เลยไม่ต้องรอ
+  var staleHint = isStale ? '<p style="text-align:center;color:var(--g6);font-size:12px;margin-bottom:10px">⏳ กำลังอัปเดตรายการล่าสุด...</p>' : '';
   if (!list.length) {
-    document.getElementById('historyList').innerHTML = '<p style="text-align:center;color:var(--g6);padding:20px 0">🎉 ไม่มีคำสั่งซื้อที่รอดำเนินการ</p>';
+    document.getElementById('historyList').innerHTML = staleHint + '<p style="text-align:center;color:var(--g6);padding:20px 0">🎉 ไม่มีคำสั่งซื้อที่รอดำเนินการ</p>';
     return;
   }
   var h = list.map(function(o){
@@ -1179,7 +1270,7 @@ function renderOrderHistory(list){
       + '<div class="row"><span>ยอดชำระ</span><span>฿' + Math.round(o.totalAmount).toLocaleString('th-TH') + '</span></div>'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">'
       +   '<button class="icon-btn icon-btn-danger" title="ยกเลิกคำสั่งซื้อนี้" aria-label="ยกเลิกคำสั่งซื้อนี้" onclick="askCancelOrder_(\'' + oid + '\')">' + ICON_TRASH_ + '</button>'
-      +   '<button class="icon-btn icon-btn-success" title="ดำเนินการต่อ — แนบสลิป" aria-label="ดำเนินการต่อ แนบสลิป" onclick="continueToSlipUpload(\'' + oid + '\')">' + ICON_PAPERCLIP_ + '</button>'
+      +   '<button class="icon-btn icon-btn-success" title="ดำเนินการต่อ — แนบสลิป" aria-label="ดำเนินการต่อ แนบสลิป" onclick="continueToSlipUpload(\'' + oid + '\', this)">' + ICON_PAPERCLIP_ + '</button>'
       + '</div>'
       + '<div class="err" id="cancelConfirm_' + oid + '" style="margin-top:8px;text-align:left">'
       +   'ยืนยันยกเลิกคำสั่งซื้อ #' + oid + ' ใช่ไหม? ข้อมูลจะถูกลบออกจากระบบถาวร แก้คืนไม่ได้'
@@ -1202,7 +1293,7 @@ function renderOrderHistory(list){
     + '<p style="font-weight:600;color:var(--gd);margin:0 0 8px;text-align:center">💳 บัญชีสำหรับโอนเงิน</p>'
     + buildBankInfoRows_()
     + '</div>') : '';
-  document.getElementById('historyList').innerHTML = bankReminderHtml + h;
+  document.getElementById('historyList').innerHTML = staleHint + bankReminderHtml + h;
 }
 
 // ⚡ เพิ่ม (25/8/69) — ปุ่มยกเลิกคำสั่งซื้อที่ยังไม่แนบสลิป (เผื่อกดผิด/ไม่ต้องการซื้อแล้ว) ใช้กล่องยืนยัน
@@ -1225,6 +1316,12 @@ function confirmCancelOrder_(orderId){
   }).then(function(r){
     cancelOrderInFlight_ = false;
     if (r && r.success) {
+      // ตัดแถวออกจากแคชเองทันที รายการจึงหายไปต่อหน้าเลย ไม่ต้องรอ getMyOrderHistory รอบใหม่ตอบก่อน
+      // (แคชถูกตีตราว่าเก่าแล้ว loadOrderHistory() ข้างล่างจะยังไปเช็คกับเซิร์ฟเวอร์จริงให้อยู่ดี)
+      orderHistoryCache_.update(function(cached){
+        cached.results = (cached.results || []).filter(function(o){ return String(o.orderId) !== String(orderId); });
+      });
+      discountCacheBySig_ = {}; // ยกเลิกออเดอร์แล้วคะแนน/สิทธิ์ที่เคยถูกกันไว้จะคืนกลับมา ยอดเดิมที่แคชไว้ใช้ไม่ได้
       loadOrderHistory(); // รีเฟรชรายการ ตัดออเดอร์ที่ยกเลิกออกไป
     } else {
       if (btn) { btn.disabled = false; btn.textContent = 'ใช่ ยกเลิกเลย'; }
@@ -1244,24 +1341,33 @@ function confirmCancelOrder_(orderId){
 // ต่างจากกด "แนบสลิปการโอนเงิน" ทันทีหลังสั่งซื้อ (openSlipUploadModal ทางอื่น) ซึ่งเพิ่งคำนวณสดๆ ไปเมื่อกี้
 // ไม่มีทางเปลี่ยน จึงไม่ต้องเช็คซ้ำให้เสียเวลา ถ้ายอดเปลี่ยนจะเด้งป๊อปอัปให้ยืนยันก่อน ถ้าเท่าเดิม/เช็คไม่สำเร็จ
 // (เช่นเน็ตหลุด) จะข้ามไปหน้าแนบสลิปตามปกติเลย ไม่บล็อกลูกค้า
-function continueToSlipUpload(orderId){
+// ⚡ แก้ — เดิมกดปุ่มคลิปหนีบ (แนบสลิป) แล้วหน้าจอ "เงียบสนิท" หลายวินาทีระหว่างรอ checkPendingOrderPromoStillValid
+// ตอบกลับ ไม่มีอะไรขยับเลย ลูกค้าจึงนึกว่าเครื่องค้าง/กดไม่ติดแล้วกดซ้ำ — ใส่สถานะกำลังทำงานบนปุ่มให้เห็นชัด
+function continueToSlipUpload(orderId, btnEl){
+  var originalHtml_ = btnEl ? btnEl.innerHTML : '';
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳'; }
+  function restoreBtn_(){ if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = originalHtml_; } }
   getFreshIdToken().then(function(idToken){
     return callApi('checkPendingOrderPromoStillValid', { idToken: idToken, orderId: orderId });
   }).then(function(r){
+    restoreBtn_();
     if (r && r.success && r.changed) {
       openPromoRecheckModal_(orderId, r.oldAmount, r.newAmount);
     } else {
       openSlipUploadModal(orderId, 'history');
     }
   }).catch(function(){
+    restoreBtn_();
     openSlipUploadModal(orderId, 'history');
   });
 }
 
 var promoRecheckOrderId_ = '';
+var promoRecheckNewAmount_ = 0;
 var promoRecheckInFlight_ = false;
 function openPromoRecheckModal_(orderId, oldAmount, newAmount){
   promoRecheckOrderId_ = orderId;
+  promoRecheckNewAmount_ = newAmount;
   document.getElementById('promoRecheckOrderId').textContent = orderId;
   document.getElementById('promoRecheckOldAmount').textContent = '฿' + oldAmount.toLocaleString('th-TH');
   document.getElementById('promoRecheckNewAmount').textContent = '฿' + newAmount.toLocaleString('th-TH');
@@ -1290,8 +1396,15 @@ function confirmPromoRecheck_(){
       return;
     }
     var confirmedOrderId = promoRecheckOrderId_;
+    var confirmedAmount = promoRecheckNewAmount_;
     closePromoRecheckModal_();
     openSlipUploadModal(confirmedOrderId, 'history');
+    // อัปเดตยอดในแคชเองทันที หน้ารถเข็นจะโชว์ยอดใหม่ได้เลยโดยไม่ต้องรอ API รอบใหม่
+    orderHistoryCache_.update(function(cached){
+      (cached.results || []).forEach(function(o){
+        if (String(o.orderId) === String(confirmedOrderId)) o.totalAmount = confirmedAmount;
+      });
+    });
     loadOrderHistory(); // รีเฟรชยอดในหน้ารถเข็นให้ตรงกับยอดใหม่ด้วย
   }).catch(function(e){
     promoRecheckInFlight_ = false;
@@ -1313,19 +1426,29 @@ function goToCheckout(){
   var btn = document.getElementById('checkoutBtn');
   btn.disabled = true; var originalBtnText = btn.textContent; btn.textContent = '⏳ กำลังโหลด...';
 
+  clearInlineCheckoutError_();
   // เปลี่ยนหน้าให้ทันที ส่วนคำนวณสิทธิ์/ส่วนลดทำต่อในพื้นหลัง
-  document.getElementById('discountSummary').innerHTML = '<div class="bank-box" style="text-align:center">กำลังคำนวณสิทธิ์และยอดชำระ...</div>';
+  // ⚡ แก้ — ถ้ามีผลคำนวณของตะกร้าชุดนี้อยู่แล้ว (จากที่ prefetch ไว้ตอนลูกค้ายังกดเลือกจำนวนสินค้าอยู่ หรือ
+  // จากที่เพิ่งเข้าหน้านี้ไปเมื่อกี้แล้วกดย้อนกลับ) จะข้ามจอ "กำลังคำนวณ..." ไปเลย refreshDiscounts() ข้างล่าง
+  // จะวาดยอดจริงจากแคชให้ทันที ไม่มีจอรอให้เห็น
+  if (!hasCachedDiscountForCart_()) {
+    document.getElementById('discountSummary').innerHTML = '<div class="bank-box" style="text-align:center">กำลังคำนวณสิทธิ์และยอดชำระ...</div>';
+  }
   showState('checkoutState');
 
   var flow = getFreshIdToken().then(function(idToken){
     var calls = [refreshDiscounts(idToken), loadSavedAddress(idToken)];
     if (!paymentInfo) {
-      calls.push(callApi('getShopPaymentInfo').then(function(r){ if (r && r.success) paymentInfo = r; }));
+      calls.push(callApi('getShopPaymentInfo').then(function(r){ if (r && r.success) { paymentInfo = r; renderPaymentDetail(); } }));
     }
     return Promise.all(calls);
   });
 
-  withTimeout_(flow, 25000, 'หมดเวลารอ (เกิน 25 วินาที) — เครือข่ายอาจมีปัญหา หรือ Apps Script ตอบช้าผิดปกติ ลองกดใหม่อีกครั้ง')
+  // ⚡ แก้ — เดิมตั้งเวลาเตือนไว้ 25 วินาที เท่ากับ timeout ของ callApi() รอบแรกพอดี ทั้งที่ callApi() จะ
+  // "ลองใหม่ให้เองอีก 2 รอบ" สำหรับคำสั่งอ่านข้อมูลอย่าง checkShopDiscounts — ผลคือคำเตือนเด้งขึ้นตั้งแต่
+  // รอบแรกหมดเวลา ทั้งที่ระบบยังลองต่ออยู่เบื้องหลังและมักสำเร็จในรอบที่ 2 (ลูกค้าเห็นคำเตือนทั้งที่ยอดขึ้น
+  // ถูกต้องแล้ว) ขยายเป็น 80 วินาทีให้ครอบคลุมครบทั้ง 3 รอบ คำเตือนจะขึ้นเฉพาะตอนล้มเหลวจริงๆ เท่านั้น
+  withTimeout_(flow, 80000, 'หมดเวลารอ (เกิน 80 วินาที) — เครือข่ายอาจมีปัญหา หรือ Apps Script ตอบช้าผิดปกติ ลองกดใหม่อีกครั้ง')
     .then(function(){
       btn.disabled = false; btn.textContent = originalBtnText;
     }).catch(function(e){
@@ -1338,24 +1461,128 @@ function goToCheckout(){
 
 var excludedPrivilegeRowIndexes = [];
 
-function refreshDiscounts(idTokenParam){
+// ==================== แคช + prefetch การคำนวณส่วนลด (หน้าคำนวณยอดชำระ) ====================
+// ⚡ เพิ่ม — checkShopDiscounts คือคำขอเดียวที่ทำให้หน้าชำระเงินช้า (Apps Script ต้องไล่เช็คสิทธิ์/คูปอง/
+// โปรโมชัน/คะแนน ทั้งชุดต่อ 1 คำขอ) เดิมยิงสดทุกครั้งที่กด "ไปหน้าชำระเงิน" ลูกค้าจึงต้องนั่งรอเต็มๆ ทุกรอบ
+// แก้ 2 ทาง: (1) จำผลไว้ต่อ "สภาพตะกร้า 1 ชุด" ถ้ากลับเข้ามาด้วยตะกร้าเดิมก็วาดยอดได้ทันที (2) ยิงล่วงหน้า
+// เบื้องหลังตั้งแต่ตอนลูกค้ายังกดเลือกจำนวนสินค้าอยู่ เวลารอจึงถูกย้ายไปอยู่ในช่วงที่ลูกค้ากำลังเลือกของ
+// ไม่ใช่ช่วงที่นั่งจ้องจอรอ — เซิร์ฟเวอร์ยังเป็นคนตัดสินยอดจริงตอน createShopOrder เหมือนเดิมทุกประการ
+var DISCOUNT_FRESH_MS_ = 60000;    // ใหม่พอ ใช้ได้เลยไม่ต้องยิงซ้ำ
+var DISCOUNT_STALE_MS_ = 600000;   // เก่ากว่านี้ถือว่าใช้ไม่ได้ ต้องรอของจริงอย่างเดียว
+var discountCacheBySig_ = {};      // signature -> { result: r, time: ms }
+var discountInFlightBySig_ = {};   // signature -> Promise (รวมคำขอชุดเดียวกันให้เหลือคำขอเดียว)
+
+// "ลายเซ็น" ของตะกร้า+เงื่อนไขที่มีผลต่อยอด ถ้าค่าใดค่าหนึ่งเปลี่ยน ต้องถือว่าเป็นคนละคำถามและคำนวณใหม่เสมอ
+function cartSignature_(){
+  var names = Object.keys(cart).sort();
+  return JSON.stringify({
+    items: names.map(function(n){ return [n, cart[n]]; }),
+    coupon: appliedCouponCode,
+    excluded: excludedPrivilegeRowIndexes.slice().sort(),
+    points: pointsToRedeemInput_
+  });
+}
+// ต้องคัดลอกออกมาก่อนใช้เสมอ เพราะ recomputeAppliedPrivilegesClientSide_()/previewPointsRedeem_() แก้ค่าใน
+// lastDiscountInfo โดยตรง ถ้าใช้ตัวเดียวกับที่เก็บในแคชจะทำให้ของในแคชเพี้ยนตามไปด้วย
+function cloneDiscount_(r){
+  try { return JSON.parse(JSON.stringify(r)); } catch (e) { return r; }
+}
+function getCachedDiscount_(sig, maxAgeMs){
+  var hit = discountCacheBySig_[sig];
+  if (hit && (Date.now() - hit.time) < maxAgeMs) return hit;
+  return null;
+}
+function hasCachedDiscountForCart_(){
+  return !!getCachedDiscount_(cartSignature_(), DISCOUNT_STALE_MS_);
+}
+function fetchDiscounts_(sig, idTokenParam){
+  if (discountInFlightBySig_[sig]) return discountInFlightBySig_[sig];
   var subtotal = getCartTotal();
   var items = Object.keys(cart).map(function(name){ return { name: name, qty: cart[name] }; });
   var itemsB64 = btoa(unescape(encodeURIComponent(JSON.stringify(items))));
   var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
-  return tokenPromise.then(function(idToken){
+  var p = tokenPromise.then(function(idToken){
     return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), pointsToRedeem: pointsToRedeemInput_ });
   }).then(function(r){
+    delete discountInFlightBySig_[sig];
+    if (r && r.success) discountCacheBySig_[sig] = { result: cloneDiscount_(r), time: Date.now() };
+    return r;
+  }).catch(function(e){
+    delete discountInFlightBySig_[sig];
+    throw e;
+  });
+  discountInFlightBySig_[sig] = p;
+  return p;
+}
+
+var discountPrefetchTimer_ = null;
+var lastDiscountPrefetchAt_ = 0;
+// ยิงคำนวณล่วงหน้าเงียบๆ หลังลูกค้าหยุดกดปรับจำนวนสักครู่ (ไม่ยิงทุกครั้งที่กด +/- และไม่ยิงถี่กว่า ~2.5 วิ
+// เพื่อไม่ให้ไปเพิ่มภาระ Apps Script โดยใช่เหตุ) ผลที่ได้จะถูกเก็บลงแคชเฉยๆ ไม่ไปแตะหน้าจอที่ลูกค้าดูอยู่
+function scheduleDiscountPrefetch_(){
+  if (discountPrefetchTimer_) { clearTimeout(discountPrefetchTimer_); discountPrefetchTimer_ = null; }
+  if (!Object.keys(cart).length) return;
+  var sinceLast = Date.now() - lastDiscountPrefetchAt_;
+  var delay = Math.max(900, 2500 - sinceLast);
+  discountPrefetchTimer_ = setTimeout(function(){
+    discountPrefetchTimer_ = null;
+    if (!Object.keys(cart).length) return;
+    if (!hasUsableIdToken_()) return;                 // กันไม่ให้งานเบื้องหลังเด้งไปหน้า login เอง
+    if (document.getElementById('catalogState').classList.contains('sh')) return; // ออกจากหน้าเลือกสินค้าไปแล้ว
+    var sig = cartSignature_();
+    if (getCachedDiscount_(sig, DISCOUNT_FRESH_MS_)) return;
+    if (discountInFlightBySig_[sig]) return;
+    lastDiscountPrefetchAt_ = Date.now();
+    fetchDiscounts_(sig, currentIdToken).catch(function(){});
+  }, delay);
+}
+
+// ⚡ เพิ่ม — ปุ่ม "ลองโหลดใหม่" ต้องบอกด้วยว่ากดติดแล้วกำลังทำงานอยู่ ไม่งั้นลูกค้ากดแล้วเห็นหน้าจอนิ่งๆ
+// เหมือนเดิม (เพราะข้อความคำเตือนยังค้างอยู่ระหว่างรอ) จะนึกว่าปุ่มเสียแล้วกดรัวๆ ยิงซ้ำเข้าไปอีก
+function retryDiscounts_(btn){
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ กำลังโหลดใหม่...'; }
+  refreshDiscounts();
+}
+
+function refreshDiscounts(idTokenParam){
+  var sig = cartSignature_();
+  var cached = getCachedDiscount_(sig, DISCOUNT_STALE_MS_);
+  var servedFromCache = false;
+
+  // วาดยอดจากแคชให้เห็นทันทีก่อน (แบบ synchronous ตรงนี้เลย ไม่รอ network)
+  if (cached) {
+    lastDiscountInfo = cloneDiscount_(cached.result);
+    discountLoadError_ = null;
+    renderDiscountSummary();
+    renderPaymentDetail();
+    servedFromCache = true;
+    // ถ้าเพิ่งคำนวณไปไม่นาน ไม่ต้องไปถามซ้ำให้เสียเวลา/เสียโควตา Apps Script
+    if ((Date.now() - cached.time) < DISCOUNT_FRESH_MS_) {
+      clearInlineCheckoutError_();
+      return Promise.resolve(cached.result);
+    }
+  }
+
+  return fetchDiscounts_(sig, idTokenParam).then(function(r){
+    // ระหว่างรออยู่ ลูกค้าอาจกดใช้คูปอง/แลกคะแนน/ตัดสิทธิ์จนกลายเป็นคนละคำถามไปแล้ว ผลรอบนี้ถือว่าล้าสมัย
+    // ห้ามเอาไปวาดทับของที่ใหม่กว่า (เดิมไม่มีการเช็คจุดนี้ กดรัวๆ แล้วยอดกระพริบสลับไปมาได้)
+    if (cartSignature_() !== sig) return r;
     if (r && r.success) {
-      lastDiscountInfo = r;
+      lastDiscountInfo = cloneDiscount_(r);
       discountLoadError_ = null;
+      clearInlineCheckoutError_();
     } else {
       discountLoadError_ = (r && r.error) ? r.error : 'ไม่ทราบสาเหตุ';
       console.warn('checkShopDiscounts ล้มเหลว:', discountLoadError_);
     }
     renderDiscountSummary();
     renderPaymentDetail();
+    return r;
   }).catch(function(e){
+    if (cartSignature_() !== sig) return;
+    // มียอดจากแคชโชว์อยู่แล้วและเซิร์ฟเวอร์จะคำนวณยอดจริงให้อีกครั้งตอนกดยืนยันสั่งซื้ออยู่ดี จึงไม่ต้องขึ้น
+    // คำเตือนทับของที่แสดงถูกต้องอยู่แล้วให้ลูกค้าตกใจเปล่าๆ
+    if (servedFromCache) { console.warn('checkShopDiscounts ล้มเหลว (ใช้ค่าที่แคชไว้แทน):', e && e.message); return; }
     discountLoadError_ = e && e.message ? e.message : 'เรียก API ไม่สำเร็จ';
     console.warn('checkShopDiscounts ล้มเหลว (network):', discountLoadError_);
     renderDiscountSummary();
@@ -1591,7 +1818,7 @@ function renderDiscountSummary(){
   if (discountLoadError_) {
     h += '<div style="background:#fff3e0;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:#e65100">'
       + '⚠️ ดึงข้อมูลสิทธิ์พิเศษ/คูปอง/ของแถมไม่สำเร็จ (' + escHtml(discountLoadError_) + ') — ยอดที่แสดงอาจยังไม่รวมส่วนลด/ของแถมที่คุณควรได้รับ'
-      + '<br><button type="button" class="btn" style="margin-top:8px;padding:6px 14px;font-size:12px" onclick="refreshDiscounts()">🔄 ลองโหลดใหม่</button>'
+      + '<br><button type="button" class="btn" style="margin-top:8px;padding:6px 14px;font-size:12px" onclick="retryDiscounts_(this)">🔄 ลองโหลดใหม่</button>'
       + '</div>';
   }
 
@@ -1639,7 +1866,11 @@ function renderDiscountSummary(){
   } else if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.physicalFreeQty > 0) {
     h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + ' — มีของแถม ' + lastDiscountInfo.coupon.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
   }
-  (lastDiscountInfo.autoCoupons || []).forEach(function(c){
+  // ⚡ แก้ — เดิมบรรทัดนี้ไม่ได้เช็ค lastDiscountInfo ว่าง (ต่างจากทุกบรรทัดรอบๆ ที่เช็คไว้หมด) ถ้า
+  // checkShopDiscounts ล้มเหลวตั้งแต่ครั้งแรก (lastDiscountInfo ยังเป็น null) ฟังก์ชันนี้จะพังกลางคัน
+  // ก่อนถึงบรรทัด wrap.innerHTML = h ผลคือหน้าจอ "ค้าง" ที่ข้อความ "กำลังคำนวณสิทธิ์และยอดชำระ..."
+  // ตลอดไป ไม่ขึ้นทั้งคำเตือน ไม่ขึ้นทั้งปุ่มลองใหม่ ไม่ขึ้นทั้งยอดสุทธิ ลูกค้าไปต่อไม่ได้เลย
+  ((lastDiscountInfo && lastDiscountInfo.autoCoupons) || []).forEach(function(c){
     if (c.discount <= 0) {
       if (c.physicalFreeQty > 0) {
         h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(c.code) + ' — มีของแถม ' + c.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
@@ -1981,6 +2212,10 @@ function confirmSubmitOrder(){
       currentOrderId = r.orderId;
       lastOrderAmount_ = r.totalAmount;
       savedAddressLoaded = false;
+      // สั่งซื้อสำเร็จแล้ว สิทธิ์/คูปอง/คะแนนถูกใช้ไปจริง ยอดที่แคชไว้ก่อนหน้าใช้ไม่ได้อีก และมีออเดอร์ใหม่
+      // รอแนบสลิปเพิ่มเข้ามาในหน้ารถเข็นด้วย
+      discountCacheBySig_ = {};
+      orderHistoryCache_.invalidate();
       pointsToRedeemInput_ = 0; // คะแนนของออเดอร์ที่ยังรอแนบสลิปถูกกันไว้แล้ว รีเซ็ตกันใช้ซ้ำในรอบถัดไป
 
       if (r.skipSlipUpload || r.totalAmount <= 0) {
@@ -2019,6 +2254,12 @@ function showInlineCheckoutError_(msg){
   errBox.textContent = '⚠️ ' + msg;
   errBox.classList.remove('sh');
   errBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+// ⚡ เพิ่ม — ซ่อนคำเตือนเดิมทิ้งเมื่อคำนวณยอดสำเร็จแล้ว ไม่ให้คำเตือนของรอบที่แล้วค้างอยู่บนหน้าจอทั้งที่
+// ตอนนี้ยอดขึ้นถูกต้องเรียบร้อยแล้ว
+function clearInlineCheckoutError_(){
+  var errBox = document.getElementById('checkoutErrBox');
+  if (errBox) errBox.classList.add('sh');
 }
 
 // ==================== LIFF session (login + token) ====================
