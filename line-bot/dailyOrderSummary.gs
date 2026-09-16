@@ -92,6 +92,7 @@ const EmOChaOrderBot = (() => {
     BILL_TOTAL: 8,
     CUSTOMER_NAME: 13, // คอลัมน์ "Customer Name" ในชีต Revenue
     AD: 16, // คอลัมน์ "Ad" ในชีต Revenue — ใช้บอกช่องทางขาย เช่น Shopee, TikTok, Line shop
+    REMARK: 19, // คอลัมน์ T "Remark" — มีข้อความ "แลกคะแนน: N คะแนน (-X)" ปนอยู่เวลาลูกค้าใช้คะแนนเป็นส่วนลด
     PAID_DATE: 30, // คอลัมน์ AE "วันที่ชำระเงิน" — ถ้าว่างแปลว่ายังไม่ชำระเงิน ไม่นับเป็นยอดขาย
   };
 
@@ -331,12 +332,15 @@ const EmOChaOrderBot = (() => {
           if (inRange && adMatches) {
             orderCount++;
             totalAmount += billTotal;
+            const pointsInfo = extractPointsDiscount(row[COL.REMARK]);
             currentOrder = {
               id: revenueId,
               customerName: String(row[COL.CUSTOMER_NAME] || '').trim(),
               items: [],
               subtotal: billTotal,
               dateKey: key,
+              pointsUsed: pointsInfo ? pointsInfo.points : 0,
+              pointsDiscount: pointsInfo ? pointsInfo.discount : 0,
             };
             orders.push(currentOrder);
           }
@@ -379,6 +383,18 @@ const EmOChaOrderBot = (() => {
       .split(' ')
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ');
+  }
+
+  /**
+   * ดึงจำนวนคะแนนและมูลค่าส่วนลดที่ลูกค้าแลกใช้ จากข้อความในคอลัมน์ Remark
+   * รูปแบบข้อความจริงในชีต (พบเฉพาะออเดอร์ Line shop): "...แลกคะแนน: 20 คะแนน (-20)..."
+   * ถ้าไม่มีการใช้คะแนนในออเดอร์นั้น หรือคอลัมน์ Remark ว่าง จะคืนค่า null
+   */
+  function extractPointsDiscount(remarkText) {
+    if (!remarkText) return null;
+    const match = String(remarkText).match(/แลกคะแนน[:\s]*([\d.]+)\s*คะแนน\s*\(-([\d.]+)\)/);
+    if (!match) return null;
+    return { points: Number(match[1]) || 0, discount: Number(match[2]) || 0 };
   }
 
   function toDateKey(value) {
@@ -584,6 +600,14 @@ const EmOChaOrderBot = (() => {
             { type: 'text', text: 'x' + item.qty, size: 'xs', color: '#48484A', align: 'end', flex: 1 },
           ],
         })),
+        ...(order.pointsDiscount > 0 ? [{
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            { type: 'text', text: `🎯 ใช้คะแนนสะสม ${order.pointsUsed} แต้ม`, size: 'xs', color: '#8A8A8E' },
+            { type: 'text', text: '-' + formatBaht(order.pointsDiscount) + ' บาท', size: 'xs', color: '#8A8A8E', align: 'end' },
+          ],
+        }] : []),
         {
           type: 'box',
           layout: 'horizontal',
@@ -636,10 +660,13 @@ const EmOChaOrderBot = (() => {
           const key = effectiveOrderDateKey(row, adValue);
           const inRange = key != null && key >= startKey && key <= endKey;
           if (inRange && adMatches) {
+            const pointsInfo = extractPointsDiscount(row[COL.REMARK]);
             currentOrder = {
               dateLabel: formatThaiDateFromKey(key),
               orderId: revenueId,
               customerName: String(row[COL.CUSTOMER_NAME] || '').trim(),
+              pointsUsed: pointsInfo ? pointsInfo.points : 0,
+              pointsDiscount: pointsInfo ? pointsInfo.discount : 0,
             };
           }
         }
@@ -655,10 +682,12 @@ const EmOChaOrderBot = (() => {
         price,
         discount,
         amount,
-        // ค่าส่งและ Bill Total เป็นค่าระดับออเดอร์ (ไม่ใช่ต่อรายการสินค้า) จึงขึ้นเฉพาะ
-        // แถวแรกของออเดอร์เท่านั้น (แถวสินค้าอื่นที่เหลือเว้นว่างไว้) เหมือนกับที่ชีต
-        // Revenue เก็บไว้ — เพื่อให้ SUM คอลัมน์นี้ตรงกับยอดจริงโดยไม่นับซ้ำ ถ้าออเดอร์
-        // เดียวมีหลายรายการสินค้า
+        // คะแนนที่ใช้/ส่วนลดคะแนน/ค่าส่ง/Bill Total เป็นค่าระดับออเดอร์ (ไม่ใช่ต่อรายการ
+        // สินค้า) จึงขึ้นเฉพาะแถวแรกของออเดอร์เท่านั้น (แถวสินค้าอื่นที่เหลือเว้นว่างไว้)
+        // เหมือนกับที่ชีต Revenue เก็บไว้ — เพื่อให้ SUM คอลัมน์นี้ตรงกับยอดจริงโดยไม่นับซ้ำ
+        // ถ้าออเดอร์เดียวมีหลายรายการสินค้า
+        pointsUsed: isNewOrder ? currentOrder.pointsUsed : '',
+        pointsDiscount: isNewOrder ? currentOrder.pointsDiscount : '',
         delivery: isNewOrder ? (Number(row[COL.DELIVERY]) || 0) : '',
         billTotal: isNewOrder ? (Number(row[COL.BILL_TOTAL]) || 0) : '',
       });
@@ -682,9 +711,10 @@ const EmOChaOrderBot = (() => {
     const tempSs = SpreadsheetApp.create(fileName);
     const sheet = tempSs.getSheets()[0];
 
-    // คอลัมน์ ราคา/ส่วนลด/ราคารวม เป็นค่าต่อบรรทัดสินค้า (เหมือนชีต Revenue) ส่วนค่าส่ง/Bill Total
-    // เป็นยอดรวมระดับออเดอร์ จะโชว์แค่แถวแรกของแต่ละออเดอร์เท่านั้น แถวสินค้าที่เหลือเว้นว่าง
-    const header = ['วันที่', 'เลขที่ออเดอร์', 'ชื่อลูกค้า', 'สินค้า', 'จำนวน', 'ราคา', 'ส่วนลด', 'ราคารวม', 'ค่าส่ง', 'Bill Total'];
+    // คอลัมน์ ราคา/ส่วนลด/ราคารวม เป็นค่าต่อบรรทัดสินค้า (เหมือนชีต Revenue) ส่วนคะแนนที่ใช้/
+    // ส่วนลดคะแนน/ค่าส่ง/Bill Total เป็นยอดรวมระดับออเดอร์ จะโชว์แค่แถวแรกของแต่ละออเดอร์
+    // เท่านั้น แถวสินค้าที่เหลือเว้นว่าง
+    const header = ['วันที่', 'เลขที่ออเดอร์', 'ชื่อลูกค้า', 'สินค้า', 'จำนวน', 'ราคา', 'ส่วนลด', 'ราคารวม', 'คะแนนที่ใช้', 'ส่วนลดคะแนน', 'ค่าส่ง', 'Bill Total'];
     sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
 
     if (rows.length > 0) {
@@ -702,11 +732,13 @@ const EmOChaOrderBot = (() => {
           sameOrder ? '' : r.orderId,
           sameOrder ? '' : r.customerName,
           r.productName, r.qty,
-          r.price, r.discount, r.amount, r.delivery, r.billTotal,
+          r.price, r.discount, r.amount, r.pointsUsed, r.pointsDiscount, r.delivery, r.billTotal,
         ];
       });
       sheet.getRange(2, 1, data.length, header.length).setValues(data);
-      sheet.getRange(2, 6, data.length, 5).setNumberFormat('#,##0.00'); // ราคา/ส่วนลด/ราคารวม/ค่าส่ง/Bill Total
+      sheet.getRange(2, 6, data.length, 3).setNumberFormat('#,##0.00'); // ราคา/ส่วนลด/ราคารวม
+      sheet.getRange(2, 9, data.length, 1).setNumberFormat('#,##0'); // คะแนนที่ใช้ (จำนวนเต็ม ไม่ใช่เงิน)
+      sheet.getRange(2, 10, data.length, 3).setNumberFormat('#,##0.00'); // ส่วนลดคะแนน/ค่าส่ง/Bill Total
 
       // สลับสีพื้นหลังอ่อนๆ ทีละวัน ให้เห็นชัดว่าแถวไหนอยู่วันเดียวกัน
       let lastDateLabel = null;
@@ -729,24 +761,32 @@ const EmOChaOrderBot = (() => {
     const qtyCell = sheet.getRange(totalRowIndex, 5);
     const discountCell = sheet.getRange(totalRowIndex, 7);
     const amountCell = sheet.getRange(totalRowIndex, 8);
-    const deliveryCell = sheet.getRange(totalRowIndex, 9);
-    const billTotalCell = sheet.getRange(totalRowIndex, 10);
+    const pointsUsedCell = sheet.getRange(totalRowIndex, 9);
+    const pointsDiscountCell = sheet.getRange(totalRowIndex, 10);
+    const deliveryCell = sheet.getRange(totalRowIndex, 11);
+    const billTotalCell = sheet.getRange(totalRowIndex, 12);
     if (rows.length > 0) {
       qtyCell.setValue(`=SUM(E2:E${totalRowIndex - 1})`);
       discountCell.setValue(`=SUM(G2:G${totalRowIndex - 1})`);
       amountCell.setValue(`=SUM(H2:H${totalRowIndex - 1})`);
-      deliveryCell.setValue(`=SUM(I2:I${totalRowIndex - 1})`);
-      billTotalCell.setValue(`=SUM(J2:J${totalRowIndex - 1})`);
+      pointsUsedCell.setValue(`=SUM(I2:I${totalRowIndex - 1})`);
+      pointsDiscountCell.setValue(`=SUM(J2:J${totalRowIndex - 1})`);
+      deliveryCell.setValue(`=SUM(K2:K${totalRowIndex - 1})`);
+      billTotalCell.setValue(`=SUM(L2:L${totalRowIndex - 1})`);
     } else {
       qtyCell.setValue(0);
       discountCell.setValue(0);
       amountCell.setValue(0);
+      pointsUsedCell.setValue(0);
+      pointsDiscountCell.setValue(0);
       deliveryCell.setValue(0);
       billTotalCell.setValue(0);
     }
-    [qtyCell, discountCell, amountCell, deliveryCell, billTotalCell].forEach((c) => c.setFontWeight('bold'));
+    [qtyCell, discountCell, amountCell, pointsUsedCell, pointsDiscountCell, deliveryCell, billTotalCell].forEach((c) => c.setFontWeight('bold'));
     discountCell.setNumberFormat('#,##0.00');
     amountCell.setNumberFormat('#,##0.00');
+    pointsUsedCell.setNumberFormat('#,##0');
+    pointsDiscountCell.setNumberFormat('#,##0.00');
     deliveryCell.setNumberFormat('#,##0.00');
     billTotalCell.setNumberFormat('#,##0.00');
     sheet.autoResizeColumns(1, header.length);
