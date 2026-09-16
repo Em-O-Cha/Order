@@ -600,6 +600,25 @@ function handleSlipAttachedElsewhere_(){
   setTimeout(closeThisShopWindow_, 3000);
 }
 
+// ⚡ เพิ่ม — ระหว่างรอเซิร์ฟเวอร์ตอบ (Apps Script ใช้เวลาหลายวินาทีเป็นปกติ) ข้อความบนปุ่มที่ค้างอยู่คำเดียว
+// ตลอดทำให้ลูกค้ารู้สึกว่า "เครื่องค้าง" แล้วกดซ้ำ/ปิดหน้าไปกลางคัน — เปลี่ยนข้อความไปเรื่อยๆ ตามเวลาที่ผ่านไป
+// ให้เห็นว่าระบบยังทำงานอยู่และถึงขั้นตอนไหนแล้ว คืนฟังก์ชันสำหรับหยุดกลับไปให้ผู้เรียกเรียกตอนจบเสมอ
+function startProgressText_(el, steps){
+  if (!el) return function(){};
+  var t0 = Date.now();
+  el.textContent = steps[0][1];
+  var timer = setInterval(function(){
+    var elapsed = Date.now() - t0;
+    for (var i = steps.length - 1; i >= 0; i--) {
+      if (elapsed >= steps[i][0]) {
+        if (el.textContent !== steps[i][1]) el.textContent = steps[i][1];
+        return;
+      }
+    }
+  }, 500);
+  return function(){ clearInterval(timer); };
+}
+
 function handleSlipFile(inp){
   var file = inp.files[0];
   if (!file) return;
@@ -652,39 +671,96 @@ function uploadSlipAttempt_(){
     });
 }
 
+// ⚡ เพิ่ม — ทางจบของการแนบสลิป แยกออกมาเป็นฟังก์ชันเดียว เพราะตอนนี้มี 2 ทางที่พาไปถึงจุดนี้ได้: คำตอบของ
+// คำขออัปโหลดกลับมาเอง หรือ poll ตรวจพบว่าเซิร์ฟเวอร์บันทึกสลิปเรียบร้อยแล้ว (ดู submitSlipInline) — กัน
+// ทำงานซ้ำด้วย slipSubmitDone_ ไม่ว่าทางไหนจะถึงก่อน
+var slipSubmitDone_ = false;
+var slipFastPollTimer_ = null;
+var slipFastPollInFlight_ = false;
+function stopSlipFastPoll_(){
+  if (slipFastPollTimer_) { clearInterval(slipFastPollTimer_); slipFastPollTimer_ = null; }
+  slipFastPollInFlight_ = false;
+}
+function finishSlipSuccess_(){
+  if (slipSubmitDone_) return;
+  slipSubmitDone_ = true;
+  stopSlipFastPoll_();
+  var btn = document.getElementById('slipSubmitBtn');
+  if (btn) { btn.disabled = false; btn.textContent = '✅ ยืนยันแนบสลิป'; }
+  document.getElementById('slipFormState').classList.add('sh');
+  document.getElementById('slipSuccessState').classList.remove('sh');
+  prepareCloseUi_();
+  if (slipUploadSource_ === 'orderDone') {
+    stopSlipStatusPoll_(); // แนบสำเร็จจากหน้านี้เองแล้ว ไม่ต้อง poll ถามซ้ำอีก
+    setStepper(3); // ขั้นตอน "เสร็จสิ้น"
+    var notice = document.getElementById('slipDoneNotice');
+    if (notice) notice.classList.remove('sh');
+  } else if (slipUploadSource_ === 'history') {
+    var attachedOrderId_ = slipTargetOrderId;
+    orderHistoryCache_.update(function(cached){
+      cached.results = (cached.results || []).filter(function(o){ return String(o.orderId) !== String(attachedOrderId_); });
+    });
+    loadOrderHistory(); // รีเฟรชรายการ ตัดออเดอร์นี้ออกไปเพราะแนบสลิปครบแล้ว (เผื่อปิดหน้าไม่สำเร็จ)
+  }
+  setTimeout(closeThisShopWindow_, 4000);
+}
+
+// ⚡ เพิ่ม — ระหว่างรอคำตอบของคำขออัปโหลด ให้ถามเซิร์ฟเวอร์เป็นระยะว่า "บันทึกสลิปของออเดอร์นี้เรียบร้อยหรือยัง"
+// เพราะฝั่งเซิร์ฟเวอร์บันทึกข้อมูลลงชีตเสร็จ (และส่งไลน์แจ้งเตือน) ไปตั้งแต่ก่อนที่คำตอบจะเดินทางกลับมาถึง
+// เบราว์เซอร์ ลูกค้าจึงเคยเจออาการ "ได้ข้อความไลน์แล้วแต่หน้าจอยังหมุนค้างอยู่" — พอ poll เจอว่าเสร็จแล้วก็ปิด
+// งานให้เลยไม่ต้องรอคำตอบเดิม (เซิร์ฟเวอร์เป็นคนยืนยันเองว่าแนบแล้ว จึงไม่ใช่การเดา)
+function startSlipFastPoll_(orderId){
+  stopSlipFastPoll_();
+  slipFastPollTimer_ = setInterval(function(){
+    if (slipSubmitDone_ || slipFastPollInFlight_) return;
+    slipFastPollInFlight_ = true;
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'checkSlipAttached', orderId: orderId })
+    })
+      .then(function(res){ return res.text(); })
+      .then(function(text){
+        slipFastPollInFlight_ = false;
+        var r; try { r = JSON.parse(text); } catch (e) { return; }
+        if (r && r.success && r.attached) finishSlipSuccess_();
+      })
+      .catch(function(){ slipFastPollInFlight_ = false; });
+  }, 2500);
+}
+
 function submitSlipInline(){
   if (!slipUploadData) return;
   var btn = document.getElementById('slipSubmitBtn');
   var errBox = document.getElementById('slipErrBox');
   errBox.classList.remove('show');
-  btn.disabled = true; btn.textContent = '⏳ กำลังอัปโหลด...';
+  btn.disabled = true;
+  slipSubmitDone_ = false;
+  var stopProgress_ = startProgressText_(btn, [
+    [0,     '⏳ กำลังอัปโหลดสลิป...'],
+    [5000,  '⏳ กำลังบันทึกลงระบบ...'],
+    [12000, '⏳ เกือบเสร็จแล้ว รอสักครู่...']
+  ]);
+  // เริ่มถามสถานะหลังผ่านไป 4 วิ (ก่อนหน้านั้นยังไงก็ยังไม่เสร็จ ถามไปก็เปลืองเปล่า)
+  var pollStartTimer_ = setTimeout(function(){ startSlipFastPoll_(slipTargetOrderId); }, 4000);
+
+  function cleanup_(){ clearTimeout(pollStartTimer_); stopProgress_(); stopSlipFastPoll_(); }
 
   uploadSlipAttempt_()
     .then(function(r){
-      btn.disabled = false; btn.textContent = '✅ ยืนยันแนบสลิป';
+      if (slipSubmitDone_) { cleanup_(); return; } // poll ปิดงานไปก่อนแล้ว
+      cleanup_();
       if (r && r.success) {
-        document.getElementById('slipFormState').classList.add('sh');
-        document.getElementById('slipSuccessState').classList.remove('sh');
-        prepareCloseUi_();
-        if (slipUploadSource_ === 'orderDone') {
-          stopSlipStatusPoll_(); // แนบสำเร็จจากหน้านี้เองแล้ว ไม่ต้อง poll ถามซ้ำอีก
-          setStepper(3); // ขั้นตอน "เสร็จสิ้น"
-          var notice = document.getElementById('slipDoneNotice');
-          if (notice) notice.classList.remove('sh');
-        } else if (slipUploadSource_ === 'history') {
-          var attachedOrderId_ = slipTargetOrderId;
-          orderHistoryCache_.update(function(cached){
-            cached.results = (cached.results || []).filter(function(o){ return String(o.orderId) !== String(attachedOrderId_); });
-          });
-          loadOrderHistory(); // รีเฟรชรายการ ตัดออเดอร์นี้ออกไปเพราะแนบสลิปครบแล้ว (เผื่อปิดหน้าไม่สำเร็จ)
-        }
-        setTimeout(closeThisShopWindow_, 4000);
+        finishSlipSuccess_();
       } else {
+        btn.disabled = false; btn.textContent = '✅ ยืนยันแนบสลิป';
         errBox.textContent = r ? r.error : 'เกิดข้อผิดพลาด';
         errBox.classList.add('show');
       }
     })
     .catch(function(e){
+      if (slipSubmitDone_) { cleanup_(); return; } // เซิร์ฟเวอร์บันทึกสำเร็จแล้ว แค่คำตอบเดินทางกลับไม่ถึง
+      cleanup_();
       btn.disabled = false; btn.textContent = '✅ ยืนยันแนบสลิป';
       errBox.textContent = 'Error: ' + e.message;
       errBox.classList.add('show');
@@ -2162,7 +2238,12 @@ function confirmSubmitOrder(){
   if (!province) { document.getElementById('confirmProvinceSelect').focus(); return; }
 
   var btn = document.getElementById('confirmAddressBtn');
-  btn.disabled = true; btn.textContent = '⏳ กำลังบันทึกคำสั่งซื้อ...';
+  btn.disabled = true;
+  var stopOrderProgress_ = startProgressText_(btn, [
+    [0,     '⏳ กำลังบันทึกคำสั่งซื้อ...'],
+    [5000,  '⏳ กำลังคำนวณสิทธิ์และตัดโปรโมชั่น...'],
+    [12000, '⏳ เกือบเสร็จแล้ว รอสักครู่...']
+  ]);
 
   var itemsJsonRaw = JSON.stringify(items);
   var itemsB64 = btoa(unescape(encodeURIComponent(itemsJsonRaw)));
@@ -2176,6 +2257,7 @@ function confirmSubmitOrder(){
     return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId, purchaseReferrerCode: purchaseReferrerCode, pointsToRedeem: pointsToRedeemInput_ });
   })
     .then(function(r){
+      stopOrderProgress_();
       btn.disabled = false; btn.textContent = '✅ ยืนยันที่อยู่และสั่งซื้อ';
       if (!r || !r.success) {
         var dotCount = currentIdToken ? (currentIdToken.match(/\./g) || []).length : 0;
@@ -2242,6 +2324,7 @@ function confirmSubmitOrder(){
       startSlipStatusPoll_(r.orderId);
     })
     .catch(function(e){
+      stopOrderProgress_();
       btn.disabled = false; btn.textContent = '✅ ยืนยันที่อยู่และสั่งซื้อ';
       if (e && e.alreadyShown) { closeAddressConfirmModal(); return; }
       closeAddressConfirmModal();
