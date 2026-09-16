@@ -692,7 +692,6 @@ const EmOChaOrderBot = (() => {
               dateLabel: formatThaiDateFromKey(key),
               orderId: revenueId,
               customerName: String(row[colMap.CUSTOMER_NAME] || '').trim(),
-              pointsUsed: pointsInfo ? pointsInfo.points : 0,
               pointsDiscount: pointsInfo ? pointsInfo.discount : 0,
             };
           }
@@ -709,11 +708,10 @@ const EmOChaOrderBot = (() => {
         price,
         discount,
         amount,
-        // คะแนนที่ใช้/ส่วนลดคะแนน/ค่าส่ง/Bill Total เป็นค่าระดับออเดอร์ (ไม่ใช่ต่อรายการ
-        // สินค้า) จึงขึ้นเฉพาะแถวแรกของออเดอร์เท่านั้น (แถวสินค้าอื่นที่เหลือเว้นว่างไว้)
+        // ส่วนลดคะแนน/ค่าส่ง/Bill Total เป็นค่าระดับออเดอร์ (ไม่ใช่ต่อรายการสินค้า)
+        // จึงขึ้นเฉพาะแถวแรกของออเดอร์เท่านั้น (แถวสินค้าอื่นที่เหลือเว้นว่างไว้)
         // เหมือนกับที่ชีต Revenue เก็บไว้ — เพื่อให้ SUM คอลัมน์นี้ตรงกับยอดจริงโดยไม่นับซ้ำ
         // ถ้าออเดอร์เดียวมีหลายรายการสินค้า
-        pointsUsed: isNewOrder ? currentOrder.pointsUsed : '',
         pointsDiscount: isNewOrder ? currentOrder.pointsDiscount : '',
         delivery: isNewOrder ? (Number(row[colMap.DELIVERY]) || 0) : '',
         billTotal: isNewOrder ? (Number(row[colMap.BILL_TOTAL]) || 0) : '',
@@ -739,10 +737,10 @@ const EmOChaOrderBot = (() => {
     const sheet = tempSs.getSheets()[0];
 
     // คอลัมน์ ราคา/ส่วนลด/ราคารวม เป็นค่าต่อบรรทัดสินค้า (เหมือนชีต Revenue) ส่วนค่าส่ง/
-    // Bill Total/คะแนนที่ใช้/ส่วนลดคะแนน เป็นยอดรวมระดับออเดอร์ จะโชว์แค่แถวแรกของแต่ละ
-    // ออเดอร์เท่านั้น แถวสินค้าที่เหลือเว้นว่าง
+    // Bill Total/ส่วนลดคะแนน เป็นยอดรวมระดับออเดอร์ จะโชว์แค่แถวแรกของแต่ละออเดอร์เท่านั้น
+    // แถวสินค้าที่เหลือเว้นว่าง
     // ***คอลัมน์ใหม่ให้ต่อท้ายเสมอ ห้ามแทรกกลาง*** เพื่อไม่ให้ตำแหน่งคอลัมน์เดิมขยับ
-    const header = ['วันที่', 'เลขที่ออเดอร์', 'ชื่อลูกค้า', 'สินค้า', 'จำนวน', 'ราคา', 'ส่วนลด', 'ราคารวม', 'ค่าส่ง', 'Bill Total', 'คะแนนที่ใช้', 'ส่วนลดคะแนน'];
+    const header = ['วันที่', 'เลขที่ออเดอร์', 'ชื่อลูกค้า', 'สินค้า', 'จำนวน', 'ราคา', 'ส่วนลด', 'ราคารวม', 'ค่าส่ง', 'Bill Total', 'ส่วนลดคะแนน'];
     sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
 
     if (rows.length > 0) {
@@ -760,13 +758,12 @@ const EmOChaOrderBot = (() => {
           sameOrder ? '' : r.orderId,
           sameOrder ? '' : r.customerName,
           r.productName, r.qty,
-          r.price, r.discount, r.amount, r.delivery, r.billTotal, r.pointsUsed, r.pointsDiscount,
+          r.price, r.discount, r.amount, r.delivery, r.billTotal, r.pointsDiscount,
         ];
       });
       sheet.getRange(2, 1, data.length, header.length).setValues(data);
       sheet.getRange(2, 6, data.length, 5).setNumberFormat('#,##0.00'); // ราคา/ส่วนลด/ราคารวม/ค่าส่ง/Bill Total
-      sheet.getRange(2, 11, data.length, 1).setNumberFormat('#,##0'); // คะแนนที่ใช้ (จำนวนแต้ม ไม่ใช่เงิน)
-      sheet.getRange(2, 12, data.length, 1).setNumberFormat('#,##0.00'); // ส่วนลดคะแนน (บาท)
+      sheet.getRange(2, 11, data.length, 1).setNumberFormat('#,##0.00'); // ส่วนลดคะแนน (บาท)
 
       // สลับสีพื้นหลังอ่อนๆ ทีละวัน ให้เห็นชัดว่าแถวไหนอยู่วันเดียวกัน
       let lastDateLabel = null;
@@ -791,31 +788,27 @@ const EmOChaOrderBot = (() => {
     const amountCell = sheet.getRange(totalRowIndex, 8);
     const deliveryCell = sheet.getRange(totalRowIndex, 9);
     const billTotalCell = sheet.getRange(totalRowIndex, 10);
-    const pointsUsedCell = sheet.getRange(totalRowIndex, 11);
-    const pointsDiscountCell = sheet.getRange(totalRowIndex, 12);
+    const pointsDiscountCell = sheet.getRange(totalRowIndex, 11);
     if (rows.length > 0) {
       qtyCell.setValue(`=SUM(E2:E${totalRowIndex - 1})`);
       discountCell.setValue(`=SUM(G2:G${totalRowIndex - 1})`);
       amountCell.setValue(`=SUM(H2:H${totalRowIndex - 1})`);
       deliveryCell.setValue(`=SUM(I2:I${totalRowIndex - 1})`);
       billTotalCell.setValue(`=SUM(J2:J${totalRowIndex - 1})`);
-      pointsUsedCell.setValue(`=SUM(K2:K${totalRowIndex - 1})`);
-      pointsDiscountCell.setValue(`=SUM(L2:L${totalRowIndex - 1})`);
+      pointsDiscountCell.setValue(`=SUM(K2:K${totalRowIndex - 1})`);
     } else {
       qtyCell.setValue(0);
       discountCell.setValue(0);
       amountCell.setValue(0);
       deliveryCell.setValue(0);
       billTotalCell.setValue(0);
-      pointsUsedCell.setValue(0);
       pointsDiscountCell.setValue(0);
     }
-    [qtyCell, discountCell, amountCell, deliveryCell, billTotalCell, pointsUsedCell, pointsDiscountCell].forEach((c) => c.setFontWeight('bold'));
+    [qtyCell, discountCell, amountCell, deliveryCell, billTotalCell, pointsDiscountCell].forEach((c) => c.setFontWeight('bold'));
     discountCell.setNumberFormat('#,##0.00');
     amountCell.setNumberFormat('#,##0.00');
     deliveryCell.setNumberFormat('#,##0.00');
     billTotalCell.setNumberFormat('#,##0.00');
-    pointsUsedCell.setNumberFormat('#,##0');
     pointsDiscountCell.setNumberFormat('#,##0.00');
     sheet.autoResizeColumns(1, header.length);
     SpreadsheetApp.flush();
