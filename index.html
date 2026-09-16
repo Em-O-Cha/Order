@@ -432,7 +432,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
 // ⚡ แก้ (บั๊ก 16/9/69 — แก้จุดเดียวกันกับหน้าสมัครสมาชิก) — ถ้า request โหลด sdk.js จาก LINE ค้างกลางทาง
 // (เน็ตมือถือสะดุด/CDN ไม่ตอบ) เบราว์เซอร์จะไม่ยิงทั้ง onload และ onerror เลย — initLiff() จึงไม่ถูกเรียก และตัวจับเวลา
 // ข้างใน initLiff() ก็ไม่เริ่มนับ ลูกค้าค้างหน้าโหลดตลอดไป ไม่มีข้อความผิดพลาดและกดลองใหม่ไม่ได้
-// — คุมการโหลด SDK ด้วยตัวจับเวลาเอง: ไม่ขึ้นใน 7 วิ โหลดซ้ำใหม่อีกครั้ง ถ้ายังไม่ขึ้นอีกจึงขึ้นข้อความพร้อมปุ่มลองใหม่
+// — คุมการโหลด SDK ด้วยตัวจับเวลาเอง: ไม่ขึ้นใน 4 วิ โหลดซ้ำใหม่อีกครั้ง ถ้ายังไม่ขึ้นอีกจึงขึ้นข้อความพร้อมปุ่มลองใหม่
 var LIFF_SDK_URL_ = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
 var liffSdkAttempt_ = 0;
 var liffStarted_ = false;
@@ -463,7 +463,7 @@ function loadLiffSdk_(){
     if (liffStarted_) return;
     if (liffSdkReady_()) { startLiffWhenReady_(); return; }  // ไฟล์มาแล้วแต่ onload ไม่ยิง
     if (liffSdkAttempt_ < 2) loadLiffSdk_(); else showLiffSdkFailed_();
-  }, liffSdkAttempt_ < 2 ? 7000 : 12000);
+  }, liffSdkAttempt_ < 2 ? 4000 : 7000);
 }
 loadLiffSdk_();
 
