@@ -360,15 +360,13 @@ const EmOChaOrderBot = (() => {
           if (inRange && adMatches) {
             orderCount++;
             totalAmount += billTotal;
-            const pointsInfo = extractPointsDiscount(row[colMap.REMARK]);
             currentOrder = {
               id: revenueId,
               customerName: String(row[colMap.CUSTOMER_NAME] || '').trim(),
               items: [],
               subtotal: billTotal,
               dateKey: key,
-              pointsUsed: pointsInfo ? pointsInfo.points : 0,
-              pointsDiscount: pointsInfo ? pointsInfo.discount : 0,
+              discounts: extractDiscountEntries(row[colMap.REMARK]),
             };
             orders.push(currentOrder);
           }
@@ -414,15 +412,40 @@ const EmOChaOrderBot = (() => {
   }
 
   /**
-   * ดึงจำนวนคะแนนและมูลค่าส่วนลดที่ลูกค้าแลกใช้ จากข้อความในคอลัมน์ Remark
-   * รูปแบบข้อความจริงในชีต (พบเฉพาะออเดอร์ Line shop): "...แลกคะแนน: 20 คะแนน (-20)..."
-   * ถ้าไม่มีการใช้คะแนนในออเดอร์นั้น หรือคอลัมน์ Remark ว่าง จะคืนค่า null
+   * ดึง "ส่วนลดทุกแบบ" ที่ลูกค้าได้รับในออเดอร์นั้น จากข้อความในคอลัมน์ Remark
+   * ข้อความจริงในชีตจะรวมส่วนลดทุกรายการไว้ในบรรทัดเดียว คั่นด้วย | หรือ , เช่น
+   *   "...| สิทธิ์: ลูกค้าเห็นใน Live ซื้อ 2 แถม 1 (-169), คูปอง: ลดค่าจัดส่ง 60% (-42),
+   *      แลกคะแนน: 20 คะแนน (-20) | 🎯 หักคะแนนแล้ว: 20 คะแนน (-฿20) | ..."
+   * จึงตัดเป็นรายการย่อยแล้วเก็บเฉพาะชิ้นที่ลงท้ายด้วยจำนวนเงินในวงเล็บแบบ (-ตัวเลข)
+   * — บรรทัดสรุปสถานะที่ใส่สัญลักษณ์ ฿ ไว้ เช่น "(-฿20)" จะไม่ถูกนับซ้ำเพราะไม่ใช่ตัวเลขล้วน
+   * คืนค่าเป็นอาร์เรย์ [{ label: 'คูปอง', detail: 'ลดค่าจัดส่ง 60%', amount: 42 }, ...]
    */
-  function extractPointsDiscount(remarkText) {
-    if (!remarkText) return null;
-    const match = String(remarkText).match(/แลกคะแนน[:\s]*([\d.]+)\s*คะแนน\s*\(-([\d.]+)\)/);
-    if (!match) return null;
-    return { points: Number(match[1]) || 0, discount: Number(match[2]) || 0 };
+  function extractDiscountEntries(remarkText) {
+    if (!remarkText) return [];
+    const entries = [];
+    String(remarkText).split(/[|,]/).forEach((part) => {
+      const m = part.match(/^\s*([^:]+?)\s*:\s*(.*?)\s*\(-\s*([\d,.]+)\)\s*$/);
+      if (!m) return;
+      const amount = Number(String(m[3]).replace(/,/g, '')) || 0;
+      if (amount <= 0) return;
+      entries.push({ label: m[1].trim(), detail: m[2].trim(), amount });
+    });
+    return entries;
+  }
+
+  // มูลค่าส่วนลดเฉพาะส่วนที่มาจากการแลกคะแนน (ใช้กับคอลัมน์ "ส่วนลดคะแนน" ในไฟล์ Excel)
+  function pointsDiscountOf(entries) {
+    return entries
+      .filter((e) => e.label.indexOf('คะแนน') !== -1)
+      .reduce((sum, e) => sum + e.amount, 0);
+  }
+
+  // ไอคอนหน้าบรรทัดส่วนลดในการ์ด ให้ดูออกง่ายว่าเป็นส่วนลดประเภทไหน
+  function discountIcon(label) {
+    if (label.indexOf('คะแนน') !== -1) return '🎯';
+    if (label.indexOf('คูปอง') !== -1) return '🎟️';
+    if (label.indexOf('สิทธิ์') !== -1) return '🎁';
+    return '🏷️';
   }
 
   function toDateKey(value) {
@@ -628,14 +651,16 @@ const EmOChaOrderBot = (() => {
             { type: 'text', text: 'x' + item.qty, size: 'xs', color: '#48484A', align: 'end', flex: 1 },
           ],
         })),
-        ...(order.pointsDiscount > 0 ? [{
+        // ส่วนลดทุกรายการที่ลูกค้าได้รับในออเดอร์นี้ (สิทธิ์/คูปอง/แลกคะแนน) แยกบรรทัดละรายการ
+        ...(order.discounts || []).map((entry) => ({
           type: 'box',
           layout: 'horizontal',
+          spacing: 'xs',
           contents: [
-            { type: 'text', text: `🎯 ใช้คะแนนสะสม ${order.pointsUsed} แต้ม`, size: 'xs', color: '#8A8A8E' },
-            { type: 'text', text: '-' + formatBaht(order.pointsDiscount) + ' บาท', size: 'xs', color: '#8A8A8E', align: 'end' },
+            { type: 'text', text: `${discountIcon(entry.label)} ${entry.label}: ${entry.detail}`, size: 'xxs', color: '#8A8A8E', wrap: true, flex: 5 },
+            { type: 'text', text: '-' + formatBaht(entry.amount), size: 'xxs', color: '#8A8A8E', align: 'end', flex: 2 },
           ],
-        }] : []),
+        })),
         {
           type: 'box',
           layout: 'horizontal',
@@ -687,12 +712,11 @@ const EmOChaOrderBot = (() => {
           const key = effectiveOrderDateKey(row, adValue, colMap);
           const inRange = key != null && key >= startKey && key <= endKey;
           if (inRange && adMatches) {
-            const pointsInfo = extractPointsDiscount(row[colMap.REMARK]);
             currentOrder = {
               dateLabel: formatThaiDateFromKey(key),
               orderId: revenueId,
               customerName: String(row[colMap.CUSTOMER_NAME] || '').trim(),
-              pointsDiscount: pointsInfo ? pointsInfo.discount : 0,
+              pointsDiscount: pointsDiscountOf(extractDiscountEntries(row[colMap.REMARK])),
             };
           }
         }
