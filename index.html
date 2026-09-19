@@ -255,7 +255,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
 
     <div id="catalogState" class="sh">
       <div class="history-link"><button type="button" onclick="showHistory()">🛒 รถเข็น</button></div>
-      <div id="myPrivileges" class="sh"></div>
+      <div id="myPrivileges" class="sh" style="margin-bottom:16px"></div>
       <div id="autoPromoBox" class="sh"></div>
       <div id="pointsMultiplierBox" class="sh"></div>
       <div id="repeatPromoBox" class="sh"></div>
@@ -1081,7 +1081,7 @@ function renderMyPrivileges_(r){
         + '<div class="coupon-ticket-stub"><small>' + escHtml(theme.stub.label) + '</small><b>' + escHtml(theme.stub.value) + '</b></div>'
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(p.name || '') + '</div>'
-          + (p.expiry ? '<div class="ct-sub">ใช้ได้ถึง ' + escHtml(p.expiry) + '</div>' : '')
+          + ((p.expiry && p.expiry !== 'ไม่มีวันหมดอายุ') ? '<div class="ct-sub">ใช้ได้ถึง ' + escHtml(p.expiry) + '</div>' : '')
         + '</div>'
         + '<div class="coupon-ticket-side">'
           + '<span class="ct-icon">' + theme.icon + '</span>'
