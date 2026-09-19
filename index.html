@@ -2429,7 +2429,7 @@ function confirmSubmitOrder(){
         var hintEl = document.getElementById('orderDoneHint');
         if (hintEl) {
           hintEl.textContent = isCodDone_
-            ? 'เตรียมเงินสด ฿' + r.totalAmount.toLocaleString('th-TH') + ' ให้พนักงานส่งของตอนรับสินค้า — ระบบแจ้งทีมงานเรียบร้อยแล้ว'
+            ? 'เตรียมเงิน ฿' + r.totalAmount.toLocaleString('th-TH') + ' ให้พนักงานส่งของตอนรับสินค้า — ระบบแจ้งทีมงานเรียบร้อยแล้ว'
             : 'ยอด 0 บาท ไม่ต้องโอนเงิน/แนบสลิป ระบบแจ้งทีมงานเรียบร้อยแล้ว';
         }
         var notice = document.getElementById('slipDoneNotice');
