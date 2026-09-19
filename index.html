@@ -255,7 +255,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
 
     <div id="catalogState" class="sh">
       <div class="history-link"><button type="button" onclick="showHistory()">🛒 รถเข็น</button></div>
-      <div id="myPrivileges" class="sh"></div>
+      <div id="myPrivileges" class="sh" style="margin-bottom:16px"></div>
       <div id="autoPromoBox" class="sh"></div>
       <div id="pointsMultiplierBox" class="sh"></div>
       <div id="repeatPromoBox" class="sh"></div>
@@ -269,7 +269,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
 
     <div id="checkoutState" class="sh">
       <div id="discountSummary" style="margin-bottom:16px"></div>
-      <div class="fg-coupon" style="display:flex;gap:8px;margin-bottom:16px">
+      <div class="fg-coupon" id="couponInputRow" style="display:flex;gap:8px;margin-bottom:16px">
         <input type="text" id="couponInput" placeholder="มีโค้ดพิเศษอื่น? กรอกตรงนี้" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Kanit',sans-serif">
         <button class="btn" onclick="applyCoupon()" style="white-space:nowrap">ใช้โค้ด</button>
       </div>
@@ -1081,7 +1081,7 @@ function renderMyPrivileges_(r){
         + '<div class="coupon-ticket-stub"><small>' + escHtml(theme.stub.label) + '</small><b>' + escHtml(theme.stub.value) + '</b></div>'
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(p.name || '') + '</div>'
-          + (p.expiry ? '<div class="ct-sub">ใช้ได้ถึง ' + escHtml(p.expiry) + '</div>' : '')
+          + ((p.expiry && p.expiry !== 'ไม่มีวันหมดอายุ') ? '<div class="ct-sub">ใช้ได้ถึง ' + escHtml(p.expiry) + '</div>' : '')
         + '</div>'
         + '<div class="coupon-ticket-side">'
           + '<span class="ct-icon">' + theme.icon + '</span>'
@@ -2000,8 +2000,18 @@ function renderDiscountSummary(){
       h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>🔁 ' + escHtml(rp.name) + '</span><span>คูณแต้ม x' + rp.multiplier + '</span></div>';
     }
   }
+  // ⚡ เพิ่ม — ระหว่างที่ยังมีสิทธิพิเศษสมาชิกค้างอยู่ ใช้โค้ดส่วนลดไม่ได้เลย จึงซ่อนช่องกรอกโค้ดทิ้งไป
+  // (ข้อ 3 ของกติกา: สิทธิ์ยังอยู่ = ไม่ขึ้นคูปองใดๆ) พอใช้สิทธิ์หมดแล้วช่องนี้จะกลับมาเองอัตโนมัติ
+  var couponRow_ = document.getElementById('couponInputRow');
+  if (couponRow_) couponRow_.style.display = (lastDiscountInfo && lastDiscountInfo.privilegeLocked) ? 'none' : 'flex';
+
   if (lastDiscountInfo && lastDiscountInfo.couponError) {
     h += '<div class="row" style="color:#c62828"><span colspan="2">⚠️ ' + escHtml(lastDiscountInfo.couponError) + '</span></div>';
+  }
+  // ⚡ เพิ่ม — คำอธิบายสั้นๆ จากเซิร์ฟเวอร์ว่าออเดอร์นี้ถูกล็อกด้วยสิทธิพิเศษสมาชิกอยู่ จึงไม่มีคูปอง/โปรอื่น
+  // มาบวกเพิ่ม เพื่อให้ลูกค้าเข้าใจว่าทำไมส่วนลดถึงไม่รวมกัน (ไม่งั้นจะดูเหมือนระบบลืมลดให้)
+  if (lastDiscountInfo && lastDiscountInfo.privilegeLockNote) {
+    h += '<div class="row" style="font-size:11.5px;color:var(--g6)"><span colspan="2">ℹ️ ' + escHtml(lastDiscountInfo.privilegeLockNote) + '</span></div>';
   }
   if (lastDiscountInfo && lastDiscountInfo.pointsUsed > 0) {
     h += '<div class="row"><span>🎯 แลกคะแนน ' + lastDiscountInfo.pointsUsed + ' คะแนน</span><span style="color:#c62828">-฿' + Math.round(lastDiscountInfo.pointsRedeemDiscount).toLocaleString('th-TH') + '</span></div>';
