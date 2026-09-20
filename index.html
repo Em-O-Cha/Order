@@ -64,6 +64,10 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 
 /* เลือกวิธีชำระเงิน: ชื่อด้านบนและปุ่มไอคอนวงกลมด้านล่าง */
 .payment-methods{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin:4px 16px 16px;}
+/* ⚡ เพิ่ม (19/9/69) — เมื่อเปิดเก็บเงินปลายทางจะมี 3 ปุ่ม บีบระยะห่างลงให้พอดีจอมือถือ ไม่ต้องเลื่อนแนวนอน */
+.payment-methods.three{grid-template-columns:repeat(3,1fr);gap:12px;}
+.payment-methods.three .payment-method-title{font-size:12px;}
+.payment-methods.three .payment-method-icon{width:48px;height:48px;}
 .payment-method{min-height:0;border:0;border-radius:0;background:transparent;color:#1a5c2a;
   padding:0;cursor:pointer;font-family:'Kanit',sans-serif;text-align:center;box-shadow:none;
   display:flex;flex-direction:column;align-items:center;gap:7px;transition:transform .18s ease;}
@@ -291,6 +295,12 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
           <span class="payment-method-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10 12 4l9 6"/><path d="M5 10h14"/><path d="M6 10v8m4-8v8m4-8v8m4-8v8"/><path d="M4 18h16v2H4z"/></svg></span>
           <span class="payment-method-title">โอนเข้าบัญชี</span><span class="payment-method-sub">แนบสลิปภายหลัง</span>
         </button>
+        <!-- ⚡ เพิ่ม (19/9/69) — ปุ่มเก็บเงินปลายทาง ซ่อนไว้ก่อนเสมอ จะโชว์เฉพาะตอนที่ร้านเปิดใช้งาน ลูกค้า
+             ไม่ถูกบล็อก และยอดบิลเข้าเงื่อนไขที่แอดมินตั้งไว้ (ดู updatePaymentMethodsUi_) -->
+        <button type="button" class="payment-method sh" id="optCod" aria-pressed="false" onclick="selectPayment('cod')">
+          <span class="payment-method-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M5.5 12h.01M18.5 12h.01"/></svg></span>
+          <span class="payment-method-title">เก็บเงินปลายทาง</span><span class="payment-method-sub">จ่ายตอนรับของ</span>
+        </button>
       </div>
       <div id="paymentDetail"></div>
       <div id="checkoutErrBox" class="sh" style="background:#fff3e0;color:#e65100;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px"></div>
@@ -481,6 +491,9 @@ var variantList = [];
 var cart = {};
 var paymentInfo = null;
 var selectedPayment = 'promptpay';
+// ⚡ เพิ่ม (19/9/69) — เงื่อนไขเก็บเงินปลายทางที่เซิร์ฟเวอร์ส่งมาให้ตอนเปิดหน้าร้าน (getShopBootstrap.cod)
+// ใช้แค่ตัดสินใจ "แสดงผล" เท่านั้น — ตอนกดสั่งซื้อจริงฝั่งเซิร์ฟเวอร์เช็คเงื่อนไขทั้งหมดซ้ำอีกครั้งเสมอ
+var codInfo_ = null;
 var appliedCouponCode = '';
 var lastDiscountInfo = null;
 var pointsToRedeemInput_ = 0; // ⚡ เพิ่ม (19/8/69) จำนวนคะแนนที่ลูกค้าพิมพ์จะแลกเป็นส่วนลดเงินสด
@@ -1010,6 +1023,7 @@ function applyShopBootstrap_(r){
   if (r.address) savedAddress = r.address;
 
   if (r.paymentInfo) paymentInfo = r.paymentInfo;
+  if (r.cod) codInfo_ = r.cod;
 
   warmOrderHistory_();
 }
@@ -2021,23 +2035,33 @@ function renderDiscountSummary(){
     ? '<span style="text-decoration:line-through;color:#999;margin-right:6px">฿' + Math.round(getShippingCost()).toLocaleString('th-TH') + '</span><span style="color:#c62828;font-weight:700">฿' + Math.round(getFinalShippingCost()).toLocaleString('th-TH') + '</span>'
     : '฿' + Math.round(getShippingCost()).toLocaleString('th-TH');
   h += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>' + shipHtml + '</span></div>';
+  var codFeeRow_ = codFeeAmount_();
+  if (codFeeRow_ > 0) {
+    h += '<div class="row"><span>💵 ค่าธรรมเนียมเก็บเงินปลายทาง</span><span>฿' + codFeeRow_.toLocaleString('th-TH') + '</span></div>';
+  }
   h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px;align-items:center"><span><b>ยอดสุทธิ</b></span><span style="font-size:22px;font-weight:700;color:#e65100">฿' + getFinalTotal().toLocaleString('th-TH') + '</span></div>';
   h += '</div>';
   wrap.innerHTML = h;
   document.getElementById('checkoutBarTotal').textContent = '฿' + getFinalTotal().toLocaleString('th-TH');
+  updatePaymentMethodsUi_(); // ยอดเปลี่ยน = เงื่อนไขเก็บเงินปลายทางอาจเปลี่ยนตาม
   renderPointsRedeemBox_();
 }
 
 function selectPayment(method){
   selectedPayment = method;
-  var isPromptpay = method === 'promptpay';
-  var promptpayButton = document.getElementById('optPromptpay');
-  var bankButton = document.getElementById('optBank');
-  promptpayButton.classList.toggle('active', isPromptpay);
-  bankButton.classList.toggle('active', !isPromptpay);
-  promptpayButton.setAttribute('aria-pressed', isPromptpay ? 'true' : 'false');
-  bankButton.setAttribute('aria-pressed', isPromptpay ? 'false' : 'true');
+  var buttons = { promptpay: document.getElementById('optPromptpay'), bank: document.getElementById('optBank'), cod: document.getElementById('optCod') };
+  Object.keys(buttons).forEach(function(key){
+    var btn = buttons[key];
+    if (!btn) return;
+    var isActive = (key === method);
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+  // ⚡ เพิ่ม (19/9/69) — เก็บเงินปลายทางไม่มีขั้นตอนแนบสลิป เปลี่ยนป้ายขั้นที่ 3 ของแถบสถานะให้ตรงความจริง
+  var slipStepLabel = document.querySelector('.step[data-step="2"] .step-label');
+  if (slipStepLabel) slipStepLabel.textContent = (method === 'cod') ? 'ยืนยันออเดอร์' : 'แนบสลิป';
   renderPaymentDetail();
+  renderDiscountSummary(); // ค่าธรรมเนียม/ยอดสุทธิเปลี่ยนตามวิธีชำระที่เลือก
 }
 
 function getCartTotal(){
@@ -2062,8 +2086,48 @@ function getPointsRedeemDiscount(){
 // ก่อนแก้จุดนี้ไม่มีการปัดเศษเลย ทำให้บางออเดอร์ (ที่มีส่วนลด % ของแถมแบบ bogo กับสินค้าราคาไม่ลงตัว) โชว์ทศนิยม
 // 3 ตำแหน่งแปลกๆ เช่น ฿393.833
 function getFinalTotal(){
+  return getFinalTotalBeforeCod_() + codFeeAmount_();
+}
+
+// ยอดสุทธิก่อนบวกค่าธรรมเนียมเก็บเงินปลายทาง — ใช้เป็นฐานคิดค่าธรรมเนียมและใช้เทียบเงื่อนไขยอดขั้นต่ำ/เพดาน
+// (ต้องแยกออกมา ไม่งั้นการคิดค่าธรรมเนียมแบบ % จะวนคิดจากยอดที่บวกค่าธรรมเนียมไปแล้ว)
+function getFinalTotalBeforeCod_(){
   var beforePoints = Math.max(0, getCartTotal() - getDiscountAmount()) + getFinalShippingCost();
   return Math.floor(Math.max(0, beforePoints - getPointsRedeemDiscount()));
+}
+
+// ค่าธรรมเนียมเก็บเงินปลายทาง (คิดเฉพาะตอนเลือกวิธีนี้เท่านั้น) — ต้องตรงกับสูตรฝั่ง backend เป๊ะๆ
+// (calcCodFee_ ใน Members.gs: แบบบาทคงที่ หรือ % ของยอดบิล แล้วปัดเป็นจำนวนเต็ม)
+function codFeeAmount_(){
+  if (selectedPayment !== 'cod' || !codInfo_ || !codInfo_.fee) return 0;
+  var base = getFinalTotalBeforeCod_();
+  if (codInfo_.feeType === 'percent') return Math.round(base * codInfo_.fee / 100);
+  return Math.round(codInfo_.fee);
+}
+
+// เหตุผลที่ยังใช้เก็บเงินปลายทางกับบิลนี้ไม่ได้ ('' = ใช้ได้) — ลำดับการเช็คตรงกับ evaluateCodEligibility_
+// ฝั่งเซิร์ฟเวอร์ เพื่อให้ข้อความที่ลูกค้าเห็นตรงกันทั้ง 2 ฝั่ง
+function codUnavailableReason_(){
+  if (!codInfo_ || !codInfo_.enabled) return 'ขณะนี้ร้านปิดรับชำระแบบเก็บเงินปลายทาง';
+  if (codInfo_.blocked) return 'บัญชีของคุณถูกระงับการชำระแบบเก็บเงินปลายทาง กรุณาติดต่อทีมงาน';
+  if (codInfo_.tierAllowed === false) return 'ระดับสมาชิกของคุณยังใช้ชำระแบบเก็บเงินปลายทางไม่ได้';
+  var base = getFinalTotalBeforeCod_();
+  if (base <= 0) return 'ยอดชำระ 0 บาท ไม่ต้องใช้เก็บเงินปลายทาง';
+  if (codInfo_.minAmount && base < codInfo_.minAmount) return 'ยอดสั่งซื้อขั้นต่ำสำหรับเก็บเงินปลายทางคือ ฿' + Math.round(codInfo_.minAmount).toLocaleString('th-TH');
+  if (codInfo_.maxAmount && base > codInfo_.maxAmount) return 'ยอดสั่งซื้อเกินเพดานเก็บเงินปลายทาง (สูงสุด ฿' + Math.round(codInfo_.maxAmount).toLocaleString('th-TH') + ')';
+  return '';
+}
+
+// เรียกทุกครั้งที่ยอดเปลี่ยน (renderDiscountSummary) — ถ้ายอดหลุดเงื่อนไขไปแล้วและลูกค้าเลือกเก็บเงินปลายทางค้างไว้
+// จะสลับกลับไปพร้อมเพย์ให้อัตโนมัติ กันกดสั่งซื้อแล้วเซิร์ฟเวอร์ปฏิเสธ
+function updatePaymentMethodsUi_(){
+  var codBtn = document.getElementById('optCod');
+  if (!codBtn) return;
+  var available = !codUnavailableReason_();
+  codBtn.classList.toggle('sh', !available);
+  var wrap = document.querySelector('.payment-methods');
+  if (wrap) wrap.classList.toggle('three', available);
+  if (!available && selectedPayment === 'cod') selectPayment('promptpay');
 }
 
 // ⚡ เพิ่ม (9/9/69) — แยกส่วนแสดงข้อมูลบัญชีธนาคาร (โลโก้/เลขบัญชี+ปุ่มคัดลอก/ชื่อบัญชี) ออกมาเป็นฟังก์ชัน
@@ -2095,6 +2159,19 @@ function renderPaymentDetail(targetElId, fixedTotal, showBoth){
   var wrap = document.getElementById(targetElId);
   var qrContainerId = targetElId + 'QrContainer';
   var total = (typeof fixedTotal === 'number') ? fixedTotal : getFinalTotal();
+  // ⚡ เพิ่ม (19/9/69) — เลือกเก็บเงินปลายทาง: ไม่ต้องโชว์ QR/เลขบัญชีเลย (showBoth = ป็อปอัปดูเลขบัญชีซ้ำ
+  // ที่หน้าสั่งซื้อสำเร็จ ซึ่งไม่ได้เปิดให้ออเดอร์เก็บเงินปลายทางอยู่แล้ว)
+  if (!showBoth && selectedPayment === 'cod') {
+    var codFeeNow_ = codFeeAmount_();
+    wrap.innerHTML = '<div class="bank-box" style="text-align:center">'
+      + '<p style="font-weight:600;color:#e65100;font-size:15px">💵 ชำระเงินกับพนักงานส่งของ</p>'
+      + '<p style="font-size:24px;font-weight:700;color:#e65100;margin-top:8px">฿' + total.toLocaleString('th-TH') + '</p>'
+      + (codFeeNow_ > 0 ? '<p style="font-size:12px;color:var(--g6);margin-top:4px">(รวมค่าธรรมเนียมเก็บเงินปลายทาง ฿' + codFeeNow_.toLocaleString('th-TH') + ' แล้ว)</p>' : '')
+      + '<p style="font-size:12.5px;color:var(--g6);margin-top:10px;line-height:1.6">' + escHtml((codInfo_ && codInfo_.note) || 'ชำระเงินกับพนักงานส่งของตอนได้รับสินค้า') + '</p>'
+      + '<p style="font-size:12px;color:var(--g6);margin-top:6px">กดยืนยันสั่งซื้อได้เลยค่ะ</p>'
+      + '</div>';
+    return;
+  }
   if (!paymentInfo) { wrap.innerHTML = ''; return; }
   if (total <= 0) {
     wrap.innerHTML = '<div class="bank-box" style="text-align:center"><p style="font-weight:600;color:var(--gd)">🎉 ยอดชำระ ฿0 — ไม่ต้องโอนเงิน</p><p style="font-size:12.5px;color:var(--g6);margin-top:6px">ส่วนลด/สิทธิ์ของคุณครอบคลุมยอดทั้งหมดแล้ว กดยืนยันสั่งซื้อได้เลย ไม่ต้องแนบสลิป</p></div>';
@@ -2330,7 +2407,7 @@ function confirmSubmitOrder(){
       });
       summaryHtml += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(r.shippingCost || 0).toLocaleString('th-TH') + '</span></div>';
       summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span><b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
-        + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : 'โอนธนาคาร') + '</span></div>';
+        + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : (selectedPayment === 'cod' ? '💵 เก็บเงินปลายทาง' : 'โอนธนาคาร')) + '</span></div>';
       document.getElementById('orderSummary').innerHTML = summaryHtml;
 
       currentOrderId = r.orderId;
@@ -2346,17 +2423,26 @@ function confirmSubmitOrder(){
         pendingSlipOrderId = '';
         document.getElementById('orderDoneBar').classList.add('sh');
         document.getElementById('backToPaymentBtn').classList.add('sh');
+        // ⚡ แก้ (19/9/69) — เส้นทางนี้ใช้ร่วมกัน 2 กรณีที่ไม่ต้องแนบสลิป: ยอด 0 บาท กับเก็บเงินปลายทาง
+        // ข้อความจึงต้องแยกกัน ไม่งั้นลูกค้าที่สั่งแบบเก็บเงินปลายทางจะเห็นว่า "ไม่มีค่าใช้จ่าย" ซึ่งผิด
+        var isCodDone_ = !!r.isCod && r.totalAmount > 0;
         var hintEl = document.getElementById('orderDoneHint');
-        if (hintEl) hintEl.textContent = 'ยอด 0 บาท ไม่ต้องโอนเงิน/แนบสลิป ระบบแจ้งทีมงานเรียบร้อยแล้ว';
+        if (hintEl) {
+          hintEl.textContent = isCodDone_
+            ? 'เตรียมเงิน ฿' + r.totalAmount.toLocaleString('th-TH') + ' ให้พนักงานส่งของตอนรับสินค้า — ระบบแจ้งทีมงานเรียบร้อยแล้ว'
+            : 'ยอด 0 บาท ไม่ต้องโอนเงิน/แนบสลิป ระบบแจ้งทีมงานเรียบร้อยแล้ว';
+        }
         var notice = document.getElementById('slipDoneNotice');
         if (notice) {
           var closeMsg = isInLineClient_() ? 'กำลังปิดหน้านี้อัตโนมัติ...' : 'ปิดแท็บนี้ได้เลยค่ะ';
-          notice.innerHTML = '✅ สั่งซื้อสำเร็จ ไม่มีค่าใช้จ่าย ขอบคุณค่ะ 🙏<br>' + closeMsg;
+          notice.innerHTML = (isCodDone_
+            ? '✅ สั่งซื้อสำเร็จ — ชำระเงินปลายทาง ฿' + r.totalAmount.toLocaleString('th-TH') + ' ขอบคุณค่ะ 🙏'
+            : '✅ สั่งซื้อสำเร็จ ไม่มีค่าใช้จ่าย ขอบคุณค่ะ 🙏') + '<br>' + closeMsg;
           notice.classList.remove('sh');
         }
         showState('orderDoneState');
         setStepper(3);
-        setTimeout(closeThisShopWindow_, 3000);
+        setTimeout(closeThisShopWindow_, isCodDone_ ? 6000 : 3000);
         return;
       }
 
