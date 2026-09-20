@@ -991,6 +991,12 @@ function warmOrderHistory_(){
 function filterPendingOrders_(results){
   return (results || []).filter(function(o){ return !o.hasSlip && !o.cancelled; });
 }
+// ⚡ เพิ่ม — เปิดหน้านี้ด้วยลิงก์ที่มี ?view=cart (เช่นจากปุ่ม "ไปแนบสลิป/ชำระเงิน" ในหน้าสมาชิก)
+// ให้เด้งเข้าหน้ารถเข็น (คำสั่งซื้อรอดำเนินการ) ให้เลย ไม่ต้องให้ลูกค้ากดปุ่มรถเข็นเองอีกที
+// อ่านค่าไว้ตั้งแต่ตอนโหลดสคริปต์ เพราะ query string ยังอยู่ครบหลัง liff redirect (cleanLiffRedirectUri
+// ลบเฉพาะ key ของ LINE เท่านั้น)
+var WANT_CART_ON_OPEN_ = /(^|[?&])view=cart(&|$)/.test(location.search);
+var cartViewOpened_ = false;
 function applyShopBootstrap_(r){
   if (r.purchaseReferralEnabled) {
     document.getElementById('purchaseReferrerField').classList.remove('sh');
@@ -1011,6 +1017,10 @@ function applyShopBootstrap_(r){
   // สินค้า/สิทธิพิเศษ/คูปองเบื้องหลังเงียบๆ ไม่ไปแตะหน้าจอที่ลูกค้ากำลังดูอยู่
   if (!document.getElementById('loadingState').classList.contains('sh')) {
     showState('catalogState');
+    if (WANT_CART_ON_OPEN_ && !cartViewOpened_) {
+      cartViewOpened_ = true;
+      showHistory();
+    }
   }
   renderMyPrivileges_({ success: true, results: r.privileges || [] });
   renderAutoPromoBox_(activeAutoCoupons);
