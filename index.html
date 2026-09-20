@@ -2164,10 +2164,10 @@ function renderPaymentDetail(targetElId, fixedTotal, showBoth){
   if (!showBoth && selectedPayment === 'cod') {
     var codFeeNow_ = codFeeAmount_();
     wrap.innerHTML = '<div class="bank-box" style="text-align:center">'
-      + '<p style="font-weight:600;color:#e65100;font-size:15px">💵 ชำระเงินสดกับพนักงานส่งของ</p>'
+      + '<p style="font-weight:600;color:#e65100;font-size:15px">💵 ชำระเงินกับพนักงานส่งของ</p>'
       + '<p style="font-size:24px;font-weight:700;color:#e65100;margin-top:8px">฿' + total.toLocaleString('th-TH') + '</p>'
       + (codFeeNow_ > 0 ? '<p style="font-size:12px;color:var(--g6);margin-top:4px">(รวมค่าธรรมเนียมเก็บเงินปลายทาง ฿' + codFeeNow_.toLocaleString('th-TH') + ' แล้ว)</p>' : '')
-      + '<p style="font-size:12.5px;color:var(--g6);margin-top:10px;line-height:1.6">' + escHtml((codInfo_ && codInfo_.note) || 'ชำระเงินสดกับพนักงานส่งของตอนได้รับสินค้า') + '</p>'
+      + '<p style="font-size:12.5px;color:var(--g6);margin-top:10px;line-height:1.6">' + escHtml((codInfo_ && codInfo_.note) || 'ชำระเงินกับพนักงานส่งของตอนได้รับสินค้า') + '</p>'
       + '<p style="font-size:12px;color:var(--g6);margin-top:6px">กดยืนยันสั่งซื้อได้เลย ไม่ต้องโอนเงินและไม่ต้องแนบสลิปค่ะ</p>'
       + '</div>';
     return;
@@ -2436,7 +2436,7 @@ function confirmSubmitOrder(){
         if (notice) {
           var closeMsg = isInLineClient_() ? 'กำลังปิดหน้านี้อัตโนมัติ...' : 'ปิดแท็บนี้ได้เลยค่ะ';
           notice.innerHTML = (isCodDone_
-            ? '✅ สั่งซื้อสำเร็จ — ชำระเงินสดปลายทาง ฿' + r.totalAmount.toLocaleString('th-TH') + ' ขอบคุณค่ะ 🙏'
+            ? '✅ สั่งซื้อสำเร็จ — ชำระเงินปลายทาง ฿' + r.totalAmount.toLocaleString('th-TH') + ' ขอบคุณค่ะ 🙏'
             : '✅ สั่งซื้อสำเร็จ ไม่มีค่าใช้จ่าย ขอบคุณค่ะ 🙏') + '<br>' + closeMsg;
           notice.classList.remove('sh');
         }
