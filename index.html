@@ -201,6 +201,11 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 /* ==================== Order history ==================== */
 .history-link{text-align:right;margin-bottom:10px;}
 .history-link button{background:var(--gp) !important;border:1.5px solid #a5d6a7 !important;box-shadow:none !important;color:var(--gd) !important;font-size:16px;font-weight:700;cursor:pointer;text-decoration:none;font-family:'Kanit',sans-serif;padding:10px 18px;border-radius:12px;}
+.history-link button{position:relative;}
+/* ป้ายจำนวนคำสั่งซื้อที่ยังรอแนบสลิป — ให้เห็นตั้งแต่หน้าเลือกสินค้าโดยไม่ต้องกดเข้าไปดู */
+.cart-count{position:absolute;top:-8px;right:-6px;min-width:22px;height:22px;line-height:22px;padding:0 6px;
+  border-radius:999px;background:#d32f2f;color:#fff;font-size:12px;font-weight:800;
+  box-shadow:0 2px 6px rgba(211,47,47,.45);border:2px solid #fff;}
 .history-item{background:var(--gp);border-radius:12px;padding:16px;text-align:left;margin-bottom:12px;}
 .history-item .row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;}
 .badge-pending{font-size:11px;color:#e65100;background:#fff3e0;padding:3px 10px;border-radius:20px;font-weight:600;}
@@ -258,7 +263,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
     </div>
 
     <div id="catalogState" class="sh">
-      <div class="history-link"><button type="button" onclick="showHistory()">🛒 รถเข็น</button></div>
+      <div class="history-link"><button type="button" onclick="showHistory()">🛒 รถเข็น<span class="cart-count sh" id="cartCount"></span></button></div>
       <div id="myPrivileges" class="sh" style="margin-bottom:16px"></div>
       <div id="autoPromoBox" class="sh"></div>
       <div id="pointsMultiplierBox" class="sh"></div>
@@ -985,11 +990,21 @@ function warmOrderHistory_(){
   orderHistoryWarmStarted_ = true;
   setTimeout(function(){
     if (!hasUsableIdToken_()) return;
-    orderHistoryCache_.fetch().catch(function(){});
+    orderHistoryCache_.fetch().then(refreshCartCountFrom_).catch(function(){});
   }, 600);
+  refreshCartCountFrom_(orderHistoryCache_.loadStale());
 }
 function filterPendingOrders_(results){
   return (results || []).filter(function(o){ return !o.hasSlip && !o.cancelled; });
+}
+function updateCartCount_(count){
+  var el = document.getElementById('cartCount');
+  if (!el) return;
+  el.textContent = count > 99 ? '99+' : String(count);
+  el.classList.toggle('sh', !count);
+}
+function refreshCartCountFrom_(r){
+  if (r && r.success) updateCartCount_(filterPendingOrders_(r.results).length);
 }
 // ⚡ เพิ่ม — เปิดหน้านี้ด้วยลิงก์ที่มี ?view=cart (เช่นจากปุ่ม "ไปแนบสลิป/ชำระเงิน" ในหน้าสมาชิก)
 // ให้เด้งเข้าหน้ารถเข็น (คำสั่งซื้อรอดำเนินการ) ให้เลย ไม่ต้องให้ลูกค้ากดปุ่มรถเข็นเองอีกที
@@ -1389,6 +1404,7 @@ function renderOrderHistory(list, isStale){
   // แถบบางๆ บอกว่ากำลังเช็คกับเซิร์ฟเวอร์อยู่เบื้องหลัง (รายการที่เห็นอาจเก่าไปนิดหน่อย) — บอกให้รู้ แต่ไม่บัง
   // รายการจริงเหมือนจอ "กำลังโหลด..." แบบเดิม ลูกค้ากดใช้งานต่อได้เลยไม่ต้องรอ
   var staleHint = isStale ? '<p style="text-align:center;color:var(--g6);font-size:12px;margin-bottom:10px">⏳ กำลังอัปเดตรายการล่าสุด...</p>' : '';
+  updateCartCount_(list.length); // จุดเดียวที่วาดรายการนี้ ป้ายจำนวนจึงตรงเสมอ รวมถึงหลังยกเลิก/แนบสลิปด้วย
   if (!list.length) {
     document.getElementById('historyList').innerHTML = staleHint + '<p style="text-align:center;color:var(--g6);padding:20px 0">🎉 ไม่มีคำสั่งซื้อที่รอดำเนินการ</p>';
     return;
