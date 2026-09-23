@@ -5,35 +5,45 @@
 // (แถวสมาชิก สิทธิ์ต้อนรับ ฯลฯ) ครบทุกค่า งานหลังสมัคร (ข้อความต้อนรับ LINE, รางวัลผู้แนะนำ) ถูกจดไว้
 // ให้ Apps Script ทำหลังเขียนชีตเสร็จ
 //
-// ตอนนี้เปิดแค่โหมดทดลอง (ไม่บันทึกอะไร ไม่ตอบลูกค้า) สำหรับชุดเทียบผล signupCompareDryRun() ใน
-// apps-script/SupabaseSignup.gs เท่านั้น — ทุกคำขอต้องแนบ x-internal-key
+// action=registerMember — สมัครจริง (ตาราง signup.requests) แล้วตอบบัตรสมาชิกทันที
+//   หน้าเว็บ: idToken=...&phoneNumber=...&fullName=...&birthday=...&referrerCode=...
+//   ตอบเหมือน registerMember ของ Apps Script ทุกช่อง หรือ { success:false, needsAppsScript:true, reason } เมื่อ
+//     - สวิตช์ signup.settings.live ยังปิด
+//     - แท็บใน block_dirty_keys มีธงข้อมูลเปลี่ยน (สำเนายังไม่ทัน เช่น แอดมินเพิ่งแก้ค่าตั้งการสมัคร)
+//     - ตัวจำลองไม่รองรับสิ่งที่โค้ดทำ / เกิดข้อผิดพลาด
+//     หน้าเว็บจะสมัครทาง Apps Script เดิมแทนทุกกรณี
+//   การสมัครที่รับแล้วแต่ยังไม่อยู่ในสำเนา ถูกเล่นทับสำเนาก่อนรัน (overlayJournals) จึงเช็คซ้ำ/ออกรหัสสมาชิก
+//   ต่อเนื่องถูกต้อง และดัชนีไม่ซ้ำใน signup.requests กันคนสมัครพร้อมกัน (รหัสชน = คำนวณใหม่)
+//   ชุดทดสอบภายใน (x-internal-key + asUid) สมัครได้แม้สวิตช์ปิด แถวจะถูกติดป้าย is_test
 //
-// คำขอ: POST body เป็น query string หรือ JSON
-//   action=registerMemberDryRun&asUid=...&asName=...&asPicture=...&phoneNumber=...&fullName=...
-//          &birthday=...&referrerCode=...[&simulate=JSON]
-//   simulate (ทดสอบเท่านั้น): สมมติค่าตั้งโดยไม่แตะของจริง ใช้ทดสอบโปรที่ปิดอยู่
+// action=registerMemberDryRun — (ทดสอบเท่านั้น ต้องมี x-internal-key) รัน registerMember โดยไม่บันทึกอะไร
+//   สำหรับ signupCompareDryRun() ใน apps-script/SupabaseSignup.gs
+//   asUid=...&asName=...&asPicture=...&phoneNumber=...&fullName=...&birthday=...&referrerCode=...[&simulate=JSON]
+//   simulate: สมมติค่าตั้งโดยไม่แตะของจริง ใช้ทดสอบโปรที่ปิดอยู่
 //     { props: { SIGNUP_PRIVILEGE_CONFIG: "...", ... },      Script Properties ที่จะใช้แทน
 //       tabs:  { "members/Signup_Privileges": [[...], ...] } แถวข้อมูล (ไม่รวมหัวตาราง) ที่จะใช้แทนทั้งแท็บ
 //     }                                                      ค่า Date ในแถวส่งเป็นสตริง ISO แบบเดียวกับสำเนา
-// คำตอบ: { success:true, dryRun:true, result, journal, deferred, baseRows, accessed, notReady, unsupported, logs }
-//   result   = สิ่งที่ registerMember คืน (เหมือน Apps Script)
-//   journal  = การเขียนชีตตามลำดับ (ดู gas_runtime.js) ค่า Date อยู่ในรูป { $date: ISO }
-//   deferred = งานหลังสมัครที่ Apps Script ต้องทำต่อ
-//   baseRows = แถวสุดท้ายของแต่ละแท็บในสำเนาก่อนรัน (แถวใน journal ที่เกินค่านี้ = ต่อท้ายชีต)
-//   notReady = แท็บที่ใช้แล้วสำเนายังไม่ทัน (มีธง dirty หรือยังไม่มีในสำเนา) — ใช้จริงต้องถอยไป Apps Script
+//   คำตอบ: { success:true, dryRun:true, result, journal, deferred, baseRows, accessed, notReady, unsupported, logs }
+//     journal  = การเขียนชีตตามลำดับ (ดู gas_runtime.js) ค่า Date อยู่ในรูป { $date: ISO }
+//     deferred = งานหลังสมัครที่ Apps Script ต้องทำต่อ
+//     baseRows = แถวสุดท้ายของแต่ละแท็บก่อนรัน (แถวใน journal ที่เกินค่านี้ = ต่อท้ายชีต)
+//     notReady = แท็บที่ใช้แล้วสำเนายังไม่ทัน
 
 import { createGas } from "./gas_port.js";
-import { createEnv, prepareTab, PROPS_KEY } from "../_shared/gas_runtime.js";
-import { createTabLoader, isInternal, json, propsFrom, readParams, CORS, Tab } from "../_shared/mirror_client.ts";
+import { createEnv, overlayJournals, prepareTab, PROPS_KEY } from "../_shared/gas_runtime.js";
+import {
+  createTabLoader, CORS, isInternal, json, P, propsFrom, readParams, rpc, Tab, verifyLineIdToken,
+} from "../_shared/mirror_client.ts";
 
-// แท็บที่ registerMember อ่าน/เขียน (แท็บอื่นตัวจำลองจะปฏิเสธ แล้วคำตอบจะมี unsupported)
+// แท็บที่ registerMember ใช้ (แท็บอื่นตัวจำลองจะปฏิเสธ แล้วถอยไป Apps Script)
 const TAB_KEYS = [
-  "members/Members", "members/Member_Privileges", "members/Signup_Privileges", "members/Tier_Config",
-  "members/Points_Log", "members/Referral_Log", PROPS_KEY,
+  "members/Members", "members/Member_Privileges", "members/Signup_Privileges", "members/Tier_Config", PROPS_KEY,
 ];
-const loadTabs = createTabLoader(TAB_KEYS);
+// registerMember แค่ต่อท้ายสิทธิ์ต้อนรับใน Member_Privileges ไม่อ่านแถวเดิม — โหลดแค่หัวตาราง + แถวสุดท้าย
+const META_ONLY = ["members/Member_Privileges"];
+const MAX_ATTEMPTS = 5;
 
-// ค่า Date ในงานหลังสมัครส่งเป็นรูปเดียวกับ journal
+// ค่า Date ส่งเป็นรูปเดียวกับ journal
 function plain(v: unknown): unknown {
   if (v instanceof Date) return { $date: isNaN(v.getTime()) ? null : v.toISOString() };
   if (Array.isArray(v)) return v.map(plain);
@@ -43,6 +53,110 @@ function plain(v: unknown): unknown {
   return v;
 }
 
+function fallback(reason: string, extra: Record<string, unknown> = {}): Response {
+  return json({ success: false, needsAppsScript: true, reason, ...extra }, 200, "fallback");
+}
+
+// รัน registerMember ตัวเดิมบนแท็บที่ให้มา (โหมดบันทึกการเขียน) งานหลังสมัครถูกจดไว้ใน deferred
+function runRegisterMember(tabs: Map<string, Tab>, props: Record<string, string>, profile: Record<string, unknown>, p: P) {
+  const { env, tracker } = createEnv({ tabs, loadedSources: new Set(TAB_KEYS), props, profile, journal: true });
+  const deferred: unknown[] = [];
+  const gas = createGas({
+    ...env,
+    sendLineMessages_: (to: unknown, messages: unknown) => {
+      deferred.push({ fn: "sendLineMessages_", args: plain([to, messages]) });
+    },
+    grantReferralRewardOnSignupIfNeeded_: (...args: unknown[]) => {
+      deferred.push({ fn: "grantReferralRewardOnSignupIfNeeded_", args: plain(args) });
+    },
+  });
+  let result: any;
+  try {
+    result = gas.registerMember("supabase", p.phoneNumber, p.fullName, p.birthday, p.referrerCode);
+  } catch (e) {
+    result = { thrown: String(e) };
+  }
+  const baseRows = Object.fromEntries([...tabs].map(([k, t]) => [k, t.lastRow]));
+  return { result, tracker, deferred, baseRows };
+}
+
+// ---------------------------------------------------------------------------
+// สมัครจริง: โหลดทุกอย่างในคำขอเดียว (signup_prepare) แคชแท็บไว้ข้ามคำขอ
+// ---------------------------------------------------------------------------
+const tabCache = new Map<string, { readAt: string; tab: Tab }>();
+
+async function prepare() {
+  const cached = Object.fromEntries([...tabCache].map(([k, v]) => [k, v.readAt]));
+  const r = await rpc("signup_prepare", { p_tab_keys: TAB_KEYS, p_meta_only: META_ONLY, p_cached: cached });
+  for (const [key, raw] of Object.entries(r.tabs as Record<string, any>)) {
+    tabCache.set(key, { readAt: raw.read_at, tab: prepareTab(key, raw) });
+  }
+  const versions = r.versions as Record<string, { read_at: string; dirty: boolean }>;
+  const tabs = new Map<string, Tab>();
+  for (const k of TAB_KEYS) {
+    const c = tabCache.get(k);
+    if (c && versions[k] && c.readAt === versions[k].read_at) tabs.set(k, c.tab);
+  }
+  const blockKeys: string[] = Array.isArray(r.settings?.block_dirty_keys) ? r.settings.block_dirty_keys : TAB_KEYS;
+  const blocked = blockKeys.filter((k) => versions[k]?.dirty);
+  return { tabs, blocked, pending: r.pending as any[], live: r.settings?.live === true };
+}
+
+const DUPLICATE_ERRORS: Record<string, string> = {
+  // ข้อความเดียวกับ registerMember
+  line_uid: "บัญชี LINE นี้เป็นสมาชิกอยู่แล้ว",
+  phone: "เบอร์โทรนี้ถูกใช้สมัครสมาชิกไปแล้ว",
+};
+
+async function registerMemberLive(p: P, profile: Record<string, unknown>, isTest: boolean, t0: number) {
+  const timings: Record<string, number> = {};
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const tp = Date.now();
+    const prep = await prepare();
+    timings["prepare" + attempt] = Date.now() - tp;
+    if (!prep.live && !isTest) return fallback("ยังไม่เปิดใช้การสมัครผ่าน Supabase");
+    if (prep.blocked.length) return fallback("สำเนายังไม่ทัน", { detail: prep.blocked });
+    const missing = TAB_KEYS.filter((k) => !prep.tabs.has(k));
+    if (missing.length) return fallback("สำเนาไม่ครบ", { detail: missing });
+
+    const tr = Date.now();
+    const tabs = overlayJournals(prep.tabs, prep.pending);
+    const run = runRegisterMember(tabs, propsFrom(tabs.get(PROPS_KEY)), profile, p);
+    timings["run" + attempt] = Date.now() - tr;
+    if (run.tracker.unsupported.length) {
+      return fallback("ตัวจำลองไม่รองรับ", { detail: run.tracker.unsupported.slice(0, 3) });
+    }
+    if (!run.result || run.result.thrown) return fallback("ข้อผิดพลาด: " + String(run.result?.thrown));
+    // เงื่อนไขไม่ผ่าน (เบอร์ผิด/ซ้ำ, ไม่กรอกชื่อ ฯลฯ): ตอบข้อความเดิมของ registerMember ได้เลย ไม่มีอะไรต้องบันทึก
+    if (!run.result.success) return json({ ...run.result, ...(isTest ? { timings, ms: Date.now() - t0 } : {}) });
+
+    const ti = Date.now();
+    const ins = await rpc("signup_insert", {
+      p_row: {
+        line_uid: profile.sub, phone: run.result.member?.phone, member_code: run.result.memberCode, is_test: isTest,
+        request: {
+          phoneNumber: p.phoneNumber || "", fullName: p.fullName || "", birthday: p.birthday || "",
+          referrerCode: p.referrerCode || "", displayName: profile.name || "", picture: profile.picture || "",
+        },
+        result: plain(run.result), journal: run.tracker.journal, deferred: run.deferred, base_rows: run.baseRows,
+      },
+    });
+    timings["insert" + attempt] = Date.now() - ti;
+    if (ins.ok) {
+      return json({ ...run.result, ...(isTest ? { signupId: ins.id, timings, ms: Date.now() - t0 } : {}) });
+    }
+    if (DUPLICATE_ERRORS[ins.conflict]) {
+      return json({ success: false, error: DUPLICATE_ERRORS[ins.conflict], ...(isTest ? { timings } : {}) });
+    }
+    // รหัสสมาชิกชนกับคนที่สมัครพร้อมกัน: โหลดใหม่ (รวมคนนั้นแล้ว) แล้วคำนวณอีกรอบ
+  }
+  return fallback("ออกรหัสสมาชิกไม่สำเร็จ (มีคนสมัครพร้อมกันหลายคน)");
+}
+
+// ---------------------------------------------------------------------------
+// ทดลองโดยไม่บันทึก (ชุดเทียบผล)
+// ---------------------------------------------------------------------------
+const loadTabsForDryRun = createTabLoader([...TAB_KEYS, "members/Points_Log", "members/Referral_Log"]);
 type Simulate = { props?: Record<string, string>; tabs?: Record<string, unknown[][]> };
 
 // แทนที่แท็บด้วยแถวที่สมมติ (หัวตารางเดิม) ในสำเนาของคำขอนี้เท่านั้น
@@ -65,57 +179,56 @@ function simulateTabs(tabs: Map<string, Tab>, sim: Simulate): Map<string, Tab> {
   return out;
 }
 
+async function registerMemberDryRun(p: P, profile: Record<string, unknown>) {
+  const loaded = await loadTabsForDryRun();
+  const sim: Simulate = p.simulate ? JSON.parse(p.simulate) : {};
+  const tabs = simulateTabs(loaded.tabs, sim);
+  const props = { ...propsFrom(tabs.get(PROPS_KEY)), ...(sim.props || {}) };
+  const run = runRegisterMember(tabs, props, profile, p);
+  const accessed = [...run.tracker.accessed];
+  return json({
+    success: true, dryRun: true, result: run.result, journal: run.tracker.journal, deferred: run.deferred,
+    baseRows: run.baseRows, accessed, notReady: accessed.filter((k) => loaded.dirty.has(k) || !tabs.has(k)),
+    unsupported: run.tracker.unsupported, logs: run.tracker.logs.slice(0, 20),
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  const t0 = Date.now();
 
   try {
-    if (!(await isInternal(req))) return json({ success: false, error: "ยังไม่เปิดให้ใช้งาน" }, 403);
     const p = await readParams(req);
     const action = String(p.action || "");
+    const internal = await isInternal(req);
 
+    if (action === "registerMember") {
+      let profile: Record<string, unknown>;
+      if (internal && p.asUid) {
+        profile = { sub: p.asUid, name: p.asName || "", picture: p.asPicture || "" };
+      } else {
+        const idToken = String(p.idToken || "").trim();
+        if (!idToken) return fallback("ไม่พบโทเคน LINE");
+        const who = await verifyLineIdToken(idToken);
+        // โทเคนไม่ผ่าน: ให้ Apps Script ตอบข้อความ error ตามรูปแบบเดิม
+        if (!who.profile) return fallback("ยืนยันตัวตนกับ LINE ไม่สำเร็จ: " + who.error);
+        profile = who.profile;
+      }
+      return await registerMemberLive(p, profile, internal && !!p.asUid, t0);
+    }
+
+    if (!internal) return json({ success: false, error: "ไม่รองรับ" }, 403);
     if (action === "health") {
-      const { tabs } = await loadTabs();
-      return json({ success: true, tabs: tabs.size });
+      const prep = await prepare();
+      return json({ success: true, tabs: prep.tabs.size, live: prep.live, pending: prep.pending.length, ms: Date.now() - t0 });
     }
-    if (action !== "registerMemberDryRun") return json({ success: false, error: "ไม่รองรับ action: " + action }, 400);
-    if (!p.asUid) return json({ success: false, error: "ต้องระบุ asUid" }, 400);
-
-    const profile = { sub: p.asUid, name: p.asName || "", picture: p.asPicture || "" };
-    const loaded = await loadTabs();
-    const dirty = loaded.dirty;
-    const sim: Simulate = p.simulate ? JSON.parse(p.simulate) : {};
-    const tabs = simulateTabs(loaded.tabs, sim);
-    const props = { ...propsFrom(tabs.get(PROPS_KEY)), ...(sim.props || {}) };
-    const { env, tracker } = createEnv({ tabs, loadedSources: new Set(TAB_KEYS), props, profile, journal: true });
-    const deferred: unknown[] = [];
-    const envWithDeferred = {
-      ...env,
-      sendLineMessages_: (to: unknown, messages: unknown) => {
-        deferred.push({ fn: "sendLineMessages_", args: plain([to, messages]) });
-      },
-      grantReferralRewardOnSignupIfNeeded_: (...args: unknown[]) => {
-        deferred.push({ fn: "grantReferralRewardOnSignupIfNeeded_", args: plain(args) });
-      },
-    };
-
-    let result: unknown;
-    try {
-      result = createGas(envWithDeferred).registerMember(
-        "dry-run", p.phoneNumber, p.fullName, p.birthday, p.referrerCode,
-      );
-    } catch (e) {
-      result = { thrown: String(e) };
+    if (action === "registerMemberDryRun") {
+      if (!p.asUid) return json({ success: false, error: "ต้องระบุ asUid" }, 400);
+      return await registerMemberDryRun(p, { sub: p.asUid, name: p.asName || "", picture: p.asPicture || "" });
     }
-
-    const accessed = [...tracker.accessed];
-    const baseRows = Object.fromEntries([...tabs].map(([k, t]) => [k, t.lastRow]));
-    return json({
-      success: true, dryRun: true, result, journal: tracker.journal, deferred, baseRows,
-      accessed, notReady: accessed.filter((k) => dirty.has(k) || !tabs.has(k)),
-      unsupported: tracker.unsupported, logs: tracker.logs.slice(0, 20),
-    });
+    return json({ success: false, error: "ไม่รองรับ action: " + action }, 400);
   } catch (e) {
     console.error(e);
-    return json({ success: false, error: "ข้อผิดพลาด: " + String(e) }, 500);
+    return fallback("ข้อผิดพลาด: " + String(e));
   }
 });

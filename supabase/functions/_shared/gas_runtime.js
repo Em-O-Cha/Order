@@ -157,12 +157,16 @@ export function prepareTab(key, raw) {
     if (rowNum > lastRow) lastRow = rowNum;
   }
   const rawHeaders = Array.isArray(raw.raw_headers) ? raw.raw_headers : (raw.headers || []);
+  // แท็บแบบ meta_only (signup_prepare): ได้แค่หัวตาราง + แถวสุดท้าย ใช้กับโค้ดที่แค่ต่อท้ายแท็บ
+  // อ่านแถวข้อมูลเดิมไม่ได้ (ตัวจำลองจะปฏิเสธแทนการคืนค่าว่างผิดๆ)
+  const metaOnly = !!raw.meta_only;
+  if (metaOnly && raw.last_row) lastRow = Math.max(lastRow, raw.last_row);
   if (!lastRow && rawHeaders.length) lastRow = 1;
   const slash = key.indexOf('/');
   return {
     key, source: key.slice(0, slash), name: key.slice(slash + 1),
     spreadsheetId: raw.spreadsheet_id, headers: raw.headers || [], rawHeaders, rows, lastRow,
-    lastColumn: rawHeaders.length,
+    lastColumn: rawHeaders.length, metaOnly, metaLastRow: metaOnly ? lastRow : 0,
   };
 }
 
@@ -221,6 +225,15 @@ function makeRange(key, ctx, row, col, numRows, numCols) {
   const range = {
     getValues() {
       const t = tab();
+      if (t.metaOnly) {
+        for (let r = Math.max(row, 2); r < row + numRows && r <= t.metaLastRow; r++) {
+          if (!t.rows.has(r)) {
+            const msg = `gas_runtime: ${key} โหลดมาแค่แถวสุดท้าย อ่านแถว ${r} ไม่ได้`;
+            tracker.unsupported.push(msg);
+            throw new UnsupportedError(msg);
+          }
+        }
+      }
       const out = [];
       for (let r = row; r < row + numRows; r++) {
         const line = new Array(numCols);
@@ -268,7 +281,47 @@ function makeRange(key, ctx, row, col, numRows, numCols) {
   return guard(range, 'Range', tracker);
 }
 
-// เขียนค่าลงสำเนาของคำขอนี้ (คัดลอกแท็บก่อนแก้ครั้งแรก จึงไม่กระทบแคชที่ใช้ร่วมกันระหว่างคำขอ)
+// ctx.writable(key): คืนแท็บที่แก้ได้ของคำขอนี้ (คัดลอกก่อนแก้ครั้งแรก จึงไม่กระทบแคชที่ใช้ร่วมกันระหว่างคำขอ)
+function attachWritable(ctx) {
+  ctx.writable = (key) => {
+    if (!ctx.cloned.has(key)) {
+      const t = ctx.tabs.get(key);
+      ctx.tabs.set(key, { ...t, rows: new Map(t.rows), headers: [...t.headers], rawHeaders: [...t.rawHeaders] });
+      ctx.cloned.add(key);
+    }
+    return ctx.tabs.get(key);
+  };
+  return ctx;
+}
+
+// ค่าจาก journal ({ $date: ISO } -> Date) ก่อนเขียนซ้ำ
+function fromJournal(v) {
+  if (v && typeof v === 'object' && !Array.isArray(v) && Object.prototype.hasOwnProperty.call(v, '$date')) {
+    return v.$date ? new RealDate(v.$date) : '';
+  }
+  return v;
+}
+
+// เล่น journal ของการสมัครที่ Supabase รับแล้วแต่ยังไม่อยู่ในสำเนาทับลงไป (ตามลำดับเวลา) ให้การเช็คซ้ำและการออก
+// รหัสสมาชิกนับรวมด้วย — แถวที่เกิน base_rows (ต่อท้าย) จะต่อท้ายแท็บปัจจุบันตามลำดับเดิม, แถวเดิมแก้ที่เดิม
+// pending: [{ journal, base_rows }] คืน Map ใหม่ (แท็บที่ไม่ถูกแตะใช้ object เดิม)
+export function overlayJournals(tabs, pending) {
+  const ctx = attachWritable({ tabs: new Map(tabs), cloned: new Set() });
+  for (const p of pending || []) {
+    const offsets = {};
+    for (const e of p.journal || []) {
+      if ((e.op !== 'setValues' && e.op !== 'appendRow') || !ctx.tabs.has(e.tab)) continue;
+      const base = (p.base_rows && p.base_rows[e.tab]) || 0;
+      if (!(e.tab in offsets)) offsets[e.tab] = ctx.tabs.get(e.tab).lastRow - base;
+      const values = (e.op === 'appendRow' ? [e.values] : e.values).map((line) => line.map(fromJournal));
+      const row = e.row > base ? e.row + offsets[e.tab] : e.row;
+      applyValues(ctx, e.tab, row, e.op === 'appendRow' ? 1 : e.col, values);
+    }
+  }
+  return ctx.tabs;
+}
+
+// เขียนค่าลงสำเนาของคำขอนี้
 function applyValues(ctx, key, row, col, values) {
   const t = ctx.writable(key);
   for (let i = 0; i < values.length; i++) {
@@ -361,15 +414,7 @@ function emptyTab(source, name) {
 export function createEnv({ tabs, loadedSources, props, profile, journal = false }) {
   // loadedSources: แท็บทั้งหมดที่ขอโหลดมา (แท็บที่ขอแล้วแต่ไม่มีในสำเนา = ไม่มีอยู่จริงในชีต)
   const tracker = { accessed: new Set(), writes: [], unsupported: [], logs: [], journal: [] };
-  const ctx = { tabs: new Map(tabs), tracker, journal, cloned: new Set() };
-  ctx.writable = (key) => {
-    if (!ctx.cloned.has(key)) {
-      const t = ctx.tabs.get(key);
-      ctx.tabs.set(key, { ...t, rows: new Map(t.rows), headers: [...t.headers], rawHeaders: [...t.rawHeaders] });
-      ctx.cloned.add(key);
-    }
-    return ctx.tabs.get(key);
-  };
+  const ctx = attachWritable({ tabs: new Map(tabs), tracker, journal, cloned: new Set() });
   const sourcesById = new Map();
   for (const tab of tabs.values()) if (tab.spreadsheetId) sourcesById.set(tab.spreadsheetId, tab.source);
 
