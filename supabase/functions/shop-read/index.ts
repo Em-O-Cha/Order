@@ -15,9 +15,9 @@
 // deploy ด้วย verify_jwt = false เพราะหน้าเว็บไม่มี JWT ของ Supabase มีแต่โทเคน LINE
 
 import { createGas } from "./gas_port.js";
-import { createEnv, PROPS_KEY } from "../_shared/gas_runtime.js";
+import { createEnv, overlayJournals, PROPS_KEY } from "../_shared/gas_runtime.js";
 import {
-  createTabLoader, isInternal, json, P, propsFrom, readParams, verifyLineIdToken, CORS,
+  createTabLoader, isInternal, json, P, propsFrom, readParams, rpc, Tab, verifyLineIdToken, CORS,
 } from "../_shared/mirror_client.ts";
 
 // แท็บที่ฟังก์ชันใน gas_port.js อ่าน (แท็บที่ไม่อยู่ในรายการ ตัวจำลองจะปฏิเสธและให้ถาม Apps Script)
@@ -93,21 +93,31 @@ Deno.serve(async (req) => {
       profile = who.profile;
     }
 
-    const { tabs, dirty } = await loadTabs();
-    const { env, tracker } = createEnv({
-      tabs, loadedSources: new Set(TAB_KEYS), props: propsFrom(tabs.get(PROPS_KEY)), profile,
-    });
-    const result = spec.run(createGas(env), p);
+    const loaded = await loadTabs();
+    const dirty = loaded.dirty;
+    const run = (tabs: Map<string, Tab>) => {
+      const { env, tracker } = createEnv({
+        tabs, loadedSources: new Set(TAB_KEYS), props: propsFrom(tabs.get(PROPS_KEY)), profile,
+      });
+      return { result: spec.run(createGas(env), p), tracker, tabs };
+    };
+    let out = run(loaded.tabs);
+    // คนที่เพิ่งสมัครผ่าน Supabase แต่แถวยังไม่ลงชีต/ยังไม่อยู่ในสำเนา: เล่นการสมัครนั้นทับสำเนาแล้วตอบใหม่
+    // (บัตรสมาชิก/สิทธิ์ต้อนรับเห็นทันที ไม่ต้องรอตัวเขียนใน Apps Script)
+    const notMember = (r: unknown) => !!r && typeof r === "object" && (r as { isMember?: boolean }).isMember === false;
+    if (notMember(out.result) && profile?.sub && !out.tracker.unsupported.length && !out.tracker.writes.length) {
+      const pending = await rpc("signup_pending_for", { p_line_uid: String(profile.sub) });
+      if (Array.isArray(pending) && pending.length) out = run(overlayJournals(loaded.tabs, pending));
+    }
+    const { result, tracker, tabs } = out;
 
     if (tracker.unsupported.length) return fallback("ตัวจำลองไม่รองรับ", { detail: tracker.unsupported.slice(0, 3) });
     if (tracker.writes.length) return fallback("ต้องเขียนชีต", { detail: tracker.writes.slice(0, 3) });
     const notReady = [...tracker.accessed].filter((k) => dirty.has(k) || !tabs.has(k));
     if (notReady.length) return fallback("สำเนายังไม่ทัน", { detail: notReady });
-    // "ยังไม่เป็นสมาชิก" ให้ Apps Script ยืนยันเสมอ: คนที่เพิ่งสมัครเสร็จ (คิวสมัครเขียนชีตจาก trigger)
+    // "ยังไม่เป็นสมาชิก" ให้ Apps Script ยืนยันเสมอ: คนที่เพิ่งสมัครทางเดิม (คิวสมัครเขียนชีตจาก trigger)
     // อาจยังไม่มีในสำเนา และคนที่ยังไม่สมัครมีไม่มาก ถามช้าลงนิดเดียวไม่เป็นไร
-    if (result && typeof result === "object" && (result as { isMember?: boolean }).isMember === false) {
-      return fallback("ยืนยันสถานะสมาชิกกับชีต");
-    }
+    if (notMember(result)) return fallback("ยืนยันสถานะสมาชิกกับชีต");
 
     return json(result);
   } catch (e) {
