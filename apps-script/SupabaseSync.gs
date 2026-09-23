@@ -12,14 +12,14 @@
 //        SUPABASE_SECRET_KEY  secret key (sb_secret_...) หรือ service_role key
 //   2. รัน mirrorSyncAllForce() หนึ่งครั้งจาก editor (คัดลอกทุกแท็บครั้งแรก + ขออนุญาตสิทธิ์)
 //   3. รัน mirrorCheckCounts() ดูผลใน Execution log ว่าจำนวนแถวตรงกับชีต
-//   4. รัน mirrorInstallTriggers() ตั้งรอบคัดลอกทุก 10 นาที + คัดลอกทั้งหมดทุกคืน
+//   4. รัน mirrorInstallTriggers() ตั้งรอบคัดลอกทุก 5 นาที + คัดลอกทั้งหมดทุกคืน
 //   5. ใน doGet และ doPost ของ Members.gs เพิ่มบรรทัดนี้ต่อจาก logSlowAction_(...):
 //        if (typeof mirrorAfterAction_ === 'function') mirrorAfterAction_(action);
 //   6. ก่อนเปิดให้หน้าเว็บอ่านจาก Supabase รัน mirrorCompareAll() จนขึ้นว่าตรวจครบ (เทียบผลทุกฟังก์ชัน)
 //
 // ความสดของข้อมูล: ทุกครั้งที่เขียนชีตผ่าน doGet/doPost (และ trigger คิวสมัคร/แนบสลิป) จะตั้งธง "ข้อมูลเปลี่ยน"
 // ใน Supabase ทันทีก่อนตอบลูกค้า ระหว่างที่สำเนายังไม่ทัน Supabase จะให้หน้าเว็บถาม Apps Script แทน
-// ส่วนการแก้ชีตด้วยมือ/หน้าแอดมิน/ระบบอื่น จะเข้า Supabase ในรอบคัดลอกถัดไป (ไม่เกิน 10 นาที)
+// ส่วนการแก้ชีตด้วยมือ/หน้าแอดมิน/ระบบอื่น จะเข้า Supabase ในรอบคัดลอกถัดไป (ไม่เกิน 5 นาที)
 //
 // ประหยัดโควตา trigger (~90 นาที/วัน ทั้งบัญชี)
 //   - รอบ 10 นาทีเช็คเวลาแก้ไขล่าสุดของไฟล์ (Drive) ก่อน ไฟล์ไหนไม่เปลี่ยนไม่อ่านเลย
@@ -193,7 +193,7 @@ function mirrorSyncTabsNow_(tabKeys, touch) {
 // รอบคัดลอกตามเวลา (เก็บตกสิ่งที่ระบบอื่นเขียน)
 // ---------------------------------------------------------------------------
 
-// ทุก 10 นาที: อ่านเฉพาะไฟล์ที่ถูกแก้ไขหลังรอบก่อน และส่งเฉพาะแท็บที่ค่าเปลี่ยน
+// ทุก 5 นาที: อ่านเฉพาะไฟล์ที่ถูกแก้ไขหลังรอบก่อน และส่งเฉพาะแท็บที่ค่าเปลี่ยน
 function mirrorSyncChanged() {
   return mirrorSyncAll_(false);
 }
@@ -314,9 +314,9 @@ function mirrorInstallTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (handlers[t.getHandlerFunction()]) ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger(MIRROR_PERIODIC_HANDLER_).timeBased().everyMinutes(10).create();
+  ScriptApp.newTrigger(MIRROR_PERIODIC_HANDLER_).timeBased().everyMinutes(5).create();
   ScriptApp.newTrigger(MIRROR_NIGHTLY_HANDLER_).timeBased().inTimezone('Asia/Bangkok').atHour(2).everyDays(1).create();
-  Logger.log('ตั้ง trigger คัดลอกไป Supabase แล้ว: ทุก 10 นาที + ทุกคืนตี 2');
+  Logger.log('ตั้ง trigger คัดลอกไป Supabase แล้ว: ทุก 5 นาที + ทุกคืนตี 2');
 }
 
 function mirrorRemoveTriggers() {
