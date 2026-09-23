@@ -734,7 +734,6 @@ function stopSlipFastPoll_(){
 function finishSlipSuccess_(){
   if (slipSubmitDone_) return;
   slipSubmitDone_ = true;
-  markOrdersChanged_();
   stopSlipFastPoll_();
   var btn = document.getElementById('slipSubmitBtn');
   if (btn) { btn.disabled = false; btn.textContent = '✅ ยืนยันแนบสลิป'; }
@@ -977,58 +976,37 @@ function createDataCache_(storageKeyPrefix, ttlMs, fetcher){
   return { loadStale: loadStale, isFresh: isFresh, fetch: fetchNow, update: update, invalidate: invalidate };
 }
 
-// ⚡ เพิ่ม (เฟส 1 Supabase) — อ่านประวัติคำสั่งซื้อจากสำเนาชีตใน Supabase ก่อน (ตอบเร็วกว่า Apps Script มาก)
-// สำเนาตามชีตไม่ทันทีหลังสั่งซื้อ/ยกเลิก/แนบสลิป (ช้าได้ราว 1 นาที) จึงใช้ผลจาก Supabase ก็ต่อเมื่อสำเนาถูก
-// อ่านจากชีต "หลัง" การแก้ออเดอร์ครั้งล่าสุดของเครื่องนี้แล้วเท่านั้น — เทียบเป็นระยะเวลาที่ผ่านไปของแต่ละฝั่ง
-// (mirrorAgeMs จากเซิร์ฟเวอร์ กับเวลาที่ผ่านไปจากนาฬิกาเครื่องนี้เอง) นาฬิกาเครื่องลูกค้าเพี้ยนก็ไม่มีผล
-// ไม่ผ่านเงื่อนไข หรือ Supabase ตอบไม่สำเร็จด้วยเหตุใดก็ตาม ถอยไปถาม Apps Script ตามเดิมทุกกรณี
+// ⚡ เพิ่ม (Supabase) — คำสั่งที่อ่าน/คำนวณอย่างเดียว ถามสำเนาใน Supabase ก่อน (ตอบเร็วกว่า Apps Script หลายเท่า)
+// Supabase รันฟังก์ชันเดิมของ Apps Script บนสำเนาชีต ผลจึงเหมือนกันทุกช่อง ถ้าสำเนายังไม่ทัน (เพิ่งมีคนเขียนชีต),
+// ต้องเขียนชีต, หรือเรียกไม่สำเร็จด้วยเหตุใดก็ตาม จะถาม Apps Script ตามเดิมทุกกรณี ลูกค้าไม่เจอ error เพิ่ม
+// ส่งพารามิเตอร์รูปแบบเดียวกับ callApi (query string) เป็น body แบบ text/plain จึงไม่มีคำขอ preflight
 var SUPABASE_READ_URL_ = 'https://qotlepudmkuniyjvqmle.supabase.co/functions/v1/shop-read';
-var ORDERS_CHANGED_AT_KEY_ = 'emocha.order.lastChangedAt';
-var ORDERS_CHANGED_FENCE_MS_ = 10 * 60 * 1000;
-function markOrdersChanged_(){
-  try { localStorage.setItem(ORDERS_CHANGED_AT_KEY_, String(Date.now())); } catch (e) {}
-}
-function msSinceOrdersChanged_(){
-  try {
-    var t = Number(localStorage.getItem(ORDERS_CHANGED_AT_KEY_));
-    return t ? Date.now() - t : Infinity;
-  } catch (e) { return Infinity; }
-}
-function callSupabaseRead_(action, idToken){
+var SUPABASE_READ_TIMEOUT_MS_ = 8000;
+function callApiFast_(action, payload){
+  payload = payload || {};
+  var body = 'action=' + encodeURIComponent(action) + Object.keys(payload).map(function(k){
+    return '&' + encodeURIComponent(k) + '=' + encodeURIComponent(payload[k]);
+  }).join('');
   var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-  var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, 8000) : null;
-  // body เป็นข้อความธรรมดา (text/plain) จะได้ไม่มีคำขอ preflight เพิ่มอีกรอบ
-  return fetch(SUPABASE_READ_URL_, {
-    method: 'POST',
-    body: JSON.stringify({ action: action, idToken: idToken }),
-    signal: controller ? controller.signal : undefined
-  }).then(function(res){
-    if (timeoutId) clearTimeout(timeoutId);
-    return res.json();
-  }).then(function(r){
-    if (!r || !r.success) throw new Error((r && r.error) || 'Supabase ตอบไม่สำเร็จ');
-    return r;
-  }, function(e){
-    if (timeoutId) clearTimeout(timeoutId);
-    throw e;
-  });
-}
-function fetchOrderHistory_(idToken){
-  var sinceChanged = msSinceOrdersChanged_();
-  var viaAppsScript = function(){ return callApi('getMyOrderHistory', { idToken: idToken }); };
-  // เพิ่งแก้ออเดอร์ไม่ถึง 15 วินาที สำเนายังไม่มีทางตามทัน ถาม Apps Script เลยไม่ต้องเสียเวลาลอง
-  if (sinceChanged < 15000) return viaAppsScript();
-  return callSupabaseRead_('getMyOrderHistory', idToken).then(function(r){
-    var fresh = sinceChanged > ORDERS_CHANGED_FENCE_MS_
-      || (typeof r.mirrorAgeMs === 'number' && r.mirrorAgeMs < sinceChanged - 2000);
-    if (!fresh) return viaAppsScript();
-    return r;
-  }).catch(function(){ return viaAppsScript(); });
+  var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, SUPABASE_READ_TIMEOUT_MS_) : null;
+  return fetch(SUPABASE_READ_URL_, { method: 'POST', body: body, signal: controller ? controller.signal : undefined })
+    .then(function(res){ return res.json(); })
+    .then(function(r){
+      if (timeoutId) clearTimeout(timeoutId);
+      if (r && r.success) return r;
+      throw new Error((r && (r.reason || r.error)) || 'Supabase ตอบไม่สำเร็จ');
+    })
+    .catch(function(){
+      if (timeoutId) clearTimeout(timeoutId);
+      return callApi(action, payload);
+    });
 }
 
 var ORDER_HISTORY_TTL_ = 30000;
 var orderHistoryCache_ = createDataCache_('emocha.order.historyCache', ORDER_HISTORY_TTL_, function(){
-  return getFreshIdToken().then(fetchOrderHistory_);
+  return getFreshIdToken().then(function(idToken){
+    return callApiFast_('getMyOrderHistory', { idToken: idToken });
+  });
 });
 var orderHistoryWarmStarted_ = false;
 // ⚡ เพิ่ม — ดึงรายการ "รอแนบสลิป" ไว้ล่วงหน้าตั้งแต่ตอนที่ลูกค้ายังดูรายการสินค้าอยู่ (หลังหน้าแรกวาดเสร็จแล้ว
@@ -1108,7 +1086,7 @@ function loadProducts(){
     applyShopBootstrap_(cached_);
   }
   // รวมข้อมูลเริ่มต้นเป็นคำขอเดียว ลดการเปิด Apps Script และตรวจ LINE token ซ้ำ 7 รอบ
-  callApi('getShopBootstrap', { idToken: currentIdToken })
+  callApiFast_('getShopBootstrap', { idToken: currentIdToken })
     .then(function(r){
       if (!r || !r.success) { if (!usedCache_) showErrorState('โหลดสินค้าไม่สำเร็จ: ' + (r ? r.error : '')); return; }
       if (!r.isMember) {
@@ -1343,7 +1321,7 @@ function renderRepeatPromoBox_(promos){
 }
 
 function loadMyPrivileges(){
-  callApi('getMyPrivileges', { idToken: currentIdToken }).then(renderMyPrivileges_).catch(function(){});
+  callApiFast_('getMyPrivileges', { idToken: currentIdToken }).then(renderMyPrivileges_).catch(function(){});
 }
 
 function renderCatalog(){
@@ -1512,7 +1490,6 @@ function confirmCancelOrder_(orderId){
   }).then(function(r){
     cancelOrderInFlight_ = false;
     if (r && r.success) {
-      markOrdersChanged_();
       // ตัดแถวออกจากแคชเองทันที รายการจึงหายไปต่อหน้าเลย ไม่ต้องรอ getMyOrderHistory รอบใหม่ตอบก่อน
       // (แคชถูกตีตราว่าเก่าแล้ว loadOrderHistory() ข้างล่างจะยังไปเช็คกับเซิร์ฟเวอร์จริงให้อยู่ดี)
       orderHistoryCache_.update(function(cached){
@@ -1545,7 +1522,7 @@ function continueToSlipUpload(orderId, btnEl){
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳'; }
   function restoreBtn_(){ if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = originalHtml_; } }
   getFreshIdToken().then(function(idToken){
-    return callApi('checkPendingOrderPromoStillValid', { idToken: idToken, orderId: orderId });
+    return callApiFast_('checkPendingOrderPromoStillValid', { idToken: idToken, orderId: orderId });
   }).then(function(r){
     restoreBtn_();
     if (r && r.success && r.changed) {
@@ -1596,7 +1573,6 @@ function confirmPromoRecheck_(){
     var confirmedAmount = promoRecheckNewAmount_;
     closePromoRecheckModal_();
     openSlipUploadModal(confirmedOrderId, 'history');
-    markOrdersChanged_();
     // อัปเดตยอดในแคชเองทันที หน้ารถเข็นจะโชว์ยอดใหม่ได้เลยโดยไม่ต้องรอ API รอบใหม่
     orderHistoryCache_.update(function(cached){
       (cached.results || []).forEach(function(o){
@@ -1700,7 +1676,7 @@ function fetchDiscounts_(sig, idTokenParam){
   var itemsB64 = btoa(unescape(encodeURIComponent(JSON.stringify(items))));
   var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
   var p = tokenPromise.then(function(idToken){
-    return callApi('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), pointsToRedeem: pointsToRedeemInput_ });
+    return callApiFast_('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), pointsToRedeem: pointsToRedeemInput_ });
   }).then(function(r){
     delete discountInFlightBySig_[sig];
     if (r && r.success) discountCacheBySig_[sig] = { result: cloneDiscount_(r), time: Date.now() };
@@ -1975,7 +1951,7 @@ function loadSavedAddress(idTokenParam){
   if (savedAddressLoaded) return Promise.resolve();
   var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
   return tokenPromise.then(function(idToken){
-    return callApi('getMyShippingAddress', { idToken: idToken });
+    return callApiFast_('getMyShippingAddress', { idToken: idToken });
   }).then(function(r){
     savedAddressLoaded = true;
     if (r && r.success && r.province) savedProvince = r.province;
@@ -2492,7 +2468,6 @@ function confirmSubmitOrder(){
       // สั่งซื้อสำเร็จแล้ว สิทธิ์/คูปอง/คะแนนถูกใช้ไปจริง ยอดที่แคชไว้ก่อนหน้าใช้ไม่ได้อีก และมีออเดอร์ใหม่
       // รอแนบสลิปเพิ่มเข้ามาในหน้ารถเข็นด้วย
       discountCacheBySig_ = {};
-      markOrdersChanged_();
       orderHistoryCache_.invalidate();
       pointsToRedeemInput_ = 0; // คะแนนของออเดอร์ที่ยังรอแนบสลิปถูกกันไว้แล้ว รีเซ็ตกันใช้ซ้ำในรอบถัดไป
 
