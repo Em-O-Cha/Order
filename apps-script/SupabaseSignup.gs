@@ -178,11 +178,18 @@ function signupCompareOne_(cfg, internalKey, c) {
         });
       });
     }
+    // รูปแบบเซลล์: ชีตอ่านค่ากลับไม่ตรงกับที่ตั้ง (ตั้ง '@STRING@' อ่านได้ '') จึงเทียบกับการตั้งรูปแบบเดียวกัน
+    // ในเซลล์ว่างใต้ข้อมูลของไฟล์ชั่วคราว แล้วอ่านกลับด้วยวิธีเดียวกัน
+    var scratchRow = sh.getLastRow() + 5;
     Object.keys(exp.formats).forEach(function (rc) {
       var p = rc.split(':');
       var got = sh.getRange(+p[0], +p[1]).getNumberFormat();
-      if (signupFormat_(got) !== signupFormat_(exp.formats[rc])) {
-        problems.push(key + ' แถว ' + p[0] + ' คอลัมน์ ' + p[1] + ' รูปแบบ: Apps Script ' + got + ' / Supabase ' + exp.formats[rc]);
+      var scratch = sh.getRange(scratchRow, +p[1]);
+      scratch.setNumberFormat(exp.formats[rc]);
+      var want = scratch.getNumberFormat();
+      scratch.clearFormat();
+      if (got !== want) {
+        problems.push(key + ' แถว ' + p[0] + ' คอลัมน์ ' + p[1] + ' รูปแบบ: Apps Script "' + got + '" / Supabase "' + want + '" (' + exp.formats[rc] + ')');
       }
     });
     if (added > 0) sh.deleteRows(before[key] + 1, added); // คืนไฟล์ชั่วคราวให้เหมือนก่อนกรณีนี้
@@ -240,11 +247,6 @@ function signupSameValue_(got, want) {
   }
   if (want === null || want === undefined) want = '';
   return got === want;
-}
-
-function signupFormat_(f) {
-  f = String(f || '');
-  return f === '@STRING@' ? '@' : f;
 }
 
 // { $date: ISO } -> ISO (รูปเดียวกับ JSON.stringify ของ Date ฝั่ง Apps Script)
