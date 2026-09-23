@@ -14,7 +14,12 @@
 //   3. รัน mirrorCheckCounts() ดูผลใน Execution log ว่าจำนวนแถวตรงกับชีต
 //   4. รัน mirrorInstallTriggers() ตั้งรอบคัดลอกทุก 10 นาที + คัดลอกทั้งหมดทุกคืน
 //   5. ใน doGet และ doPost ของ Members.gs เพิ่มบรรทัดนี้ต่อจาก logSlowAction_(...):
-//        mirrorAfterAction_(action);
+//        if (typeof mirrorAfterAction_ === 'function') mirrorAfterAction_(action);
+//   6. ก่อนเปิดให้หน้าเว็บอ่านจาก Supabase รัน mirrorCompareAll() จนขึ้นว่าตรวจครบ (เทียบผลทุกฟังก์ชัน)
+//
+// ความสดของข้อมูล: ทุกครั้งที่เขียนชีตผ่าน doGet/doPost (และ trigger คิวสมัคร/แนบสลิป) จะตั้งธง "ข้อมูลเปลี่ยน"
+// ใน Supabase ทันทีก่อนตอบลูกค้า ระหว่างที่สำเนายังไม่ทัน Supabase จะให้หน้าเว็บถาม Apps Script แทน
+// ส่วนการแก้ชีตด้วยมือ/หน้าแอดมิน/ระบบอื่น จะเข้า Supabase ในรอบคัดลอกถัดไป (ไม่เกิน 10 นาที)
 //
 // ประหยัดโควตา trigger (~90 นาที/วัน ทั้งบัญชี)
 //   - รอบ 10 นาทีเช็คเวลาแก้ไขล่าสุดของไฟล์ (Drive) ก่อน ไฟล์ไหนไม่เปลี่ยนไม่อ่านเลย
@@ -42,6 +47,13 @@ var MIRROR_SIGNUP_TABS_ = [
   'members/Members', 'members/Registration_Queue', 'members/Member_Privileges',
   'members/Points_Log', 'members/Referral_Log'
 ];
+// Script Properties ที่ฟังก์ชันอ่าน/คำนวณใช้ (คัดลอกเฉพาะรายการนี้เท่านั้น ห้ามใส่ token/PIN/key)
+var MIRROR_PROPS_KEY_ = 'props/script';
+function mirrorPropKeys_() {
+  return ['SIGNUP_BONUS_POINTS', 'SIGNUP_PRIVILEGE_CONFIG', 'POINTS_REDEEM_CONFIG', 'REFERRAL_CONFIG',
+          'PURCHASE_REFERRAL_CONFIG', COD_CONFIG_PROP_];
+}
+
 var MIRROR_WRITE_ACTIONS_ = {
   registerMember:            MIRROR_SIGNUP_TABS_,
   enqueueMemberRegistration: ['members/Registration_Queue'],
@@ -54,6 +66,9 @@ var MIRROR_WRITE_ACTIONS_ = {
   redeemReward:              ['members/Members', 'members/Points_Log', 'members/Redemption_Log',
                               'members/Rewards_Catalog', 'members/Member_Privileges'],
   updateTierConfig:          ['members/Tier_Config'],
+  updateSignupBonus:         [MIRROR_PROPS_KEY_],
+  updateSignupPrivilegeConfig: [MIRROR_PROPS_KEY_],
+  updatePointsRedeemConfig:  [MIRROR_PROPS_KEY_],
   runBlockSyncNow:           ['members/Members']
 };
 
@@ -82,7 +97,9 @@ function mirrorAfterAction_(action) {
 // จดแท็บที่ต้องส่ง แล้วตั้ง trigger ครั้งเดียวให้มาส่งเบื้องหลัง (ไม่ตั้งซ้ำถ้ามีรอคิวอยู่แล้ว)
 // ใช้ property แยกต่อแท็บ จึงไม่ต้องล็อก และไม่แย่ง ScriptLock กับ createShopOrder
 function mirrorMarkDirty_(tabKeys) {
-  if (!mirrorConfig_()) return;
+  var cfg = mirrorConfig_();
+  if (!cfg) return;
+  mirrorMarkDirtyRemote_(cfg, tabKeys);
   var props = PropertiesService.getScriptProperties();
   var now = String(Date.now());
   var batch = {};
@@ -93,6 +110,31 @@ function mirrorMarkDirty_(tabKeys) {
   if (Date.now() - scheduledAt < 5 * 60 * 1000) return; // มี trigger รออยู่แล้ว
   props.setProperty(MIRROR_FLUSH_SCHEDULED_PROP_, now);
   ScriptApp.newTrigger(MIRROR_FLUSH_HANDLER_).timeBased().after(1000).create();
+}
+
+// ตั้งธง "ข้อมูลเปลี่ยน" ใน Supabase ทันที (ก่อนตอบลูกค้า) ให้หน้าเว็บถาม Apps Script จนกว่าสำเนาจะทัน
+function mirrorMarkDirtyRemote_(cfg, tabKeys) {
+  try {
+    UrlFetchApp.fetch(cfg.url + '/rest/v1/rpc/mirror_mark_dirty', {
+      method: 'post', contentType: 'application/json', headers: mirrorAuthHeaders_(cfg.key),
+      payload: JSON.stringify({ p_tabs: tabKeys }), muteHttpExceptions: true
+    });
+  } catch (e) {
+    Logger.log('mirrorMarkDirtyRemote_ error: ' + e);
+  }
+}
+
+// ใช้ใน trigger เบื้องหลังที่เพิ่งเขียนชีตเสร็จ (คิวสมัครสมาชิก, แจ้งเตือน/ให้คะแนนหลังแนบสลิป):
+// ตั้งธงแล้วส่งสำเนาทันทีในรอบเดียวกัน ไม่ throw
+function mirrorAfterBackgroundWrite_(tabKeys) {
+  try {
+    var cfg = mirrorConfig_();
+    if (!cfg) return;
+    mirrorMarkDirtyRemote_(cfg, tabKeys);
+    mirrorSyncTabsNow_(tabKeys, true);
+  } catch (e) {
+    Logger.log('mirrorAfterBackgroundWrite_ error: ' + e);
+  }
 }
 
 // trigger ครั้งเดียว: ส่งทุกแท็บที่จดไว้ แล้วลบ trigger ของตัวเอง
@@ -136,6 +178,7 @@ function mirrorSyncTabsNow_(tabKeys, touch) {
     (bySource[source] = bySource[source] || []).push(tab);
   });
   var results = [];
+  if (tabKeys.indexOf(MIRROR_PROPS_KEY_) !== -1) results.push(mirrorSyncProps_(cfg, false, touch));
   Object.keys(bySource).forEach(function (source) {
     var ss = SpreadsheetApp.openById(MIRROR_SOURCES_[source]());
     bySource[source].forEach(function (tab) {
@@ -187,6 +230,8 @@ function mirrorSyncAll_(force) {
       results.push({ key: source, status: 'error', error: String(e) });
     }
   });
+  // Script Properties ไม่มีเวลาแก้ไขไฟล์ให้เช็ค จึงเทียบ hash ทุกรอบ (ถูกมาก)
+  results.push(mirrorSyncProps_(cfg, force, false));
   Logger.log(JSON.stringify(results));
   return results;
 }
@@ -196,12 +241,31 @@ function mirrorSyncAll_(force) {
 // ---------------------------------------------------------------------------
 
 function mirrorSyncSheet_(cfg, source, spreadsheetId, sheet, force, touch) {
-  var key = source + '/' + sheet.getName();
+  var readAt = new Date();
+  var values;
   try {
-    var readAt = new Date();
-    var values = sheet.getDataRange().getValues();
-    var headers = values.length ? values[0] : [];
-    var rows = values.slice(1);
+    values = sheet.getDataRange().getValues();
+  } catch (e) {
+    mirrorLogError_('mirrorSyncSheet_ ' + source + '/' + sheet.getName(), e);
+    return { key: source + '/' + sheet.getName(), status: 'error', error: String(e) };
+  }
+  return mirrorSendValues_(cfg, source, sheet.getName(), spreadsheetId,
+    values.length ? values[0] : [], values.slice(1), readAt, force, touch);
+}
+
+function mirrorSyncProps_(cfg, force, touch) {
+  var readAt = new Date();
+  var all = PropertiesService.getScriptProperties().getProperties();
+  var rows = mirrorPropKeys_().filter(function (k) { return Object.prototype.hasOwnProperty.call(all, k); })
+    .map(function (k) { return [k, all[k]]; });
+  var i = MIRROR_PROPS_KEY_.indexOf('/');
+  return mirrorSendValues_(cfg, MIRROR_PROPS_KEY_.substring(0, i), MIRROR_PROPS_KEY_.substring(i + 1), null,
+    ['key', 'value'], rows, readAt, force, touch);
+}
+
+function mirrorSendValues_(cfg, source, tabName, spreadsheetId, headers, rows, readAt, force, touch) {
+  var key = source + '/' + tabName;
+  try {
     var payloadValues = JSON.stringify([headers, rows]);
     var hash = Utilities.base64Encode(
       Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, payloadValues, Utilities.Charset.UTF_8));
@@ -216,7 +280,7 @@ function mirrorSyncSheet_(cfg, source, spreadsheetId, sheet, force, touch) {
       headers: mirrorAuthHeaders_(cfg.key),
       payload: JSON.stringify({
         p_source: source,
-        p_tab: sheet.getName(),
+        p_tab: tabName,
         p_headers: headers,
         p_rows: rows,
         p_first_row: 2,
@@ -234,7 +298,7 @@ function mirrorSyncSheet_(cfg, source, spreadsheetId, sheet, force, touch) {
     if (body.status !== 'stale') props.setProperty(hashKey, hash);
     return { key: key, status: body.status, rows: body.rows };
   } catch (e) {
-    mirrorLogError_('mirrorSyncSheet_ ' + key, e);
+    mirrorLogError_('mirrorSendValues_ ' + key, e);
     return { key: key, status: 'error', error: String(e) };
   }
 }
@@ -318,92 +382,200 @@ function mirrorLogError_(where, e) {
 }
 
 // ---------------------------------------------------------------------------
-// ตรวจเทียบก่อนให้หน้าร้านอ่านจาก Supabase
+// ตรวจเทียบก่อนเปิดให้หน้าเว็บอ่านจาก Supabase
 // ---------------------------------------------------------------------------
+var MIRROR_COMPARE_STATE_PROP_ = 'mirror_compare_state';
+var MIRROR_COMPARE_EDGE_PATH_ = '/functions/v1/shop-read';
 
-// เทียบประวัติคำสั่งซื้อของสมาชิกทุกคน: ตรรกะเดียวกับ getMyOrderHistory (อ่านชีตตรง) กับ
-// public.shop_order_history (อ่านจาก Supabase) ผลอยู่ใน Execution log ไม่แสดงข้อมูลลูกค้า
-function mirrorCompareOrderHistory() {
+// เทียบผลทุกฟังก์ชันที่หน้าเว็บจะอ่านจาก Supabase ของสมาชิกทุกคน: ฟังก์ชันเดิมใน Apps Script (อ่านชีตตรง)
+// กับ Edge Function shop-read (อ่านสำเนา) รวมตะกร้าทดสอบสำหรับคำนวณส่วนลด ผลอยู่ใน Execution log
+// ทำงานได้ราว 4 นาทีต่อครั้ง ถ้ายังไม่ครบให้กด Run ซ้ำ จะทำต่อจากเดิมจนขึ้นว่า "ตรวจครบ"
+// ครั้งแรกจะคัดลอกทุกแท็บใหม่ทั้งหมดก่อน (mirrorSyncAllForce) ใช้เวลาเพิ่มราว 1 นาที
+// ฟังก์ชันเดิมทำงานตามปกติทุกอย่างระหว่างเทียบ (เช่น ซ่อมคอลัมน์ Tier ถ้าไม่ตรง)
+function mirrorCompareAll() {
+  var t0 = Date.now();
   var cfg = mirrorConfig_();
   if (!cfg) throw new Error('ยังไม่ได้ตั้ง SUPABASE_URL / SUPABASE_SECRET_KEY ใน Script Properties');
-  mirrorSyncTabsNow_(['members/Members', 'revenue/Revenue']);
+  var props = PropertiesService.getScriptProperties();
+  var state = null;
+  try { state = JSON.parse(props.getProperty(MIRROR_COMPARE_STATE_PROP_) || 'null'); } catch (e) {}
+  if (!state) state = { offset: 0, synced: false, cases: 0, same: 0, fallback: {}, diffs: [] };
+
+  if (!state.synced) {
+    mirrorSyncAllForce();
+    state.synced = true;
+    props.setProperty(MIRROR_COMPARE_STATE_PROP_, JSON.stringify(state));
+  }
+
+  var keyRes = UrlFetchApp.fetch(cfg.url + '/rest/v1/rpc/mirror_internal_key', {
+    method: 'post', contentType: 'application/json', payload: '{}',
+    headers: mirrorAuthHeaders_(cfg.key), muteHttpExceptions: true
+  });
+  if (keyRes.getResponseCode() !== 200) throw new Error('อ่าน internal key ไม่ได้: ' + keyRes.getContentText());
+  var internalKey = JSON.parse(keyRes.getContentText());
 
   var sheet = ensureMembersSheet_();
   var uids = sheet.getRange(2, 1, Math.max(sheet.getLastRow() - 1, 1), 1).getValues()
-    .map(function (r) { return r[0]; })
+    .map(function (r) { return String(r[0] || ''); })
     .filter(function (u) { return u; });
+  uids.push('U_mirror_compare_not_a_member');
 
-  var responses = UrlFetchApp.fetchAll(uids.map(function (uid) {
+  var variants = [];
+  (getShopProducts().categories || []).forEach(function (c) {
+    (c.variants || []).forEach(function (v) { variants.push(v); });
+  });
+  var couponSheet = ensureCouponsSheet_();
+  var codes = couponSheet.getLastRow() > 1
+    ? couponSheet.getRange(2, 1, couponSheet.getLastRow() - 1, 1).getValues()
+        .map(function (r) { return String(r[0] || ''); }).filter(function (c) { return c; })
+    : [];
+
+  if (state.offset === 0 && !state.globalsDone) {
+    mirrorCompareCases_(cfg, internalKey, null, [
+      { action: 'getActiveCoupons', params: {}, local: function () { return getActiveCoupons(); } },
+      { action: 'getReferralPublicStatus', params: {}, local: function () { return getReferralPublicStatus(); } },
+      { action: 'getTierConfig', params: {}, local: function () {
+        return { success: true, tiers: getTierConfig_(), signupBonus: getSignupBonusPoints_(),
+          signupPrivilege: getSignupPrivilegeConfig_(), pointsRedeemConfig: getPointsRedeemConfig_() };
+      } }
+    ], state, 'ทั่วไป');
+    state.globalsDone = true;
+  }
+
+  while (state.offset < uids.length && Date.now() - t0 < 240000) {
+    var i = state.offset;
+    var uid = uids[i];
+    var cases = [];
+    ['checkMemberStatus', 'getShopBootstrap', 'getPrivilegesPanelData', 'getMyPrivileges', 'getPointsHistory',
+     'getMyShippingAddress', 'getMyOrderHistory'].forEach(function (action) {
+      cases.push({ action: action, params: { idToken: 'x' }, local: function () { return this_[action]('x'); } });
+    });
+    for (var k = 0; k < 3 && variants.length; k++) {
+      var items = [];
+      var v1 = variants[(i * 3 + k) % variants.length];
+      items.push({ name: v1.skuName, qty: k + 1 });
+      if (k === 1 && variants.length > 1) items.push({ name: variants[(i * 3 + k + 7) % variants.length].skuName, qty: 1 });
+      var subtotal = 0;
+      items.forEach(function (it) {
+        var v = variants.filter(function (x) { return x.skuName === it.name; })[0];
+        subtotal += (v ? v.price : 0) * it.qty;
+      });
+      var params = {
+        idToken: 'x',
+        couponCode: k === 1 && codes.length ? codes[i % codes.length] : (k === 2 ? 'NOT_A_REAL_CODE' : ''),
+        subtotal: String(subtotal),
+        itemsB64: Utilities.base64Encode(JSON.stringify(items), Utilities.Charset.UTF_8),
+        excludePrivilegeName: '',
+        pointsToRedeem: k === 2 ? '10' : '0'
+      };
+      cases.push({ action: 'checkShopDiscounts', params: params, local: (function (p) {
+        return function () {
+          return checkShopDiscounts(p.idToken, p.couponCode, p.subtotal, decodeItemsB64_(p.itemsB64),
+            p.excludePrivilegeName, p.pointsToRedeem);
+        };
+      })(params) });
+    }
+    mirrorCompareCases_(cfg, internalKey, uid, cases, state, 'สมาชิก ' + uid.substring(0, 7) + '…');
+
+    // ออเดอร์ที่ยังรอแนบสลิป: เช็คโปรโมชั่นซ้ำ
+    var pending = [];
+    try {
+      var hist = mirrorWithProfile_(uid, function () { return getMyOrderHistory('x'); });
+      pending = ((hist && hist.results) || []).filter(function (o) { return !o.hasSlip && !o.cancelled; }).slice(0, 2);
+    } catch (e) {}
+    if (pending.length) {
+      mirrorCompareCases_(cfg, internalKey, uid, pending.map(function (o) {
+        return { action: 'checkPendingOrderPromoStillValid', params: { idToken: 'x', orderId: String(o.orderId) },
+          local: function () { return checkPendingOrderPromoStillValid('x', String(o.orderId)); } };
+      }), state, 'สมาชิก ' + uid.substring(0, 7) + '…');
+    }
+
+    state.offset = i + 1;
+    props.setProperty(MIRROR_COMPARE_STATE_PROP_, JSON.stringify(state));
+  }
+
+  var done = state.offset >= uids.length;
+  var lines = ['ตรวจแล้ว ' + state.offset + ' / ' + uids.length + ' คน, ' + state.cases + ' กรณี',
+               'ตรงกัน ' + state.same + ' กรณี, ต่างกัน ' + state.diffs.length + ' กรณี'];
+  Object.keys(state.fallback).forEach(function (r) {
+    lines.push('Supabase ให้ถาม Apps Script แทน (' + r + '): ' + state.fallback[r] + ' กรณี');
+  });
+  if (state.diffs.length) lines.push('จุดที่ต่าง:\n' + state.diffs.slice(0, 40).join('\n'));
+  lines.push(done ? '== ตรวจครบแล้ว ==' : '== ยังไม่ครบ กด Run ซ้ำเพื่อทำต่อ ==');
+  Logger.log(lines.join('\n'));
+  if (done) props.deleteProperty(MIRROR_COMPARE_STATE_PROP_);
+  return state;
+}
+
+// เริ่มเทียบใหม่ตั้งแต่ต้น
+function mirrorCompareReset() {
+  PropertiesService.getScriptProperties().deleteProperty(MIRROR_COMPARE_STATE_PROP_);
+}
+
+// ฟังก์ชันใน Members.gs เรียกผ่านชื่อ (ใช้ใน cases ข้างบน)
+var this_ = this;
+
+// เรียกฟังก์ชันเดิมโดยสมมติว่าตรวจโทเคน LINE ผ่านแล้วเป็นสมาชิก uid
+function mirrorWithProfile_(uid, fn) {
+  if (!uid) return fn();
+  var original = verifyLineIdToken_;
+  verifyLineIdToken_ = function () { return { sub: uid, name: 'ทดสอบเทียบผล', picture: '' }; };
+  try { return fn(); } finally { verifyLineIdToken_ = original; }
+}
+
+function mirrorCompareCases_(cfg, internalKey, uid, cases, state, label) {
+  var requests = cases.map(function (c) {
+    var q = { action: c.action };
+    Object.keys(c.params).forEach(function (k) { q[k] = c.params[k]; });
+    if (uid) { q.asUid = uid; q.asName = 'ทดสอบเทียบผล'; q.asPicture = ''; }
     return {
-      url: cfg.url + '/rest/v1/rpc/shop_order_history',
-      method: 'post', contentType: 'application/json',
-      headers: mirrorAuthHeaders_(cfg.key),
-      payload: JSON.stringify({ p_line_uid: uid }),
+      url: cfg.url + MIRROR_COMPARE_EDGE_PATH_, method: 'post', contentType: 'text/plain',
+      headers: { 'x-internal-key': internalKey },
+      payload: Object.keys(q).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(q[k]); }).join('&'),
       muteHttpExceptions: true
     };
-  }));
-
-  var same = 0, lines = [];
-  uids.forEach(function (uid, i) {
-    var label = 'สมาชิก ' + String(uid).substring(0, 7) + '…';
-    if (responses[i].getResponseCode() !== 200) {
-      lines.push(label + ': Supabase HTTP ' + responses[i].getResponseCode());
+  });
+  var responses = UrlFetchApp.fetchAll(requests);
+  cases.forEach(function (c, idx) {
+    state.cases++;
+    var remote;
+    try { remote = JSON.parse(responses[idx].getContentText()); } catch (e) { remote = { parseError: responses[idx].getContentText().substring(0, 200) }; }
+    if (remote && remote.needsAppsScript) {
+      var reason = String(remote.reason || '') + (remote.detail ? ' ' + JSON.stringify(remote.detail).substring(0, 120) : '');
+      state.fallback[reason] = (state.fallback[reason] || 0) + 1;
       return;
     }
-    var local = mirrorOrderHistoryFromSheet_(uid);
-    var remote = JSON.parse(responses[i].getContentText()).results || [];
-    var diff = mirrorDiffOrderLists_(local, remote);
-    if (!diff) { same++; return; }
-    lines.push(label + ': ' + diff);
+    var local;
+    try { local = JSON.parse(JSON.stringify(mirrorWithProfile_(uid, c.local))); } catch (e) { local = { localError: String(e) }; }
+    var diff = mirrorFirstDiff_(local, remote, c.action);
+    if (!diff) { state.same++; return; }
+    if (state.diffs.length < 200) state.diffs.push(label + ' ' + diff);
   });
-
-  Logger.log('ตรงกัน ' + same + ' / ' + uids.length + ' คน');
-  if (lines.length) Logger.log('ไม่ตรง:\n' + lines.slice(0, 30).join('\n'));
-  return { same: same, total: uids.length, mismatches: lines };
 }
 
-// ส่วนเดียวกับ getMyOrderHistory หลังตรวจโทเคนแล้ว (ใช้ LINE UID แทนโทเคน)
-function mirrorOrderHistoryFromSheet_(lineUid) {
-  var memberFound = getMemberRowByUid_(lineUid, 4);
-  if (!memberFound) return [];
-  var myPhone = String(memberFound.values[3] || '');
-  if (!myPhone) return [];
-  var rows = getRevenueRowsForPhone_(myPhone, 25, revenueReadCols_(COD_STATUS_COL_));
-  rows.sort(function (a, b) { return b.rowIndex - a.rowIndex; });
-  var results = [];
-  for (var i = 0; i < rows.length && results.length < 20; i++) {
-    var row = rows[i].values;
-    var orderId = row[0];
-    if (!orderId) continue;
-    results.push({
-      orderId: orderId,
-      date: row[1] ? new Date(row[1]).toLocaleDateString('th-TH') : '',
-      firstItemName: row[2] || '',
-      totalAmount: row[8] || 0,
-      paymentMethod: row[9] || '',
-      campaign: row[17] || '',
-      hasSlip: !!row[10],
-      isCod: isCodPaymentLabel_(row[9]),
-      codStatus: String(row[COD_STATUS_COL_ - 1] || ''),
-      cancelled: String(row[2]) === CANCELLED_ORDER_MARK_
-    });
-  }
-  return results;
-}
-
-// คืนข้อความบอกจุดที่ต่างกันจุดแรก หรือ '' ถ้าเหมือนกัน (ข้อความถูกตัดช่องว่างหัวท้ายก่อนเทียบ
-// เพราะสำเนาใน Supabase ตัดช่องว่างหัวท้ายไว้แล้ว)
-function mirrorDiffOrderLists_(local, remote) {
-  if (local.length !== remote.length) return 'จำนวนออเดอร์ ชีต ' + local.length + ' / Supabase ' + remote.length;
-  var norm = function (v) { return typeof v === 'string' ? v.trim() : v; };
-  for (var i = 0; i < local.length; i++) {
-    var fields = Object.keys(local[i]);
-    for (var f = 0; f < fields.length; f++) {
-      var k = fields[f];
-      if (norm(local[i][k]) !== norm(remote[i][k])) {
-        return 'ออเดอร์ ' + local[i].orderId + ' ช่อง ' + k + ' ไม่ตรง';
-      }
+function mirrorFirstDiff_(a, b, path) {
+  if (a === b) return '';
+  var short = function (v) { var s = JSON.stringify(v); return s === undefined ? 'undefined' : (s.length > 60 ? s.substring(0, 60) + '…' : s); };
+  var ta = Object.prototype.toString.call(a), tb = Object.prototype.toString.call(b);
+  if (ta !== tb) return path + ' ชนิดต่างกัน ชีต ' + short(a) + ' / Supabase ' + short(b);
+  if (Array.isArray(a)) {
+    if (a.length !== b.length) return path + ' จำนวน ชีต ' + a.length + ' / Supabase ' + b.length;
+    for (var i = 0; i < a.length; i++) {
+      var d = mirrorFirstDiff_(a[i], b[i], path + '[' + i + ']');
+      if (d) return d;
     }
+    return '';
   }
-  return '';
+  if (ta === '[object Object]') {
+    var keys = {};
+    Object.keys(a).forEach(function (k) { keys[k] = true; });
+    Object.keys(b).forEach(function (k) { keys[k] = true; });
+    var list = Object.keys(keys).sort();
+    for (var j = 0; j < list.length; j++) {
+      var d2 = mirrorFirstDiff_(a[list[j]], b[list[j]], path + '.' + list[j]);
+      if (d2) return d2;
+    }
+    return '';
+  }
+  return path + ': ชีต ' + short(a) + ' / Supabase ' + short(b);
 }
