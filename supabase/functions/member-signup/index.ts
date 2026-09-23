@@ -10,7 +10,11 @@
 //
 // คำขอ: POST body เป็น query string หรือ JSON
 //   action=registerMemberDryRun&asUid=...&asName=...&asPicture=...&phoneNumber=...&fullName=...
-//          &birthday=...&referrerCode=...
+//          &birthday=...&referrerCode=...[&simulate=JSON]
+//   simulate (ทดสอบเท่านั้น): สมมติค่าตั้งโดยไม่แตะของจริง ใช้ทดสอบโปรที่ปิดอยู่
+//     { props: { SIGNUP_PRIVILEGE_CONFIG: "...", ... },      Script Properties ที่จะใช้แทน
+//       tabs:  { "members/Signup_Privileges": [[...], ...] } แถวข้อมูล (ไม่รวมหัวตาราง) ที่จะใช้แทนทั้งแท็บ
+//     }                                                      ค่า Date ในแถวส่งเป็นสตริง ISO แบบเดียวกับสำเนา
 // คำตอบ: { success:true, dryRun:true, result, journal, deferred, baseRows, accessed, notReady, unsupported, logs }
 //   result   = สิ่งที่ registerMember คืน (เหมือน Apps Script)
 //   journal  = การเขียนชีตตามลำดับ (ดู gas_runtime.js) ค่า Date อยู่ในรูป { $date: ISO }
@@ -19,8 +23,8 @@
 //   notReady = แท็บที่ใช้แล้วสำเนายังไม่ทัน (มีธง dirty หรือยังไม่มีในสำเนา) — ใช้จริงต้องถอยไป Apps Script
 
 import { createGas } from "./gas_port.js";
-import { createEnv, PROPS_KEY } from "../_shared/gas_runtime.js";
-import { createTabLoader, isInternal, json, propsFrom, readParams, CORS } from "../_shared/mirror_client.ts";
+import { createEnv, prepareTab, PROPS_KEY } from "../_shared/gas_runtime.js";
+import { createTabLoader, isInternal, json, propsFrom, readParams, CORS, Tab } from "../_shared/mirror_client.ts";
 
 // แท็บที่ registerMember อ่าน/เขียน (แท็บอื่นตัวจำลองจะปฏิเสธ แล้วคำตอบจะมี unsupported)
 const TAB_KEYS = [
@@ -39,6 +43,28 @@ function plain(v: unknown): unknown {
   return v;
 }
 
+type Simulate = { props?: Record<string, string>; tabs?: Record<string, unknown[][]> };
+
+// แทนที่แท็บด้วยแถวที่สมมติ (หัวตารางเดิม) ในสำเนาของคำขอนี้เท่านั้น
+function simulateTabs(tabs: Map<string, Tab>, sim: Simulate): Map<string, Tab> {
+  const out = new Map(tabs);
+  for (const [key, lines] of Object.entries(sim.tabs || {})) {
+    const orig = tabs.get(key);
+    if (!orig) throw new Error("simulate: ไม่มีแท็บ " + key);
+    const rows = lines.map((line, i) => {
+      const data: Record<string, unknown> = {};
+      line.forEach((v, c) => {
+        if (v !== "" && v !== null && v !== undefined) data[orig.headers[c] ?? "__col" + (c + 1)] = v;
+      });
+      return [i + 2, data];
+    });
+    out.set(key, prepareTab(key, {
+      spreadsheet_id: orig.spreadsheetId, raw_headers: orig.rawHeaders, headers: orig.headers, rows,
+    }));
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
@@ -55,10 +81,12 @@ Deno.serve(async (req) => {
     if (!p.asUid) return json({ success: false, error: "ต้องระบุ asUid" }, 400);
 
     const profile = { sub: p.asUid, name: p.asName || "", picture: p.asPicture || "" };
-    const { tabs, dirty } = await loadTabs();
-    const { env, tracker } = createEnv({
-      tabs, loadedSources: new Set(TAB_KEYS), props: propsFrom(tabs.get(PROPS_KEY)), profile, journal: true,
-    });
+    const loaded = await loadTabs();
+    const dirty = loaded.dirty;
+    const sim: Simulate = p.simulate ? JSON.parse(p.simulate) : {};
+    const tabs = simulateTabs(loaded.tabs, sim);
+    const props = { ...propsFrom(tabs.get(PROPS_KEY)), ...(sim.props || {}) };
+    const { env, tracker } = createEnv({ tabs, loadedSources: new Set(TAB_KEYS), props, profile, journal: true });
     const deferred: unknown[] = [];
     const envWithDeferred = {
       ...env,

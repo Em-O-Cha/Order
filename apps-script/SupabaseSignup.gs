@@ -12,6 +12,9 @@
 //      รูปแบบเซลล์ / งานหลังสมัคร จากนั้นลบแถวที่เพิ่มในไฟล์ชั่วคราว
 //   4. ย้ายไฟล์ชั่วคราวไปถังขยะ ผลอยู่ใน Execution log
 // กรณีทดสอบใช้ LINE UID/เบอร์ปลอม และข้อมูลสมาชิกจริงเฉพาะที่ต้องใช้ทดสอบ "ซ้ำ" / "ผู้แนะนำ"
+// กรณี "สมมติเปิดโปร" ใช้ค่าตั้งสมมติชุดเดียวกันทั้งสองฝั่ง (สิทธิ์ต้อนรับ, แนะนำเพื่อน, แต้มต้อนรับ)
+// ฝั่ง Apps Script เขียนแถวสมมติลง Signup_Privileges ของไฟล์ชั่วคราวเท่านั้น และแทนฟังก์ชันอ่านค่าตั้งชั่วคราว
+// ระหว่างรัน (Script Properties จริงไม่ถูกแตะ)
 
 var SIGNUP_EDGE_PATH_ = '/functions/v1/member-signup';
 // แท็บที่ registerMember ใช้ (ตรงกับ TAB_KEYS ใน supabase/functions/member-signup/index.ts)
@@ -32,7 +35,8 @@ function signupCompareDryRun() {
   var cases = signupCompareCases_();
   var originalSheetId = MEMBERS_SHEET_ID;
   var saved = {
-    verify: verifyLineIdToken_, send: sendLineMessages_, grant: grantReferralRewardOnSignupIfNeeded_
+    verify: verifyLineIdToken_, send: sendLineMessages_, grant: grantReferralRewardOnSignupIfNeeded_,
+    signupPrivilege: getSignupPrivilegeConfig_, referral: getReferralConfig_, bonus: getSignupBonusPoints_
   };
   var copy = DriveApp.getFileById(originalSheetId).makeCopy(
     'ทดสอบเทียบผลสมัครสมาชิก (ลบได้) ' + Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd HH:mm'));
@@ -40,6 +44,9 @@ function signupCompareDryRun() {
   try {
     MEMBERS_SHEET_ID = copy.getId();
     cases.forEach(function (c) {
+      getSignupPrivilegeConfig_ = saved.signupPrivilege;
+      getReferralConfig_ = saved.referral;
+      getSignupBonusPoints_ = saved.bonus;
       var problems = signupCompareOne_(cfg, internalKey, c);
       if (problems.length) {
         diffs++;
@@ -54,6 +61,9 @@ function signupCompareDryRun() {
     verifyLineIdToken_ = saved.verify;
     sendLineMessages_ = saved.send;
     grantReferralRewardOnSignupIfNeeded_ = saved.grant;
+    getSignupPrivilegeConfig_ = saved.signupPrivilege;
+    getReferralConfig_ = saved.referral;
+    getSignupBonusPoints_ = saved.bonus;
     signupResetSheetCache_();
     invalidateMembersIdentityCache_();
     copy.setTrashed(true);
@@ -103,14 +113,115 @@ function signupCompareCases_() {
     test('เบอร์ไม่ครบ 10 หลัก', { phone: '08123' }),
     test('ไม่กรอกชื่อ', { fullName: '   ' }),
     test('ไม่กรอกวันเกิด', { birthday: '' })
+  ].concat(signupSimulatedCases_(test, String(existing[12])));
+}
+
+// ---------------------------------------------------------------------------
+// กรณี "สมมติเปิดโปร" (ค่าตั้งจริงปิดอยู่ จึงต้องสมมติเพื่อทดสอบทางที่ให้สิทธิ์/บันทึกผู้แนะนำ)
+// ค่าตั้งเขียนในรูปที่ฟังก์ชันอ่านค่าตั้งคืนอยู่แล้ว (ทุกช่องครบ ชนิดถูก) Supabase ได้ JSON เดียวกันไปอ่าน
+// ผ่านฟังก์ชันเดิม จึงได้ค่าเท่ากัน — ตัวฟังก์ชันอ่านค่าตั้งเองผ่านการเทียบใน mirrorCompareAll แล้ว
+// ---------------------------------------------------------------------------
+function signupSimulatedCases_(test, referrerCode) {
+  var tz = 'Asia/Bangkok';
+  function day(offset) {
+    var d = new Date();
+    d.setDate(d.getDate() + offset);
+    return Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+  }
+  function dateAt(offset) { // วันที่ในชีตแบบที่แอดมินกรอก (เที่ยงคืนเวลาไทย)
+    var p = day(offset).split('-');
+    return new Date(+p[0], +p[1] - 1, +p[2]);
+  }
+  function signupPrivilege(over) {
+    var c = { enabled: true, name: 'ต้อนรับทดสอบ', type: 'percent', value: 10, expiryDays: 0, expiryDate: '',
+              restriction: '', freeProduct: '', freeQty: 0, startDate: '', endDate: '' };
+    Object.keys(over || {}).forEach(function (k) { c[k] = over[k]; });
+    return c;
+  }
+  function referral(over) {
+    var c = { enabled: true, rewardTrigger: 'signup', rewardTarget: 'both', referrerPoints: 20,
+              referrerDiscountType: '', referrerDiscountValue: 0, referredPoints: 10, referredDiscountType: 'fixed',
+              referredDiscountValue: 30, minPurchase: 0, restriction: '', discountExpiryDays: 14, startDate: '', endDate: '' };
+    Object.keys(over || {}).forEach(function (k) { c[k] = over[k]; });
+    return c;
+  }
+  // คอลัมน์ Signup_Privileges: ชื่อ, ประเภท, มูลค่า, หมดอายุใน(วัน), เฉพาะสินค้า, สินค้าที่แถม, จำนวนที่แถม,
+  // เปิดใช้งาน, วันที่สร้าง, ยอดซื้อขั้นต่ำ, วันเริ่มโปร, วันสิ้นสุดโปร
+  var itemRows = [
+    ['ทดสอบ ลด 50 บาท', 'fixed', 50, 7, '', '', '', true, dateAt(-5), 300, '', ''],
+    ['ทดสอบ ส่งฟรี', 'ship_percent', 100, '', '', '', '', true, dateAt(-5), '', dateAt(1), dateAt(37)],
+    ['ทดสอบ ซื้อ 2 แถม 1', 'bogo', 2, 30, 'สินค้าทดสอบ ก,สินค้าทดสอบ ข', 'สินค้าทดสอบ ค', 1, true, dateAt(-5), '', '', ''],
+    ['ทดสอบ ปิดอยู่', 'percent', 5, 3, '', '', '', false, dateAt(-5), '', '', '']
   ];
+  function sim(label, s, over) {
+    var c = test('สมมติเปิดโปร: ' + label, over);
+    c.sim = { signupPrivilegeRows: [] };
+    Object.keys(s).forEach(function (k) { c.sim[k] = s[k]; });
+    return c;
+  }
+  return [
+    sim('สิทธิ์ต้อนรับแบบเดี่ยว ลด 10% หมดอายุ 30 วัน + แต้มต้อนรับ 50',
+        { signupPrivilege: signupPrivilege({ expiryDays: 30 }), signupBonus: 50 }),
+    sim('สิทธิ์ต้อนรับแบบเดี่ยว ซื้อ 2 แถม 1 ใช้ได้ตามช่วงวัน',
+        { signupPrivilege: signupPrivilege({ type: 'bogo', value: 2, restriction: 'สินค้าทดสอบ ก,สินค้าทดสอบ ข',
+          freeProduct: 'สินค้าทดสอบ ค', freeQty: 1, startDate: day(1), endDate: day(30) }) }),
+    sim('สิทธิ์ต้อนรับแบบเดี่ยว กำหนดวันหมดอายุเอง',
+        { signupPrivilege: signupPrivilege({ type: 'fixed', value: 30, expiryDate: day(14) }) }),
+    sim('รายการสิทธิ์ต้อนรับหลายรายการ (เปิด 3 ปิด 1)', { signupPrivilegeRows: itemRows }),
+    sim('แนะนำเพื่อน ให้รางวัลตอนสมัคร', { referral: referral() }, { referrerCode: referrerCode }),
+    sim('แนะนำเพื่อน ให้รางวัลตอนซื้อครั้งแรก', { referral: referral({ rewardTrigger: 'first_purchase' }) },
+        { referrerCode: referrerCode }),
+    sim('แนะนำเพื่อน หมดเขตแล้ว', { referral: referral({ startDate: day(-30), endDate: day(-1) }) },
+        { referrerCode: referrerCode }),
+    sim('เปิดทุกโปรพร้อมกัน', {
+      signupPrivilege: signupPrivilege({ expiryDays: 30 }), signupBonus: 50, signupPrivilegeRows: itemRows,
+      referral: referral()
+    }, { referrerCode: referrerCode })
+  ];
+}
+
+// ตั้งค่าสมมติของกรณีนี้ทั้งสองฝั่ง คืน simulate ที่ส่งให้ Supabase
+function signupApplySimulation_(ss, sim) {
+  var out = { props: {}, tabs: {} };
+  if (sim.signupPrivilege) {
+    out.props.SIGNUP_PRIVILEGE_CONFIG = JSON.stringify(sim.signupPrivilege);
+    getSignupPrivilegeConfig_ = function () { return JSON.parse(JSON.stringify(sim.signupPrivilege)); };
+  }
+  if (sim.referral) {
+    out.props.REFERRAL_CONFIG = JSON.stringify(sim.referral);
+    getReferralConfig_ = function () { return JSON.parse(JSON.stringify(sim.referral)); };
+  }
+  if (sim.signupBonus !== undefined) {
+    out.props.SIGNUP_BONUS_POINTS = String(sim.signupBonus);
+    getSignupBonusPoints_ = function () { return sim.signupBonus; };
+  }
+  // แท็บ Signup_Privileges ของไฟล์ชั่วคราว: แทนแถวข้อมูลทั้งหมดด้วยแถวสมมติ แล้วอ่านกลับไปให้ Supabase
+  // (อ่านกลับเพื่อให้ได้ค่าตามที่ชีตเก็บจริง เช่น วันที่กลายเป็น Date)
+  var sh = ss.getSheetByName('Signup_Privileges');
+  var width = sh.getLastColumn();
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, width).clearContent();
+  var rows = sim.signupPrivilegeRows || [];
+  if (rows.length) sh.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+  SpreadsheetApp.flush();
+  out.tabs['members/Signup_Privileges'] = rows.length
+    ? sh.getRange(2, 1, rows.length, width).getValues().map(function (line) {
+        return line.map(function (v) { return v instanceof Date ? v.toISOString() : v; });
+      })
+    : [];
+  return out;
 }
 
 function signupCompareOne_(cfg, internalKey, c) {
   var problems = [];
+  signupResetSheetCache_();
+  invalidateMembersIdentityCache_();
+  var ss = SpreadsheetApp.openById(MEMBERS_SHEET_ID);
+  var simulate = c.sim ? signupApplySimulation_(ss, c.sim) : null;
+
   // ฝั่ง Supabase (ไม่บันทึกอะไร)
   var q = { action: 'registerMemberDryRun', asUid: c.uid, asName: c.name, asPicture: c.picture,
             phoneNumber: c.phone, fullName: c.fullName, birthday: c.birthday, referrerCode: c.referrerCode };
+  if (simulate) q.simulate = JSON.stringify(simulate);
   var res = UrlFetchApp.fetch(cfg.url + SIGNUP_EDGE_PATH_, {
     method: 'post', contentType: 'text/plain', headers: { 'x-internal-key': internalKey },
     payload: Object.keys(q).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(q[k]); }).join('&'),
@@ -123,9 +234,6 @@ function signupCompareOne_(cfg, internalKey, c) {
   if (remote.notReady && remote.notReady.length) problems.push('สำเนายังไม่ทัน: ' + remote.notReady.join(', '));
 
   // ฝั่ง Apps Script: registerMember ตัวจริงบนไฟล์ชั่วคราว
-  signupResetSheetCache_();
-  invalidateMembersIdentityCache_();
-  var ss = SpreadsheetApp.openById(MEMBERS_SHEET_ID);
   var before = {};
   SIGNUP_MIRROR_TABS_.forEach(function (key) {
     if (key.indexOf('members/') !== 0) return;
