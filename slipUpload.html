@@ -233,6 +233,8 @@ function submitSlip(){
     .then(function(r){
       btn.disabled = false; btn.textContent = '✅ ยืนยันแนบสลิป';
       if (r && r.success) {
+        // บอกหน้าร้านว่าออเดอร์เพิ่งเปลี่ยน ให้อ่านประวัติคำสั่งซื้อจาก Apps Script จนกว่าสำเนาใน Supabase จะตามทัน
+        try { localStorage.setItem('emocha.order.lastChangedAt', String(Date.now())); } catch (e) {}
         document.getElementById('formState').classList.add('sh');
         document.getElementById('successState').classList.remove('sh');
         // แจ้งหน้าร้าน (opener) ว่าแนบสลิปสำเร็จแล้ว ให้ปิดตัวเองตามได้เลย — ส่งสัญญาณตอนนี้แทนที่จะให้

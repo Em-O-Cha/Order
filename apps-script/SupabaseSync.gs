@@ -113,7 +113,7 @@ function mirrorFlushDirty_() {
   var keys = Object.keys(marks);
   if (!keys.length) return;
 
-  mirrorSyncTabsNow_(keys);
+  mirrorSyncTabsNow_(keys, true);
 
   // ลบเฉพาะเครื่องหมายที่ยังเป็นค่าเดิม ถ้ามีคนจดใหม่ระหว่างส่ง ให้รอบถัดไปส่งอีกครั้ง
   var after = props.getProperties();
@@ -124,7 +124,8 @@ function mirrorFlushDirty_() {
 
 // ส่งแท็บที่ระบุทันที (ใช้ใน trigger เบื้องหลังที่เขียนชีตเสร็จแล้ว เช่น runPendingSlipFinalizations_
 // หรือ processRegistrationQueue) — รับ ['members/Members', 'revenue/Revenue', ...]
-function mirrorSyncTabsNow_(tabKeys) {
+// touch = ส่งไปแม้ค่าไม่เปลี่ยน เพื่อให้ Supabase จดเวลาอ่านล่าสุด (หน้าร้านใช้เช็คว่าสำเนาใหม่กว่าการแก้ออเดอร์)
+function mirrorSyncTabsNow_(tabKeys, touch) {
   var cfg = mirrorConfig_();
   if (!cfg) return [];
   var bySource = {};
@@ -139,7 +140,7 @@ function mirrorSyncTabsNow_(tabKeys) {
     var ss = SpreadsheetApp.openById(MIRROR_SOURCES_[source]());
     bySource[source].forEach(function (tab) {
       var sheet = ss.getSheetByName(tab);
-      if (sheet) results.push(mirrorSyncSheet_(cfg, source, ss.getId(), sheet, false));
+      if (sheet) results.push(mirrorSyncSheet_(cfg, source, ss.getId(), sheet, false, touch));
     });
   });
   return results;
@@ -194,7 +195,7 @@ function mirrorSyncAll_(force) {
 // ส่ง 1 แท็บ
 // ---------------------------------------------------------------------------
 
-function mirrorSyncSheet_(cfg, source, spreadsheetId, sheet, force) {
+function mirrorSyncSheet_(cfg, source, spreadsheetId, sheet, force, touch) {
   var key = source + '/' + sheet.getName();
   try {
     var readAt = new Date();
@@ -207,7 +208,7 @@ function mirrorSyncSheet_(cfg, source, spreadsheetId, sheet, force) {
 
     var props = PropertiesService.getScriptProperties();
     var hashKey = MIRROR_HASH_PREFIX_ + key;
-    if (!force && props.getProperty(hashKey) === hash) return { key: key, status: 'unchanged' };
+    if (!force && !touch && props.getProperty(hashKey) === hash) return { key: key, status: 'unchanged' };
 
     var res = UrlFetchApp.fetch(cfg.url + '/rest/v1/rpc/mirror_replace_tab', {
       method: 'post',
@@ -314,4 +315,95 @@ function mirrorAuthHeaders_(key) {
 function mirrorLogError_(where, e) {
   Logger.log(where + ': ' + e);
   try { logErrorToSheet_(where, String(e)); } catch (ignored) {}
+}
+
+// ---------------------------------------------------------------------------
+// ตรวจเทียบก่อนให้หน้าร้านอ่านจาก Supabase
+// ---------------------------------------------------------------------------
+
+// เทียบประวัติคำสั่งซื้อของสมาชิกทุกคน: ตรรกะเดียวกับ getMyOrderHistory (อ่านชีตตรง) กับ
+// public.shop_order_history (อ่านจาก Supabase) ผลอยู่ใน Execution log ไม่แสดงข้อมูลลูกค้า
+function mirrorCompareOrderHistory() {
+  var cfg = mirrorConfig_();
+  if (!cfg) throw new Error('ยังไม่ได้ตั้ง SUPABASE_URL / SUPABASE_SECRET_KEY ใน Script Properties');
+  mirrorSyncTabsNow_(['members/Members', 'revenue/Revenue']);
+
+  var sheet = ensureMembersSheet_();
+  var uids = sheet.getRange(2, 1, Math.max(sheet.getLastRow() - 1, 1), 1).getValues()
+    .map(function (r) { return r[0]; })
+    .filter(function (u) { return u; });
+
+  var responses = UrlFetchApp.fetchAll(uids.map(function (uid) {
+    return {
+      url: cfg.url + '/rest/v1/rpc/shop_order_history',
+      method: 'post', contentType: 'application/json',
+      headers: mirrorAuthHeaders_(cfg.key),
+      payload: JSON.stringify({ p_line_uid: uid }),
+      muteHttpExceptions: true
+    };
+  }));
+
+  var same = 0, lines = [];
+  uids.forEach(function (uid, i) {
+    var label = 'สมาชิก ' + String(uid).substring(0, 7) + '…';
+    if (responses[i].getResponseCode() !== 200) {
+      lines.push(label + ': Supabase HTTP ' + responses[i].getResponseCode());
+      return;
+    }
+    var local = mirrorOrderHistoryFromSheet_(uid);
+    var remote = JSON.parse(responses[i].getContentText()).results || [];
+    var diff = mirrorDiffOrderLists_(local, remote);
+    if (!diff) { same++; return; }
+    lines.push(label + ': ' + diff);
+  });
+
+  Logger.log('ตรงกัน ' + same + ' / ' + uids.length + ' คน');
+  if (lines.length) Logger.log('ไม่ตรง:\n' + lines.slice(0, 30).join('\n'));
+  return { same: same, total: uids.length, mismatches: lines };
+}
+
+// ส่วนเดียวกับ getMyOrderHistory หลังตรวจโทเคนแล้ว (ใช้ LINE UID แทนโทเคน)
+function mirrorOrderHistoryFromSheet_(lineUid) {
+  var memberFound = getMemberRowByUid_(lineUid, 4);
+  if (!memberFound) return [];
+  var myPhone = String(memberFound.values[3] || '');
+  if (!myPhone) return [];
+  var rows = getRevenueRowsForPhone_(myPhone, 25, revenueReadCols_(COD_STATUS_COL_));
+  rows.sort(function (a, b) { return b.rowIndex - a.rowIndex; });
+  var results = [];
+  for (var i = 0; i < rows.length && results.length < 20; i++) {
+    var row = rows[i].values;
+    var orderId = row[0];
+    if (!orderId) continue;
+    results.push({
+      orderId: orderId,
+      date: row[1] ? new Date(row[1]).toLocaleDateString('th-TH') : '',
+      firstItemName: row[2] || '',
+      totalAmount: row[8] || 0,
+      paymentMethod: row[9] || '',
+      campaign: row[17] || '',
+      hasSlip: !!row[10],
+      isCod: isCodPaymentLabel_(row[9]),
+      codStatus: String(row[COD_STATUS_COL_ - 1] || ''),
+      cancelled: String(row[2]) === CANCELLED_ORDER_MARK_
+    });
+  }
+  return results;
+}
+
+// คืนข้อความบอกจุดที่ต่างกันจุดแรก หรือ '' ถ้าเหมือนกัน (ข้อความถูกตัดช่องว่างหัวท้ายก่อนเทียบ
+// เพราะสำเนาใน Supabase ตัดช่องว่างหัวท้ายไว้แล้ว)
+function mirrorDiffOrderLists_(local, remote) {
+  if (local.length !== remote.length) return 'จำนวนออเดอร์ ชีต ' + local.length + ' / Supabase ' + remote.length;
+  var norm = function (v) { return typeof v === 'string' ? v.trim() : v; };
+  for (var i = 0; i < local.length; i++) {
+    var fields = Object.keys(local[i]);
+    for (var f = 0; f < fields.length; f++) {
+      var k = fields[f];
+      if (norm(local[i][k]) !== norm(remote[i][k])) {
+        return 'ออเดอร์ ' + local[i].orderId + ' ช่อง ' + k + ' ไม่ตรง';
+      }
+    }
+  }
+  return '';
 }
