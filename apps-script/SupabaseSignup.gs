@@ -1,10 +1,25 @@
-// ==================== เทียบผลการสมัครสมาชิกบน Supabase (เฟส 3: ย้ายการสมัครสมาชิก) ====================
+// ==================== สมัครสมาชิกผ่าน Supabase (เฟส 3: ย้ายการสมัครสมาชิก) ====================
 //
-// วางไฟล์นี้เป็นไฟล์ใหม่ในโปรเจกต์ Apps Script "Members LINE" (ใช้ฟังก์ชันจาก Members.gs และ SupabaseSync.gs)
-// ไฟล์นี้มีแค่ชุดทดสอบ ไม่เปลี่ยนการทำงานของระบบที่ลูกค้าใช้ ไม่ต้อง Deploy เวอร์ชันใหม่
+// วางไฟล์นี้เป็นไฟล์ใหม่ในโปรเจกต์ Apps Script "Members LINE" ต่อจาก Members.gs และ SupabaseSync.gs
+// (ลำดับไฟล์สำคัญ: ไฟล์นี้ต้องอยู่หลัง Members.gs) — ไม่ต้องแก้ Members.gs
 //
-// signupCompareDryRun(): พิสูจน์ว่า Edge Function member-signup (รัน registerMember ตัวเดิมบนสำเนาใน
-// Supabase) ได้ผลเหมือน Apps Script ทุกช่อง โดยไม่แตะชีตจริง
+// ส่วนที่ 1 ตัวเขียน: Supabase รับการสมัครและตอบลูกค้าทันที แล้วปลุก Web App นี้ (doPost action signupWriteNow)
+//   ให้เขียนแถวลงชีต Members/Member_Privileges ตามที่ registerMember ตัวเดิมคำนวณไว้ แล้วส่งข้อความต้อนรับ/
+//   ให้รางวัลผู้แนะนำด้วยฟังก์ชันเดิม มีรอบสำรองทุก 2 นาทีผ่าน trigger คิวสมัคร (processRegistrationQueue)
+//   เขียนซ้ำไม่ได้ (เช็ค LINE UID + รหัสสมาชิกในชีตก่อน) ถ้ารหัสสมาชิกชนกับที่ทางเดิมออกระหว่างรอ -> ออกรหัสใหม่
+//   และแจ้งกลุ่มแอดมิน ถ้า LINE/เบอร์ซ้ำกับที่ทางเดิมเพิ่งสร้าง -> ไม่เขียน ตั้งสถานะ failed และแจ้งกลุ่มแอดมิน
+// ส่วนที่ 2 ตัวเชื่อม (ติดตั้งตอนโหลดไฟล์ ห่อฟังก์ชันเดิมโดยไม่แก้ Members.gs):
+//   - doPost: รับ action signupWriteNow
+//   - processRegistrationQueue: เรียกรอบสำรองของตัวเขียนก่อน
+//   - registerMember (ทางเดิม): เช็คซ้ำนับรวมการสมัครที่ Supabase รับแล้วแต่ยังไม่ลงชีต
+//   - generateMemberCode_: รหัสใหม่ต้องมากกว่ารหัสที่ Supabase ออกไปแล้วแต่ยังไม่ลงชีต
+//   - ensureMemberFromOrder_ และฟังก์ชันแอดมินที่แก้ค่าตั้งการสมัคร: ตั้งธงให้ Supabase ถอยไปสมัครทาง Apps Script
+//     จนกว่าสำเนาจะทัน
+// ส่วนที่ 3 ชุดทดสอบ (รันเองจาก editor ไม่แตะชีตจริง ทำงานบนไฟล์ชีตชั่วคราว):
+//   - signupCompareDryRun(): Supabase คำนวณการสมัครได้เหมือน registerMember ตัวจริงทุกช่อง
+//   - signupWriterTest(): ตัวเขียนลงชีตถูกต้อง เขียนซ้ำไม่ได้ กู้คืนหลังค้างกลางทาง รหัสชน LINE ซ้ำ
+//
+// signupCompareDryRun():
 //   1. ส่งสำเนาแท็บที่การสมัครใช้ไป Supabase ให้สดก่อน
 //   2. คัดลอกไฟล์ชีต Members เป็นไฟล์ชั่วคราว
 //   3. ทุกกรณีทดสอบ: ถาม Supabase (โหมดทดลอง ไม่บันทึกอะไร) แล้วรัน registerMember ตัวจริงบนไฟล์ชั่วคราว
@@ -419,4 +434,477 @@ function signupInternalKey_(cfg) {
 // ensure*Sheet_ ใน Members.gs จำ object ของแท็บไว้ใน _sheetCache_ ต้องล้างทุกครั้งที่สลับไฟล์
 function signupResetSheetCache_() {
   Object.keys(_sheetCache_).forEach(function (k) { delete _sheetCache_[k]; });
+}
+
+
+// ==========================================================================================
+// ส่วนที่ 1: ตัวเขียนการสมัครจาก Supabase ลงชีต
+// ==========================================================================================
+var SIGNUP_BACKUP_EVERY_SEC_ = 120;               // รอบสำรอง (ผ่าน trigger คิวสมัครทุก 1 นาที)
+var SIGNUP_BACKUP_CACHE_KEY_ = 'signup_writer_backup';
+var SIGNUP_KEY_CACHE_KEY_ = 'signup_internal_key';
+
+// doPost action signupWriteNow: Supabase ปลุกหลังรับการสมัคร
+function signupWriteNow_(key) {
+  if (!signupKeyValid_(key)) return { success: false, error: 'ไม่อนุญาต' };
+  return signupWritePending_({ tests: false });
+}
+
+// รอบสำรอง: เก็บงานที่ปลุกไม่สำเร็จ/ล็อกไม่ว่าง (ถาม Supabase ไม่เกินทุก 2 นาที ประหยัดโควตา)
+function signupWritePendingBackup_() {
+  var cache = CacheService.getScriptCache();
+  if (cache.get(SIGNUP_BACKUP_CACHE_KEY_)) return;
+  cache.put(SIGNUP_BACKUP_CACHE_KEY_, '1', SIGNUP_BACKUP_EVERY_SEC_);
+  try {
+    signupWritePending_({ tests: false });
+  } catch (e) {
+    Logger.log('signupWritePendingBackup_ error: ' + e);
+  }
+}
+
+function signupKeyValid_(key) {
+  var cfg = mirrorConfig_();
+  if (!cfg || !key) return false;
+  var cache = CacheService.getScriptCache();
+  var known = cache.get(SIGNUP_KEY_CACHE_KEY_);
+  if (!known) {
+    known = signupInternalKey_(cfg);
+    cache.put(SIGNUP_KEY_CACHE_KEY_, known, 600);
+  }
+  return String(key) === String(known);
+}
+
+// รับงานจาก Supabase แล้วเขียนลงชีต (ใต้ ScriptLock เดียวกับ registerMember/createShopOrder)
+// จากนั้นทำงานหลังสมัครหลังปล่อยล็อก (ลำดับเดียวกับ registerMember)
+// opts.tests = true: รับเฉพาะแถวทดสอบ (ชุดทดสอบใช้กับไฟล์ชีตชั่วคราว) และไม่ส่งสำเนาไป Supabase
+function signupWritePending_(opts) {
+  opts = opts || {};
+  var cfg = mirrorConfig_();
+  if (!cfg) return { success: false, error: 'ยังไม่ได้ตั้ง SUPABASE_URL / SUPABASE_SECRET_KEY' };
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return { success: false, error: 'ระบบไม่ว่าง จะเขียนในรอบสำรอง' };
+  var results = [], written = [];
+  try {
+    var rows = signupRpc_(cfg, 'signup_claim', { p_tests: !!opts.tests, p_limit: 10 }) || [];
+    rows.forEach(function (row) {
+      var r;
+      try {
+        r = signupWriteSheet_(cfg, row);
+      } catch (e) {
+        r = { ok: false, id: row.id, error: String(e) };
+        signupRpc_(cfg, 'signup_update', { p_id: row.id, p_patch: { last_error: String(e), release: true } });
+      }
+      results.push({ id: row.id, ok: r.ok, memberCode: r.row ? r.row.member_code : row.member_code,
+                     note: r.note || '', error: r.error || '' });
+      if (r.ok) written.push(r.row);
+    });
+    if (written.length) {
+      SpreadsheetApp.flush();
+      invalidateMembersIdentityCache_();
+    }
+  } finally {
+    lock.releaseLock();
+  }
+  written.forEach(function (row) { signupRunDeferred_(cfg, row); });
+  // ส่งสำเนาทันที การสมัครจะได้ออกจากรายการ "ยังไม่อยู่ในสำเนา" (ไม่ตั้งธงตัวตน: Supabase รู้จักคนเหล่านี้อยู่แล้ว)
+  if (written.length && !opts.tests && typeof mirrorAfterBackgroundWrite_ === 'function') {
+    mirrorAfterBackgroundWrite_(MIRROR_SIGNUP_TABS_.filter(function (k) { return k !== MIRROR_IDENTITY_KEY_; }));
+  }
+  return { success: true, processed: results.length, results: results };
+}
+
+// เขียน 1 การสมัคร คืน { ok, row (หลังเปลี่ยนรหัสถ้ามี), note } — ต้องถือ ScriptLock อยู่
+function signupWriteSheet_(cfg, row) {
+  if (row.sheet_written_at) return { ok: true, row: row, note: 'เขียนชีตไว้แล้ว ทำงานหลังสมัครต่อ' };
+  var members = ensureMembersSheet_();
+  var last = members.getLastRow();
+  var ident = last > 1 ? members.getRange(2, 1, last - 1, 13).getValues() : [];
+  var problems = [], codeTaken = false;
+  for (var i = 0; i < ident.length; i++) {
+    var uid = String(ident[i][0]), phone = String(ident[i][3]), code = String(ident[i][12]);
+    if (uid === String(row.line_uid)) {
+      // เคยเขียนไปแล้ว (เช่น เขียนเสร็จแต่รายงานผลไม่ทัน) — ไม่เขียนซ้ำ
+      if (code === String(row.member_code)) {
+        signupRpc_(cfg, 'signup_update', { p_id: row.id, p_patch: { sheet_written: true } });
+        return { ok: true, row: row, note: 'พบแถวในชีตแล้ว ไม่เขียนซ้ำ' };
+      }
+      problems.push('LINE นี้มีในชีตแล้ว (รหัส ' + code + ')');
+    } else if (phone === String(row.phone)) {
+      problems.push('เบอร์ ' + phone + ' มีในชีตแล้ว (รหัส ' + code + ')');
+    }
+    if (code === String(row.member_code)) codeTaken = true;
+  }
+  if (problems.length) {
+    var msg = problems.join(' | ');
+    signupRpc_(cfg, 'signup_update', { p_id: row.id, p_patch: { status: 'failed', last_error: msg } });
+    signupAlertAdmin_('สมัครผ่าน Supabase แล้วแต่ลงชีตไม่ได้: ' + (row.request && row.request.fullName || '') +
+      ' (' + row.member_code + ') — ' + msg + ' กรุณาตรวจสอบ');
+    return { ok: false, row: row, error: msg };
+  }
+  var note = '';
+  if (codeTaken) {
+    // ระหว่างรอลงชีต ทางเดิมออกรหัสเดียวกันไปแล้ว: ออกรหัสใหม่ด้วยฟังก์ชันเดิม (นับรวมรหัสที่ Supabase ออกไปแล้ว)
+    var oldCode = row.member_code;
+    var newCode = generateMemberCode_(members);
+    row = signupReplaceText_(row, oldCode, newCode);
+    row.member_code = newCode;
+    signupRpc_(cfg, 'signup_update', { p_id: row.id, p_patch: {
+      member_code: newCode, result: row.result, deferred: row.deferred, journal: row.journal, renumbered_from: oldCode } });
+    signupAlertAdmin_('รหัสสมาชิกชน: ' + (row.request && row.request.fullName || '') + ' เห็นรหัส ' + oldCode +
+      ' ตอนสมัคร แต่รหัสนี้ถูกใช้ไปแล้ว ระบบให้รหัสใหม่ ' + newCode + ' (ข้อความต้อนรับใช้รหัสใหม่)');
+    note = 'เปลี่ยนรหัส ' + oldCode + ' -> ' + newCode;
+  }
+  signupApplyJournal_(SpreadsheetApp.openById(MEMBERS_SHEET_ID), row.journal || [], row.base_rows || {});
+  SpreadsheetApp.flush();
+  signupRpc_(cfg, 'signup_update', { p_id: row.id, p_patch: { sheet_written: true } });
+  return { ok: true, row: row, note: note || 'เขียนชีตแล้ว' };
+}
+
+// เขียนตาม journal ของ registerMember: แถวที่เกิน base_rows = ต่อท้ายแท็บตามลำดับเดิม
+// (แก้แถวเดิมไม่รองรับ — การสมัครไม่มี ถ้าเจอให้หยุดดีกว่าเขียนผิดแถว)
+function signupApplyJournal_(ss, journal, baseRows) {
+  var sheets = {}, offsets = {};
+  journal.forEach(function (e) {
+    if (e.tab.indexOf('members/') !== 0) throw new Error('journal เขียนแท็บนอกไฟล์ Members: ' + e.tab);
+    var sh = sheets[e.tab] || (sheets[e.tab] = ss.getSheetByName(e.tab.substring(8)));
+    if (!sh) throw new Error('ไม่พบแท็บ ' + e.tab);
+    var base = Number(baseRows[e.tab] || 0);
+    if (!offsets.hasOwnProperty(e.tab)) offsets[e.tab] = sh.getLastRow() - base;
+    if (e.op === 'appendRow') {
+      sh.appendRow(signupDecode_(e.values));
+      return;
+    }
+    if (e.row <= base) throw new Error('journal แก้แถวเดิม ' + e.tab + ' แถว ' + e.row + ' (ไม่รองรับ)');
+    var row = e.row + offsets[e.tab];
+    if (e.op === 'setValues') {
+      sh.getRange(row, e.col, e.values.length, e.values[0].length).setValues(signupDecode_(e.values));
+    } else if (e.op === 'setNumberFormat' || e.op === 'setFontWeight' || e.op === 'setBackground' || e.op === 'setNote') {
+      var range = sh.getRange(row, e.col, e.numRows, e.numCols);
+      range[e.op].apply(range, signupDecode_(e.args || []));
+    } else {
+      throw new Error('journal มีคำสั่งที่ไม่รองรับ: ' + e.op);
+    }
+  });
+}
+
+// งานหลังสมัคร (ข้อความต้อนรับ, รางวัลผู้แนะนำ) ด้วยฟังก์ชันเดิม ข้อผิดพลาดจดไว้แต่ไม่หยุด (เหมือน registerMember)
+function signupRunDeferred_(cfg, row) {
+  var errors = [];
+  (row.deferred || []).forEach(function (d) {
+    var args = signupDecode_(d.args || []);
+    try {
+      if (d.fn === 'sendLineMessages_') {
+        var r = sendLineMessages_(args[0], args[1]);
+        if (r && r.success === false) errors.push('ข้อความต้อนรับ: ' + r.error);
+      } else if (d.fn === 'grantReferralRewardOnSignupIfNeeded_') {
+        grantReferralRewardOnSignupIfNeeded_.apply(null, args);
+      } else {
+        errors.push('ไม่รู้จักงาน ' + d.fn);
+      }
+    } catch (e) {
+      errors.push(d.fn + ': ' + e);
+    }
+  });
+  signupRpc_(cfg, 'signup_update', { p_id: row.id, p_patch: {
+    deferred_done: true, last_error: errors.length ? errors.join(' | ') : null } });
+  if (errors.length) Logger.log('signupRunDeferred_ ' + row.member_code + ': ' + errors.join(' | '));
+}
+
+// { $date: ISO } -> Date (ทุกระดับ)
+function signupDecode_(v) {
+  if (Array.isArray(v)) return v.map(signupDecode_);
+  if (v && typeof v === 'object') {
+    if (Object.keys(v).length === 1 && v.hasOwnProperty('$date')) return v.$date ? new Date(v.$date) : '';
+    var o = {};
+    Object.keys(v).forEach(function (k) { o[k] = signupDecode_(v[k]); });
+    return o;
+  }
+  return v;
+}
+
+// แทนข้อความ (รหัสสมาชิก) ในทุกสตริงของ journal / result / deferred
+function signupReplaceText_(v, from, to) {
+  if (typeof v === 'string') return v.split(from).join(to);
+  if (Array.isArray(v)) return v.map(function (x) { return signupReplaceText_(x, from, to); });
+  if (v && typeof v === 'object') {
+    var o = {};
+    Object.keys(v).forEach(function (k) { o[k] = signupReplaceText_(v[k], from, to); });
+    return o;
+  }
+  return v;
+}
+
+function signupAlertAdmin_(text) {
+  Logger.log('signupAlertAdmin_: ' + text);
+  try { sendLineMessages_(ADMIN_GROUP_ID, [{ type: 'text', text: '⚠️ ' + text }]); } catch (e) {}
+  try { logErrorToSheet_('signup', text); } catch (e2) {}
+}
+
+function signupRpc_(cfg, fn, args) {
+  var res = UrlFetchApp.fetch(cfg.url + '/rest/v1/rpc/' + fn, {
+    method: 'post', contentType: 'application/json', headers: mirrorAuthHeaders_(cfg.key),
+    payload: JSON.stringify(args || {}), muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  if (code !== 200 && code !== 204) throw new Error(fn + ': HTTP ' + code + ' ' + res.getContentText().substring(0, 300));
+  var text = res.getContentText();
+  return text ? JSON.parse(text) : null;
+}
+
+// การสมัครที่ Supabase รับแล้วแต่ยังไม่ลงชีต [{ line_uid, phone, member_code }] — จำไว้ 20 วินาทีในรอบทำงานนี้
+// ถาม Supabase ไม่ได้ = ถือว่าไม่มี (ไม่ขวางทางเดิม)
+var _signupPendingIdentity_ = null;
+function signupPendingIdentity_() {
+  if (_signupPendingIdentity_ && Date.now() - _signupPendingIdentity_.at < 20000) return _signupPendingIdentity_.rows;
+  var rows = [];
+  try {
+    var cfg = mirrorConfig_();
+    if (cfg) rows = signupRpc_(cfg, 'signup_pending_identity', {}) || [];
+  } catch (e) {
+    Logger.log('signupPendingIdentity_ error: ' + e);
+  }
+  _signupPendingIdentity_ = { at: Date.now(), rows: rows };
+  return rows;
+}
+
+function signupMarkDirty_(keys) {
+  try {
+    if (typeof mirrorMarkDirty_ === 'function') mirrorMarkDirty_(keys);
+  } catch (e) {
+    Logger.log('signupMarkDirty_ error: ' + e);
+  }
+}
+
+// ==========================================================================================
+// ส่วนที่ 2: ตัวเชื่อม (ห่อฟังก์ชันเดิม ติดตั้งทุกครั้งที่โหลดไฟล์)
+// ==========================================================================================
+// ฟังก์ชันแอดมินที่แก้ค่าตั้งที่การสมัครใช้ -> แท็บที่ต้องตั้งธง (Supabase ถอยไป Apps Script จนกว่าสำเนาจะทัน)
+var SIGNUP_ADMIN_DIRTY_ = {
+  updateSignupBonus: ['props/script'],
+  updateSignupPrivilegeConfig: ['props/script'],
+  toggleSignupPrivilegeConfigEnabled: ['props/script'],
+  updateReferralConfig: ['props/script'],
+  createSignupPrivilegeItem: ['members/Signup_Privileges'],
+  updateSignupPrivilegeItem: ['members/Signup_Privileges'],
+  toggleSignupPrivilegeItem: ['members/Signup_Privileges'],
+  updateTierConfig: ['members/Tier_Config'],
+  backfillMembersFromRevenue: ['members/Members', 'members/Members#identity']
+};
+
+function signupInstallHooks_() {
+  var G = globalThis;
+  if (G.__signupHooksInstalled) return;
+  G.__signupHooksInstalled = true;
+  function wrap(name, make) {
+    if (typeof G[name] !== 'function') { Logger.log('signupInstallHooks_: ไม่พบ ' + name); return; }
+    G[name] = make(G[name]);
+  }
+
+  // doPost: Supabase ปลุกตัวเขียน
+  wrap('doPost', function (orig) {
+    return function (e) {
+      var body = null;
+      try { body = JSON.parse((e && e.postData && e.postData.contents) || 'null'); } catch (x) {}
+      if (body && body.action === 'signupWriteNow') {
+        var result;
+        try { result = signupWriteNow_(body.key); } catch (err) { result = { success: false, error: String(err) }; }
+        return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+      }
+      return orig.apply(this, arguments);
+    };
+  });
+
+  // trigger คิวสมัครทุก 1 นาที: รอบสำรองของตัวเขียน
+  wrap('processRegistrationQueue', function (orig) {
+    return function () {
+      try { signupWritePendingBackup_(); } catch (x) { Logger.log('signup backup: ' + x); }
+      return orig.apply(this, arguments);
+    };
+  });
+
+  // ทางเดิม: เช็ค LINE/เบอร์ซ้ำ นับรวมการสมัครที่ Supabase รับแล้วแต่ยังไม่ลงชีต
+  // (ต่อท้ายรายการตัวตนที่ registerMember ใช้เช็คซ้ำ เฉพาะระหว่างการเรียกครั้งนั้น — ลำดับข้อความ error เหมือนเดิม)
+  wrap('registerMember', function (orig) {
+    return function () {
+      var pending = signupPendingIdentity_();
+      if (!pending.length) return orig.apply(this, arguments);
+      var originalRows = G.getCachedMembersIdentityRows_;
+      G.getCachedMembersIdentityRows_ = function () {
+        return originalRows.apply(this, arguments).concat(pending.map(function (p) {
+          return [p.line_uid, '', '', p.phone];
+        }));
+      };
+      try {
+        return orig.apply(this, arguments);
+      } finally {
+        G.getCachedMembersIdentityRows_ = originalRows;
+      }
+    };
+  });
+
+  // รหัสสมาชิกใหม่ต้องมากกว่ารหัสที่ Supabase ออกไปแล้วแต่ยังไม่ลงชีต (ลำดับเลขต่อเนื่องแบบเดิม)
+  wrap('generateMemberCode_', function (orig) {
+    return function (sheet) {
+      var code = orig.apply(this, arguments);
+      var seq = parseInt(String(code).substring(11), 10) || 0;
+      var maxPending = 0;
+      signupPendingIdentity_().forEach(function (p) {
+        var c = String(p.member_code || '');
+        if (c.indexOf('EM-') === 0) maxPending = Math.max(maxPending, parseInt(c.substring(11), 10) || 0);
+      });
+      if (maxPending < seq) return code;
+      var s = String(maxPending + 1);
+      while (s.length < 4) s = '0' + s;
+      return String(code).substring(0, 11) + s;
+    };
+  });
+
+  // สร้างสมาชิกจากออเดอร์ (ทางเดิม): ข้อมูลตัวตนเปลี่ยน
+  wrap('ensureMemberFromOrder_', function (orig) {
+    return function () {
+      var r = orig.apply(this, arguments);
+      if (r && r.created) signupMarkDirty_(['members/Members', 'members/Members#identity']);
+      return r;
+    };
+  });
+
+  Object.keys(SIGNUP_ADMIN_DIRTY_).forEach(function (name) {
+    wrap(name, function (orig) {
+      return function () {
+        var r = orig.apply(this, arguments);
+        signupMarkDirty_(SIGNUP_ADMIN_DIRTY_[name]);
+        return r;
+      };
+    });
+  });
+}
+signupInstallHooks_();
+
+// ==========================================================================================
+// ส่วนที่ 3 (ต่อ): ชุดทดสอบตัวเขียน — signupWriterTest()
+// ==========================================================================================
+// สมัครทดสอบผ่าน Supabase (แถว is_test ไม่ปนของจริง) แล้วให้ตัวเขียนเขียนลง "ไฟล์ชีตชั่วคราว" เทียบทุกช่องกับที่
+// Supabase คำนวณ ทดสอบ: เขียนปกติ / สั่งซ้ำไม่เขียนซ้ำ / ค้างกลางทาง (เขียนชีตแล้วแต่ยังไม่รายงาน) /
+// รหัสชนกับที่ทางเดิมออก / LINE ซ้ำกับที่ทางเดิมสร้าง — ไม่ส่งข้อความ LINE จริง (จดไว้เทียบ)
+function signupWriterTest() {
+  var cfg = mirrorConfig_();
+  if (!cfg) throw new Error('ยังไม่ได้ตั้ง SUPABASE_URL / SUPABASE_SECRET_KEY ใน Script Properties');
+  var internalKey = signupInternalKey_(cfg);
+  signupRpc_(cfg, 'signup_delete_tests', {});
+  mirrorSyncTabsNow_(SIGNUP_MIRROR_TABS_, true);
+
+  var originalSheetId = MEMBERS_SHEET_ID;
+  var saved = { send: sendLineMessages_, grant: grantReferralRewardOnSignupIfNeeded_ };
+  var sent = [], lines = [], fails = 0;
+  function check(label, ok, detail) {
+    if (!ok) fails++;
+    lines.push((ok ? 'ผ่าน  ' : 'ไม่ผ่าน ') + label + (detail ? ' — ' + detail : ''));
+  }
+  var stamp = String(Date.now()).slice(-6), n = 0;
+  function signup() {
+    n++;
+    var q = { action: 'registerMember', asUid: 'U_signup_writer_' + stamp + '_' + n, asName: 'ทดสอบตัวเขียน',
+              asPicture: '', phoneNumber: '09' + stamp + (n < 10 ? '0' + n : String(n)),
+              fullName: 'ทดสอบ ตัวเขียน ' + n, birthday: '1990-02-0' + (n % 9 + 1), referrerCode: '' };
+    var res = UrlFetchApp.fetch(cfg.url + SIGNUP_EDGE_PATH_, {
+      method: 'post', contentType: 'text/plain', headers: { 'x-internal-key': internalKey },
+      payload: Object.keys(q).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(q[k]); }).join('&'),
+      muteHttpExceptions: true
+    });
+    var r = JSON.parse(res.getContentText());
+    if (!r.success) throw new Error('สมัครทดสอบไม่สำเร็จ: ' + res.getContentText().substring(0, 300));
+    return { uid: q.asUid, phone: q.phoneNumber, code: r.memberCode, id: r.signupId };
+  }
+  function row(uid) {
+    var sh = ensureMembersSheet_();
+    var v = sh.getRange(2, 1, sh.getLastRow() - 1, 15).getValues();
+    for (var i = 0; i < v.length; i++) if (String(v[i][0]) === uid) return { row: i + 2, values: v[i] };
+    return null;
+  }
+  function countUid(uid) {
+    var sh = ensureMembersSheet_();
+    return sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().filter(function (r) { return String(r[0]) === uid; }).length;
+  }
+
+  var copy = DriveApp.getFileById(originalSheetId).makeCopy(
+    'ทดสอบตัวเขียนสมัครสมาชิก (ลบได้) ' + Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd HH:mm'));
+  try {
+    MEMBERS_SHEET_ID = copy.getId();
+    signupResetSheetCache_();
+    sendLineMessages_ = function (to, messages) { sent.push({ to: to, messages: messages }); return { success: true }; };
+    grantReferralRewardOnSignupIfNeeded_ = function () { sent.push({ grant: Array.prototype.slice.call(arguments) }); };
+
+    // 1) เขียนปกติ 2 คน
+    var a = signup(), b = signup();
+    var r1 = signupWritePending_({ tests: true });
+    check('เขียนปกติ: รับงาน 2 รายการ', r1.processed === 2, JSON.stringify(r1.results));
+    [a, b].forEach(function (s) {
+      var got = row(s.uid);
+      check('แถวสมาชิก ' + s.code + ' อยู่ในชีต', !!got);
+      if (!got) return;
+      check('รหัส/เบอร์ตรง ' + s.code, String(got.values[12]) === s.code && String(got.values[3]) === s.phone,
+        'รหัส ' + got.values[12] + ' เบอร์ ' + got.values[3]);
+      var fmt = ensureMembersSheet_().getRange(got.row, 4).getNumberFormat();
+      var sh = ensureMembersSheet_(), scratch = sh.getRange(sh.getLastRow() + 5, 4);
+      scratch.setNumberFormat('@STRING@');
+      var want = scratch.getNumberFormat();
+      scratch.clearFormat();
+      check('รูปแบบเซลล์เบอร์ ' + s.code, fmt === want, 'ได้ "' + fmt + '" ต้องการ "' + want + '"');
+      check('ข้อความต้อนรับส่งถึง ' + s.code, sent.filter(function (m) { return m.to === s.uid; }).length === 1);
+    });
+
+    // 2) สั่งซ้ำ: ไม่มีงานค้าง ไม่เขียนซ้ำ
+    var r2 = signupWritePending_({ tests: true });
+    check('สั่งซ้ำไม่เขียนซ้ำ', r2.processed === 0 && countUid(a.uid) === 1 && countUid(b.uid) === 1, JSON.stringify(r2.results));
+
+    // 3) ค้างกลางทาง: แถวอยู่ในชีตแล้วแต่ยังไม่ได้รายงาน -> ไม่เขียนซ้ำ และส่งข้อความต้อนรับครั้งเดียว
+    var c = signup();
+    var claimed = signupRpc_(cfg, 'signup_claim', { p_tests: true, p_limit: 1 })[0];
+    signupApplyJournal_(SpreadsheetApp.openById(MEMBERS_SHEET_ID), claimed.journal, claimed.base_rows);
+    signupRpc_(cfg, 'signup_update', { p_id: claimed.id, p_patch: { release: true } });
+    var r3 = signupWritePending_({ tests: true });
+    check('ค้างกลางทาง: ไม่เขียนซ้ำ', countUid(c.uid) === 1, JSON.stringify(r3.results));
+    check('ค้างกลางทาง: ข้อความต้อนรับครั้งเดียว', sent.filter(function (m) { return m.to === c.uid; }).length === 1);
+
+    // 4) รหัสชน: ทางเดิมออกรหัสเดียวกันไปก่อน -> ได้รหัสใหม่ + แจ้งแอดมิน + ข้อความต้อนรับใช้รหัสใหม่
+    var d = signup();
+    var sh4 = ensureMembersSheet_();
+    sh4.getRange(sh4.getLastRow() + 1, 1, 1, 13).setValues([['U_signup_writer_other_' + stamp, 'ทางเดิม', '', '0990000000',
+      new Date(), 0, 'start', '', '', 'ทางเดิม', '1990-01-01', 0, d.code]]);
+    SpreadsheetApp.flush();
+    var r4 = signupWritePending_({ tests: true });
+    var gotD = row(d.uid);
+    var newCode = gotD ? String(gotD.values[12]) : '';
+    check('รหัสชน: ได้รหัสใหม่', gotD && newCode !== d.code && newCode.indexOf('EM-') === 0, d.code + ' -> ' + newCode);
+    check('รหัสชน: แจ้งกลุ่มแอดมิน', sent.some(function (m) { return m.to === ADMIN_GROUP_ID && JSON.stringify(m.messages).indexOf(newCode) !== -1; }));
+    var welcomeD = sent.filter(function (m) { return m.to === d.uid; })[0];
+    check('รหัสชน: ข้อความต้อนรับใช้รหัสใหม่', welcomeD && JSON.stringify(welcomeD.messages).indexOf(newCode) !== -1 &&
+      JSON.stringify(welcomeD.messages).indexOf(d.code) === -1);
+
+    // 5) LINE ซ้ำ: ทางเดิมสร้างสมาชิก LINE เดียวกันไปก่อน -> ไม่เขียน สถานะ failed + แจ้งแอดมิน
+    var e = signup();
+    var sh5 = ensureMembersSheet_();
+    sh5.getRange(sh5.getLastRow() + 1, 1, 1, 13).setValues([[e.uid, 'ทางเดิม', '', '0990000001', new Date(), 0, 'start', '', '',
+      'ทางเดิม', '1990-01-01', 0, 'EM-OTHER']]);
+    SpreadsheetApp.flush();
+    var before5 = sent.length;
+    var r5 = signupWritePending_({ tests: true });
+    check('LINE ซ้ำ: ไม่เขียนแถวเพิ่ม', countUid(e.uid) === 1, JSON.stringify(r5.results));
+    check('LINE ซ้ำ: แจ้งกลุ่มแอดมิน', sent.slice(before5).some(function (m) { return m.to === ADMIN_GROUP_ID; }));
+    check('LINE ซ้ำ: ไม่ส่งข้อความต้อนรับ', !sent.slice(before5).some(function (m) { return m.to === e.uid; }));
+  } catch (err) {
+    fails++;
+    lines.push('หยุดกลางทาง: ' + err + (err.stack ? '\n' + err.stack : ''));
+  } finally {
+    MEMBERS_SHEET_ID = originalSheetId;
+    sendLineMessages_ = saved.send;
+    grantReferralRewardOnSignupIfNeeded_ = saved.grant;
+    signupResetSheetCache_();
+    invalidateMembersIdentityCache_();
+    try { signupRpc_(cfg, 'signup_delete_tests', {}); } catch (x) { lines.push('ลบแถวทดสอบใน Supabase ไม่สำเร็จ: ' + x); }
+    copy.setTrashed(true);
+  }
+  lines.push(fails ? ('== ไม่ผ่าน ' + fails + ' ข้อ ==') : '== ผ่านทุกข้อ ==');
+  Logger.log(lines.join('\n'));
+  return { fails: fails, lines: lines };
 }

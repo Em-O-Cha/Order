@@ -92,13 +92,19 @@ export async function verifyLineIdToken(idToken: string): Promise<{ profile?: Re
 }
 
 let internalKey: { value: string; at: number } | null = null;
-export async function isInternal(req: Request): Promise<boolean> {
-  const given = req.headers.get("x-internal-key");
-  if (!given) return false;
+// internal key (เก็บใน Supabase เรียกได้แค่ service_role) — ใช้ยืนยันคำขอจากชุดทดสอบ และแนบไปตอนปลุก Apps Script
+export async function getInternalKey(): Promise<string> {
   if (!internalKey || Date.now() - internalKey.at > 5 * 60 * 1000) {
     internalKey = { value: String(await rpc("mirror_internal_key", {})), at: Date.now() };
   }
-  return given.length === internalKey.value.length && given === internalKey.value;
+  return internalKey.value;
+}
+
+export async function isInternal(req: Request): Promise<boolean> {
+  const given = req.headers.get("x-internal-key");
+  if (!given) return false;
+  const key = await getInternalKey();
+  return given.length === key.length && given === key;
 }
 
 // รับได้ทั้ง query string ใน URL และใน body (แบบเดียวกับที่ส่งให้ Apps Script) หรือ body เป็น JSON

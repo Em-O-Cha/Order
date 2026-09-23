@@ -14,7 +14,10 @@
 //     หน้าเว็บจะสมัครทาง Apps Script เดิมแทนทุกกรณี
 //   การสมัครที่รับแล้วแต่ยังไม่อยู่ในสำเนา ถูกเล่นทับสำเนาก่อนรัน (overlayJournals) จึงเช็คซ้ำ/ออกรหัสสมาชิก
 //   ต่อเนื่องถูกต้อง และดัชนีไม่ซ้ำใน signup.requests กันคนสมัครพร้อมกัน (รหัสชน = คำนวณใหม่)
-//   ชุดทดสอบภายใน (x-internal-key + asUid) สมัครได้แม้สวิตช์ปิด แถวจะถูกติดป้าย is_test
+//   ชุดทดสอบภายใน (x-internal-key + asUid) สมัครได้แม้สวิตช์ปิด แถวจะถูกติดป้าย is_test (แยกจากของจริงทั้งหมด:
+//   ของจริงไม่นับแถวทดสอบ ตัวเขียนของจริงไม่แตะแถวทดสอบ)
+//   บันทึกสำเร็จแล้วปลุก Web App "Members LINE" (signup.settings.apps_script_url) ให้เขียนแถวลงชีตทันที
+//   เบื้องหลัง — ลูกค้าไม่ต้องรอ ถ้าปลุกไม่สำเร็จ Apps Script มีรอบสำรองมาเก็บ
 //
 // action=registerMemberDryRun — (ทดสอบเท่านั้น ต้องมี x-internal-key) รัน registerMember โดยไม่บันทึกอะไร
 //   สำหรับ signupCompareDryRun() ใน apps-script/SupabaseSignup.gs
@@ -32,8 +35,10 @@
 import { createGas } from "./gas_port.js";
 import { createEnv, overlayJournals, prepareTab, PROPS_KEY } from "../_shared/gas_runtime.js";
 import {
-  createTabLoader, CORS, isInternal, json, P, propsFrom, readParams, rpc, Tab, verifyLineIdToken,
+  createTabLoader, CORS, getInternalKey, isInternal, json, P, propsFrom, readParams, rpc, Tab, verifyLineIdToken,
 } from "../_shared/mirror_client.ts";
+
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 // แท็บที่ registerMember ใช้ (แท็บอื่นตัวจำลองจะปฏิเสธ แล้วถอยไป Apps Script)
 const TAB_KEYS = [
@@ -85,9 +90,11 @@ function runRegisterMember(tabs: Map<string, Tab>, props: Record<string, string>
 // ---------------------------------------------------------------------------
 const tabCache = new Map<string, { readAt: string; tab: Tab }>();
 
-async function prepare() {
+async function prepare(includeTests = false) {
   const cached = Object.fromEntries([...tabCache].map(([k, v]) => [k, v.readAt]));
-  const r = await rpc("signup_prepare", { p_tab_keys: TAB_KEYS, p_meta_only: META_ONLY, p_cached: cached });
+  const r = await rpc("signup_prepare", {
+    p_tab_keys: TAB_KEYS, p_meta_only: META_ONLY, p_cached: cached, p_include_tests: includeTests,
+  });
   for (const [key, raw] of Object.entries(r.tabs as Record<string, any>)) {
     tabCache.set(key, { readAt: raw.read_at, tab: prepareTab(key, raw) });
   }
@@ -97,9 +104,26 @@ async function prepare() {
     const c = tabCache.get(k);
     if (c && versions[k] && c.readAt === versions[k].read_at) tabs.set(k, c.tab);
   }
-  const blockKeys: string[] = Array.isArray(r.settings?.block_dirty_keys) ? r.settings.block_dirty_keys : TAB_KEYS;
-  const blocked = blockKeys.filter((k) => versions[k]?.dirty);
-  return { tabs, blocked, pending: r.pending as any[], live: r.settings?.live === true };
+  const blocked: string[] = Array.isArray(r.blocked) ? r.blocked : TAB_KEYS.filter((k) => versions[k]?.dirty);
+  return {
+    tabs, blocked, pending: r.pending as any[], live: r.settings?.live === true,
+    appsScriptUrl: typeof r.settings?.apps_script_url === "string" ? r.settings.apps_script_url : "",
+  };
+}
+
+// ปลุก Apps Script ให้เขียนการสมัครที่รอลงชีต (Members.gs doPost ผ่าน SupabaseSignup.gs) — ไม่ throw
+async function kickWriter(url: string): Promise<string> {
+  if (!url) return "ยังไม่ได้ตั้ง apps_script_url";
+  try {
+    const res = await fetch(url, {
+      method: "POST", headers: { "Content-Type": "text/plain" }, redirect: "follow",
+      body: JSON.stringify({ action: "signupWriteNow", key: await getInternalKey() }),
+    });
+    return `HTTP ${res.status} ${(await res.text()).slice(0, 200)}`;
+  } catch (e) {
+    console.error("kickWriter", e);
+    return "ข้อผิดพลาด: " + String(e);
+  }
 }
 
 const DUPLICATE_ERRORS: Record<string, string> = {
@@ -112,7 +136,7 @@ async function registerMemberLive(p: P, profile: Record<string, unknown>, isTest
   const timings: Record<string, number> = {};
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const tp = Date.now();
-    const prep = await prepare();
+    const prep = await prepare(isTest);
     timings["prepare" + attempt] = Date.now() - tp;
     if (!prep.live && !isTest) return fallback("ยังไม่เปิดใช้การสมัครผ่าน Supabase");
     if (prep.blocked.length) return fallback("สำเนายังไม่ทัน", { detail: prep.blocked });
@@ -143,6 +167,11 @@ async function registerMemberLive(p: P, profile: Record<string, unknown>, isTest
     });
     timings["insert" + attempt] = Date.now() - ti;
     if (ins.ok) {
+      // ปลุกตัวเขียนเบื้องหลัง (ตอบลูกค้าก่อน) — แถวทดสอบไม่ปลุก ชุดทดสอบสั่งตัวเขียนเอง
+      if (!isTest && prep.appsScriptUrl) {
+        const kick = kickWriter(prep.appsScriptUrl);
+        if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(kick);
+      }
       return json({ ...run.result, ...(isTest ? { signupId: ins.id, timings, ms: Date.now() - t0 } : {}) });
     }
     if (DUPLICATE_ERRORS[ins.conflict]) {
@@ -220,7 +249,15 @@ Deno.serve(async (req) => {
     if (!internal) return json({ success: false, error: "ไม่รองรับ" }, 403);
     if (action === "health") {
       const prep = await prepare();
-      return json({ success: true, tabs: prep.tabs.size, live: prep.live, pending: prep.pending.length, ms: Date.now() - t0 });
+      return json({
+        success: true, tabs: prep.tabs.size, live: prep.live, pending: prep.pending.length, blocked: prep.blocked,
+        appsScriptUrl: !!prep.appsScriptUrl, ms: Date.now() - t0,
+      });
+    }
+    // ตรวจตอนเปิดใช้งาน: ปลุก Apps Script แล้วดูคำตอบ
+    if (action === "kickWriter") {
+      const prep = await prepare();
+      return json({ success: true, kick: await kickWriter(prep.appsScriptUrl) });
     }
     if (action === "registerMemberDryRun") {
       if (!p.asUid) return json({ success: false, error: "ต้องระบุ asUid" }, 400);
