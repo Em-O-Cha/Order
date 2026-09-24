@@ -341,7 +341,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
     <button class="btn" onclick="openAddressConfirmPopup()" id="confirmOrderBtn">✅ ยืนยันสั่งซื้อ</button>
   </div>
   <div class="cart-bar sh" id="orderDoneBar">
-    <button class="btn btn-block" onclick="openSlipUploadPage()">📎 แนบสลิปการโอนเงิน</button>
+    <button class="btn btn-block" id="slipMainBtn" onclick="openSlipUploadPage()">📎 แนบสลิปการโอนเงิน</button>
     <button class="btn btn-outline btn-block sh" id="backToPaymentBtn" onclick="openPaymentRecallModal_()">🔙 ดูเลขบัญชี/QR อีกครั้ง</button>
   </div>
 </div>
@@ -1002,6 +1002,86 @@ function callApiFast_(action, payload){
       if (timeoutId) clearTimeout(timeoutId);
       return callApi(action, payload);
     });
+}
+
+// ⚡ เพิ่ม (Supabase) — สั่งซื้อผ่าน Edge Function shop-order: Supabase คำนวณยอดด้วย createShopOrder ตัวเดิมแล้วตอบ
+// ทันที (ลูกค้าเห็นยอดชำระ/เลขบัญชีได้เลย) ส่วนเลขออเดอร์ (REV) Apps Script ออกให้ตอนเขียนชีตตามหลังไม่กี่วินาที
+// หน้าเว็บถามสถานะจนได้เลข — คืน null เมื่อต้องสั่งทางเดิม (Supabase ให้ถอย / เรียกไม่สำเร็จและยืนยันได้ว่า
+// Supabase ไม่ได้รับคำสั่งซื้อนี้) clientKey สุ่มต่อการกดยืนยัน 1 ครั้ง: ส่งซ้ำ = คำสั่งซื้อเดิม ไม่สั่งซ้ำ
+var SUPABASE_ORDER_URL_ = 'https://qotlepudmkuniyjvqmle.supabase.co/functions/v1/shop-order?forceFunctionRegion=ap-northeast-2';
+var SUPABASE_ORDER_TIMEOUT_MS_ = 10000;
+function newOrderClientKey_(){
+  try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+  return 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+function supabaseOrderCall_(params, timeoutMs){
+  var body = Object.keys(params).map(function(k){
+    return encodeURIComponent(k) + '=' + encodeURIComponent(params[k] === undefined || params[k] === null ? '' : params[k]);
+  }).join('&');
+  var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, timeoutMs || SUPABASE_ORDER_TIMEOUT_MS_) : null;
+  return fetch(SUPABASE_ORDER_URL_, { method: 'POST', body: body, signal: controller ? controller.signal : undefined })
+    .then(function(res){ return res.json(); })
+    .then(function(r){ if (timeoutId) clearTimeout(timeoutId); return r; },
+          function(e){ if (timeoutId) clearTimeout(timeoutId); throw e; });
+}
+// ผลที่หน้าเว็บใช้แสดง (รูปเดียวกับ createShopOrder) จากสถานะที่ Supabase เก็บไว้
+function acceptedOrderFromStatus_(st){
+  var r = {};
+  var src = st.predicted || {};
+  Object.keys(src).forEach(function(k){ r[k] = src[k]; });
+  r.success = true; r.pending = true; r.orderId = ''; r.requestId = st.requestId;
+  return r;
+}
+function createOrderViaSupabase_(payload){
+  var params = { action: 'createShopOrder' };
+  Object.keys(payload).forEach(function(k){ params[k] = payload[k]; });
+  return supabaseOrderCall_(params)
+    .then(function(r){
+      if (r && r.success && r.pending && r.requestId) return r;
+      if (r && r.needsAppsScript) return null;
+      throw new Error('Supabase ตอบไม่ถูกต้อง');
+    })
+    .catch(function(){
+      // เรียกไม่สำเร็จ/ช้าเกิน: Supabase อาจรับไปแล้ว — ถามด้วย clientKey ก่อน (กันสั่งซ้ำทางเดิม)
+      function lookup(attempt){
+        return supabaseOrderCall_({ action: 'orderStatus', clientKey: payload.clientKey }, 6000)
+          .then(function(st){
+            if (st && st.success && st.found) return acceptedOrderFromStatus_(st);
+            if (st && st.success && !st.found) return null;
+            throw new Error('status');
+          })
+          .catch(function(){
+            if (attempt < 2) return new Promise(function(res){ setTimeout(res, 2000); }).then(function(){ return lookup(attempt + 1); });
+            return null;
+          });
+      }
+      return lookup(1);
+    });
+}
+// ถามสถานะจนได้เลข REV (ถี่ช่วงแรก แล้วค่อยห่างออก) — onWritten(result, changed) / onFailed(error)
+var orderStatusPollTimer_ = null;
+function pollOrderStatus_(requestId, onWritten, onFailed){
+  stopOrderStatusPoll_();
+  var t0 = Date.now();
+  function next(){
+    var age = Date.now() - t0;
+    var wait = age < 20000 ? 1000 : (age < 180000 ? 3000 : 10000);
+    orderStatusPollTimer_ = setTimeout(tick, wait);
+  }
+  function tick(){
+    supabaseOrderCall_({ action: 'orderStatus', requestId: requestId }, 8000)
+      .then(function(st){
+        if (st && st.success && st.status === 'written' && st.orderId) { orderStatusPollTimer_ = null; onWritten(st.result || {}, !!st.changed, st.orderId); return; }
+        if (st && st.success && st.status === 'failed') { orderStatusPollTimer_ = null; onFailed(st.error || 'สั่งซื้อไม่สำเร็จ'); return; }
+        next();
+      })
+      .catch(function(){ next(); });
+  }
+  next();
+}
+function stopOrderStatusPoll_(){
+  if (orderStatusPollTimer_) { clearTimeout(orderStatusPollTimer_); orderStatusPollTimer_ = null; }
 }
 
 var ORDER_HISTORY_TTL_ = 30000;
@@ -2426,8 +2506,20 @@ function confirmSubmitOrder(){
   // จะข้ามให้เองถ้าไม่มีค่าหรือรหัสไม่ถูกต้อง ไม่ทำให้คำสั่งซื้อพังหรือ error)
   var purchaseReferrerCode = document.getElementById('purchaseReferrerInput').value.trim();
 
+  var orderPayload_ = { itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId, purchaseReferrerCode: purchaseReferrerCode, pointsToRedeem: pointsToRedeemInput_ };
+
   getFreshIdToken().then(function(idToken){
-    return callApi('createShopOrder', { idToken: idToken, itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId, purchaseReferrerCode: purchaseReferrerCode, pointsToRedeem: pointsToRedeemInput_ });
+    function viaAppsScript(){
+      var p = { idToken: idToken };
+      Object.keys(orderPayload_).forEach(function(k){ p[k] = orderPayload_[k]; });
+      return callApi('createShopOrder', p);
+    }
+    // ⚡ เพิ่ม (Supabase) — สั่งซื้อผ่าน Supabase ก่อน (ได้ยอดทันที) ถ้า Supabase ให้ถอยหรือเรียกไม่สำเร็จ สั่งทางเดิม
+    // แก้ไขออเดอร์เดิม (currentOrderId) ใช้ทางเดิมเสมอ
+    if (currentOrderId) return viaAppsScript();
+    var sp = { idToken: idToken, clientKey: newOrderClientKey_() };
+    Object.keys(orderPayload_).forEach(function(k){ sp[k] = orderPayload_[k]; });
+    return createOrderViaSupabase_(sp).then(function(r){ return r || viaAppsScript(); });
   })
     .then(function(r){
       stopOrderProgress_();
@@ -2441,69 +2533,7 @@ function confirmSubmitOrder(){
       }
 
       closeAddressConfirmModal();
-
-      var summaryHtml =
-        '<div class="row"><span>เลขที่ออเดอร์</span><span><b>' + escHtml(r.orderId) + '</b></span></div>'
-        + '<div class="row"><span>ยอดสินค้า</span><span>฿' + r.subtotal.toLocaleString('th-TH') + '</span></div>';
-      // แสดงเฉพาะส่วนลดแต่ละรายการจริง ห้ามแสดง "ส่วนลดรวม" เพราะทำให้ยอดซ้ำกับคะแนน/คูปอง
-      if (r.pointsRedeemed > 0) {
-        summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>🎯 แลกคะแนน ' + r.pointsRedeemed + ' คะแนน</span><span style="color:#c62828">-฿' + Math.round(r.pointsRedeemDiscount).toLocaleString('th-TH') + '</span></div>';
-      }
-      var detailDiscounts = Array.isArray(r.discountDetail) ? r.discountDetail : [];
-      detailDiscounts.forEach(function(detail){
-        detail = String(detail || '');
-        // คะแนนแสดงในบรรทัดด้านบนแล้ว และรายการคูณแต้มไม่ใช่ส่วนลดเงินสด
-        if (detail.indexOf('แลกคะแนน:') === 0 || detail.indexOf('คูณแต้ม:') === 0 || detail.indexOf('(-') === -1) return;
-        var amountMatch = detail.match(/\(-([0-9,.]+)\)/);
-        var label = detail.replace(/\s*\(-[0-9,.]+\)/, '').trim();
-        if (!amountMatch || !label) return;
-        summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>' + escHtml(label) + '</span><span style="color:#c62828">-฿' + amountMatch[1] + '</span></div>';
-      });
-      summaryHtml += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(r.shippingCost || 0).toLocaleString('th-TH') + '</span></div>';
-      summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span><b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
-        + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : (selectedPayment === 'cod' ? '💵 เก็บเงินปลายทาง' : 'โอนธนาคาร')) + '</span></div>';
-      document.getElementById('orderSummary').innerHTML = summaryHtml;
-
-      currentOrderId = r.orderId;
-      lastOrderAmount_ = r.totalAmount;
-      savedAddressLoaded = false;
-      // สั่งซื้อสำเร็จแล้ว สิทธิ์/คูปอง/คะแนนถูกใช้ไปจริง ยอดที่แคชไว้ก่อนหน้าใช้ไม่ได้อีก และมีออเดอร์ใหม่
-      // รอแนบสลิปเพิ่มเข้ามาในหน้ารถเข็นด้วย
-      discountCacheBySig_ = {};
-      orderHistoryCache_.invalidate();
-      pointsToRedeemInput_ = 0; // คะแนนของออเดอร์ที่ยังรอแนบสลิปถูกกันไว้แล้ว รีเซ็ตกันใช้ซ้ำในรอบถัดไป
-
-      if (r.skipSlipUpload || r.totalAmount <= 0) {
-        pendingSlipOrderId = '';
-        document.getElementById('orderDoneBar').classList.add('sh');
-        document.getElementById('backToPaymentBtn').classList.add('sh');
-        // ⚡ แก้ (19/9/69) — เส้นทางนี้ใช้ร่วมกัน 2 กรณีที่ไม่ต้องแนบสลิป: ยอด 0 บาท กับเก็บเงินปลายทาง
-        // ข้อความจึงต้องแยกกัน ไม่งั้นลูกค้าที่สั่งแบบเก็บเงินปลายทางจะเห็นว่า "ไม่มีค่าใช้จ่าย" ซึ่งผิด
-        var isCodDone_ = !!r.isCod && r.totalAmount > 0;
-        var hintEl = document.getElementById('orderDoneHint');
-        if (hintEl) {
-          hintEl.textContent = isCodDone_
-            ? 'เตรียมเงิน ฿' + r.totalAmount.toLocaleString('th-TH') + ' ให้พนักงานส่งของตอนรับสินค้า — ระบบแจ้งทีมงานเรียบร้อยแล้ว'
-            : 'ยอด 0 บาท ไม่ต้องโอนเงิน/แนบสลิป ระบบแจ้งทีมงานเรียบร้อยแล้ว';
-        }
-        var notice = document.getElementById('slipDoneNotice');
-        if (notice) {
-          var closeMsg = isInLineClient_() ? 'กำลังปิดหน้านี้อัตโนมัติ...' : 'ปิดแท็บนี้ได้เลยค่ะ';
-          notice.innerHTML = (isCodDone_
-            ? '✅ สั่งซื้อสำเร็จ — ชำระเงินปลายทาง ฿' + r.totalAmount.toLocaleString('th-TH') + ' ขอบคุณค่ะ 🙏'
-            : '✅ สั่งซื้อสำเร็จ ไม่มีค่าใช้จ่าย ขอบคุณค่ะ 🙏') + '<br>' + closeMsg;
-          notice.classList.remove('sh');
-        }
-        showState('orderDoneState');
-        setStepper(3);
-        setTimeout(closeThisShopWindow_, isCodDone_ ? 6000 : 3000);
-        return;
-      }
-
-      pendingSlipOrderId = r.orderId;
-      document.getElementById('backToPaymentBtn').classList.remove('sh');
-      showState('orderDoneState');
-      startSlipStatusPoll_(r.orderId);
+      showOrderResult_(r);
     })
     .catch(function(e){
       stopOrderProgress_();
@@ -2512,6 +2542,124 @@ function confirmSubmitOrder(){
       closeAddressConfirmModal();
       showInlineCheckoutError_('เรียก API ไม่สำเร็จ: ' + e.message);
     });
+}
+
+// สรุปคำสั่งซื้อ (รูปเดียวกับผลของ createShopOrder) — orderIdHtml: เลขออเดอร์ หรือข้อความ "กำลังออกเลข"
+function renderOrderSummary_(r, orderIdHtml, noticeHtml){
+  var summaryHtml = (noticeHtml || '')
+    + '<div class="row"><span>เลขที่ออเดอร์</span><span><b>' + orderIdHtml + '</b></span></div>'
+    + '<div class="row"><span>ยอดสินค้า</span><span>฿' + r.subtotal.toLocaleString('th-TH') + '</span></div>';
+  // แสดงเฉพาะส่วนลดแต่ละรายการจริง ห้ามแสดง "ส่วนลดรวม" เพราะทำให้ยอดซ้ำกับคะแนน/คูปอง
+  if (r.pointsRedeemed > 0) {
+    summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>🎯 แลกคะแนน ' + r.pointsRedeemed + ' คะแนน</span><span style="color:#c62828">-฿' + Math.round(r.pointsRedeemDiscount).toLocaleString('th-TH') + '</span></div>';
+  }
+  var detailDiscounts = Array.isArray(r.discountDetail) ? r.discountDetail : [];
+  detailDiscounts.forEach(function(detail){
+    detail = String(detail || '');
+    // คะแนนแสดงในบรรทัดด้านบนแล้ว และรายการคูณแต้มไม่ใช่ส่วนลดเงินสด
+    if (detail.indexOf('แลกคะแนน:') === 0 || detail.indexOf('คูณแต้ม:') === 0 || detail.indexOf('(-') === -1) return;
+    var amountMatch = detail.match(/\(-([0-9,.]+)\)/);
+    var label = detail.replace(/\s*\(-[0-9,.]+\)/, '').trim();
+    if (!amountMatch || !label) return;
+    summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>' + escHtml(label) + '</span><span style="color:#c62828">-฿' + amountMatch[1] + '</span></div>';
+  });
+  summaryHtml += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(r.shippingCost || 0).toLocaleString('th-TH') + '</span></div>';
+  summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span><b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
+    + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : (selectedPayment === 'cod' ? '💵 เก็บเงินปลายทาง' : 'โอนธนาคาร')) + '</span></div>';
+  document.getElementById('orderSummary').innerHTML = summaryHtml;
+}
+
+function setSlipButtonWaiting_(waiting){
+  var b = document.getElementById('slipMainBtn');
+  if (!b) return;
+  b.disabled = !!waiting;
+  b.textContent = waiting ? '⏳ รอเลขออเดอร์สักครู่...' : '📎 แนบสลิปการโอนเงิน';
+}
+
+// ยอด 0 บาท / เก็บเงินปลายทาง: สั่งซื้อเสร็จเลย ไม่ต้องแนบสลิป
+function showOrderDoneNoSlip_(r, waitingForId){
+  pendingSlipOrderId = '';
+  document.getElementById('orderDoneBar').classList.add('sh');
+  document.getElementById('backToPaymentBtn').classList.add('sh');
+  // ⚡ แก้ (19/9/69) — เส้นทางนี้ใช้ร่วมกัน 2 กรณีที่ไม่ต้องแนบสลิป: ยอด 0 บาท กับเก็บเงินปลายทาง
+  // ข้อความจึงต้องแยกกัน ไม่งั้นลูกค้าที่สั่งแบบเก็บเงินปลายทางจะเห็นว่า "ไม่มีค่าใช้จ่าย" ซึ่งผิด
+  var isCodDone_ = !!r.isCod && r.totalAmount > 0;
+  var hintEl = document.getElementById('orderDoneHint');
+  if (hintEl) {
+    hintEl.textContent = isCodDone_
+      ? 'เตรียมเงิน ฿' + r.totalAmount.toLocaleString('th-TH') + ' ให้พนักงานส่งของตอนรับสินค้า — ระบบแจ้งทีมงานเรียบร้อยแล้ว'
+      : 'ยอด 0 บาท ไม่ต้องโอนเงิน/แนบสลิป ระบบแจ้งทีมงานเรียบร้อยแล้ว';
+  }
+  var notice = document.getElementById('slipDoneNotice');
+  if (notice) {
+    var closeMsg = waitingForId ? '⏳ กำลังออกเลขออเดอร์ รอสักครู่...' : (isInLineClient_() ? 'กำลังปิดหน้านี้อัตโนมัติ...' : 'ปิดแท็บนี้ได้เลยค่ะ');
+    notice.innerHTML = (isCodDone_
+      ? '✅ สั่งซื้อสำเร็จ — ชำระเงินปลายทาง ฿' + r.totalAmount.toLocaleString('th-TH') + ' ขอบคุณค่ะ 🙏'
+      : '✅ สั่งซื้อสำเร็จ ไม่มีค่าใช้จ่าย ขอบคุณค่ะ 🙏') + '<br>' + closeMsg;
+    notice.classList.remove('sh');
+  }
+  showState('orderDoneState');
+  setStepper(3);
+  if (!waitingForId) setTimeout(closeThisShopWindow_, isCodDone_ ? 6000 : 3000);
+}
+
+function showOrderResult_(r){
+  var pending = !!r.pending;
+  renderOrderSummary_(r, pending ? '⏳ กำลังออกเลขออเดอร์...' : escHtml(r.orderId));
+
+  currentOrderId = r.orderId;
+  lastOrderAmount_ = r.totalAmount;
+  savedAddressLoaded = false;
+  // สั่งซื้อสำเร็จแล้ว สิทธิ์/คูปอง/คะแนนถูกใช้ไปจริง ยอดที่แคชไว้ก่อนหน้าใช้ไม่ได้อีก และมีออเดอร์ใหม่
+  // รอแนบสลิปเพิ่มเข้ามาในหน้ารถเข็นด้วย
+  discountCacheBySig_ = {};
+  orderHistoryCache_.invalidate();
+  pointsToRedeemInput_ = 0; // คะแนนของออเดอร์ที่ยังรอแนบสลิปถูกกันไว้แล้ว รีเซ็ตกันใช้ซ้ำในรอบถัดไป
+
+  var noSlip = r.skipSlipUpload || r.totalAmount <= 0;
+  if (noSlip) {
+    showOrderDoneNoSlip_(r, pending);
+  } else {
+    pendingSlipOrderId = r.orderId;
+    document.getElementById('backToPaymentBtn').classList.remove('sh');
+    setSlipButtonWaiting_(pending);
+    showState('orderDoneState');
+    if (!pending) startSlipStatusPoll_(r.orderId);
+  }
+  if (!pending) return;
+
+  // ⚡ เพิ่ม (Supabase) — รอเลขออเดอร์จาก Apps Script
+  pollOrderStatus_(r.requestId, function(actual, changed, orderId){
+    var finalR = r;
+    var notice = '';
+    if (changed && actual && actual.success) {
+      finalR = actual;
+      notice = '<div style="background:#fff3e0;color:#e65100;border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:8px">'
+        + '⚠️ ยอดชำระมีการเปลี่ยนแปลง (สิทธิ์/โปรโมชั่นเปลี่ยนระหว่างสั่งซื้อ) กรุณาชำระตามยอดใหม่ด้านล่าง</div>';
+    }
+    renderOrderSummary_(finalR, escHtml(orderId), notice);
+    currentOrderId = orderId;
+    lastOrderAmount_ = finalR.totalAmount;
+    orderHistoryCache_.invalidate();
+    if (noSlip) {
+      var isCod_ = !!finalR.isCod && finalR.totalAmount > 0;
+      var n_ = document.getElementById('slipDoneNotice');
+      if (n_) n_.innerHTML = n_.innerHTML.replace('⏳ กำลังออกเลขออเดอร์ รอสักครู่...', isInLineClient_() ? 'กำลังปิดหน้านี้อัตโนมัติ...' : 'ปิดแท็บนี้ได้เลยค่ะ');
+      setTimeout(closeThisShopWindow_, isCod_ ? 6000 : 3000);
+      return;
+    }
+    pendingSlipOrderId = orderId;
+    setSlipButtonWaiting_(false);
+    if (!document.getElementById('orderDoneState').classList.contains('sh')) startSlipStatusPoll_(orderId);
+  }, function(err){
+    setSlipButtonWaiting_(false);
+    pendingSlipOrderId = '';
+    currentOrderId = '';
+    discountCacheBySig_ = {};
+    orderHistoryCache_.invalidate();
+    showState('checkoutState');
+    showInlineCheckoutError_('สั่งซื้อไม่สำเร็จ: ' + err + ' — กรุณาตรวจสอบตะกร้าแล้วกดสั่งซื้ออีกครั้ง');
+  });
 }
 
 function showInlineCheckoutError_(msg){

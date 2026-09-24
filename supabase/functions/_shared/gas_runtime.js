@@ -392,6 +392,13 @@ function applyValues(ctx, key, row, col, values) {
   }
 }
 
+// 'A' -> 1, 'AH' -> 34
+function colNumber(letters) {
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n;
+}
+
 function makeSheet(key, ctx) {
   const { tracker } = ctx;
   tracker.accessed.add(key);
@@ -410,6 +417,25 @@ function makeSheet(key, ctx) {
       return makeRange(key, ctx, a, b, c === undefined ? 1 : c, d === undefined ? 1 : d);
     },
     getDataRange() { return makeRange(key, ctx, 1, 1, Math.max(tab().lastRow, 1), Math.max(tab().lastColumn, 1)); },
+    // getRangeList(['B5:B104', 'H12']) — ใช้แค่ตั้งค่าเดียวกัน/รูปแบบเดียวกันให้ทุกช่วง (createShopOrder)
+    getRangeList(list) {
+      const ranges = (list || []).map((a1) => {
+        const m = /^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/.exec(String(a1));
+        if (!m) {
+          tracker.unsupported.push('gas_runtime: getRangeList ' + a1);
+          throw new UnsupportedError('gas_runtime: getRangeList ' + a1);
+        }
+        const r1 = +m[2], c1 = colNumber(m[1]);
+        const r2 = m[4] ? +m[4] : r1, c2 = m[3] ? colNumber(m[3]) : c1;
+        return makeRange(key, ctx, Math.min(r1, r2), Math.min(c1, c2), Math.abs(r2 - r1) + 1, Math.abs(c2 - c1) + 1);
+      });
+      const rl = {
+        getRanges: () => ranges,
+        setValue(v) { ranges.forEach((r) => r.setValue(v)); return rl; },
+        setNumberFormat(f) { ranges.forEach((r) => r.setNumberFormat(f)); return rl; },
+      };
+      return guard(rl, 'RangeList', tracker);
+    },
   };
   for (const m of SHEET_WRITE_METHODS) {
     sheet[m] = (...args) => {

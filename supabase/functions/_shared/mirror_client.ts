@@ -46,29 +46,43 @@ export type Tab = ReturnType<typeof prepareTab>;
 export type Owner = { uid?: string; order_id?: string };
 export type Loaded = { tabs: Map<string, Tab>; dirty: Set<string>; ms: number; fetched: number; fetchMs: number };
 export const baseKey = (k: string) => k.split("#")[0];
-export function createTabLoader(tabKeys: string[]) {
+// แคชแท็บต่อ Edge Function: ใส่ผลจาก mirror_load แล้วได้แท็บที่พร้อมใช้ (ชื่อแท็บจริง รวมฉบับย่อกับแถวเจ้าของแล้ว)
+export function createTabStore() {
   const tabCache = new Map<string, { readAt: string; tab: Tab }>();
+  return {
+    cachedFor(keys: string[]): Record<string, string> {
+      return Object.fromEntries(keys.filter((k) => tabCache.has(k)).map((k) => [k, tabCache.get(k)!.readAt]));
+    },
+    // r = ผลของ mirror_load
+    apply(keys: string[], r: any): { tabs: Map<string, Tab>; dirty: Set<string>; fetched: number } {
+      for (const [key, raw] of Object.entries(r.tabs as Record<string, any>)) {
+        tabCache.set(key, { readAt: raw.read_at, tab: prepareTab(baseKey(key), raw) });
+      }
+      const versions = r.versions as Record<string, { read_at: string; dirty: boolean }>;
+      const ownerRows = (r.owner || {}) as Record<string, [number, unknown][]>;
+      const tabs = new Map<string, Tab>();
+      for (const k of keys) {
+        const v = versions[k];
+        const c = tabCache.get(k);
+        if (!v || !c || c.readAt !== v.read_at) continue;
+        const base = baseKey(k);
+        tabs.set(base, k === base ? c.tab : withOwnerRows(c.tab, base, ownerRows[base]));
+      }
+      const dirty = new Set(Object.keys(versions).filter((k) => versions[k].dirty).map(baseKey));
+      return { tabs, dirty, fetched: Object.keys(r.tabs).length };
+    },
+  };
+}
+
+export function createTabLoader(tabKeys: string[]) {
+  const store = createTabStore();
   const inFlight = new Map<string, Promise<Loaded>>();
   async function load(keys: string[], owner: Owner | null): Promise<Loaded> {
     const t0 = Date.now();
-    const cached = Object.fromEntries(keys.filter((k) => tabCache.has(k)).map((k) => [k, tabCache.get(k)!.readAt]));
-    const r = await rpc("mirror_load", { p_tab_keys: keys, p_cached: cached, p_owner: owner });
+    const r = await rpc("mirror_load", { p_tab_keys: keys, p_cached: store.cachedFor(keys), p_owner: owner });
     const fetchMs = Date.now() - t0;
-    for (const [key, raw] of Object.entries(r.tabs as Record<string, any>)) {
-      tabCache.set(key, { readAt: raw.read_at, tab: prepareTab(baseKey(key), raw) });
-    }
-    const versions = r.versions as Record<string, { read_at: string; dirty: boolean }>;
-    const ownerRows = (r.owner || {}) as Record<string, [number, unknown][]>;
-    const tabs = new Map<string, Tab>();
-    for (const k of keys) {
-      const v = versions[k];
-      const c = tabCache.get(k);
-      if (!v || !c || c.readAt !== v.read_at) continue;
-      const base = baseKey(k);
-      tabs.set(base, k === base ? c.tab : withOwnerRows(c.tab, base, ownerRows[base]));
-    }
-    const dirty = new Set(Object.keys(versions).filter((k) => versions[k].dirty).map(baseKey));
-    return { tabs, dirty, ms: Date.now() - t0, fetched: Object.keys(r.tabs).length, fetchMs };
+    const { tabs, dirty, fetched } = store.apply(keys, r);
+    return { tabs, dirty, ms: Date.now() - t0, fetched, fetchMs };
   }
   return function loadTabs(keys: string[] = tabKeys, owner: Owner | null = null): Promise<Loaded> {
     const id = keys.join("|") + (owner ? "|" + JSON.stringify(owner) : "");
