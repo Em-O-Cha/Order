@@ -200,7 +200,55 @@ function handleFile(inp){
 // เป็น error ทางธุรกิจ (เช่น "ไม่พบเลขที่ออเดอร์นี้") เพราะลองใหม่กี่ครั้งก็ไม่มีทางสำเร็จ มีแต่จะทำให้ผู้ใช้
 // รอนานขึ้นเฉยๆ โดยไม่ได้ประโยชน์ — ระหว่างลองใหม่ ปุ่มยังคงเป็น disabled/"กำลังอัปโหลด..." อยู่เหมือนเดิม
 // ผู้ใช้จะไม่เห็นความต่างอะไรเลย นอกจากโอกาสที่จะไม่ต้องกดยืนยันซ้ำเองเวลาเน็ตสะดุดแค่แป๊บเดียว
+// ⚡ เพิ่ม (Supabase) — แนบสลิปผ่าน Supabase ก่อน: ตรวจเงื่อนไขด้วย uploadShopSlip ตัวเดิมแล้วรับรูปไว้ทันที
+// (Apps Script อัปโหลดลง Drive/บันทึกชีต/แจ้งเตือนตามหลังไม่กี่วินาที) ถ้า Supabase ให้ถอย หรือเรียกไม่สำเร็จและ
+// ยืนยันได้ว่า Supabase ไม่ได้รับสลิปนี้ ใช้ทางเดิม (clientKey สุ่มต่อการกด 1 ครั้ง กันแนบซ้ำ)
+var SUPABASE_ORDER_URL_ = 'https://qotlepudmkuniyjvqmle.supabase.co/functions/v1/shop-order?forceFunctionRegion=ap-northeast-2';
+function newClientKey_(){
+  try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+  return 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+function supabaseCall_(params, timeoutMs){
+  var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, timeoutMs) : null;
+  return fetch(SUPABASE_ORDER_URL_, { method: 'POST', body: JSON.stringify(params), signal: controller ? controller.signal : undefined })
+    .then(function(res){ return res.json(); })
+    .then(function(r){ if (timeoutId) clearTimeout(timeoutId); return r; },
+          function(e){ if (timeoutId) clearTimeout(timeoutId); throw e; });
+}
+function uploadSlipViaSupabase_(){
+  var key = newClientKey_();
+  return supabaseCall_({ action: 'uploadShopSlip', orderId: ORDER_ID, base64: slipData.base64, fileName: slipData.fileName,
+                         mimeType: slipData.mimeType, clientKey: key }, 25000)
+    .then(function(r){
+      if (r && r.success && r.pending) return true;
+      if (r && r.needsAppsScript) return false;
+      throw new Error('bad');
+    })
+    .catch(function(){
+      function lookup(attempt){
+        return supabaseCall_({ action: 'orderStatus', clientKey: key }, 6000)
+          .then(function(st){
+            if (st && st.success && st.found) return true;
+            if (st && st.success && !st.found) return false;
+            throw new Error('status');
+          })
+          .catch(function(){
+            if (attempt < 2) return new Promise(function(res){ setTimeout(res, 2000); }).then(function(){ return lookup(attempt + 1); });
+            return false;
+          });
+      }
+      return lookup(1);
+    });
+}
+
 function uploadSlipAttempt_(attempt){
+  if (attempt === 1) {
+    return uploadSlipViaSupabase_().then(function(ok){ return ok ? { success: true, viaSupabase: true } : uploadSlipAppsScript_(1); });
+  }
+  return uploadSlipAppsScript_(attempt);
+}
+function uploadSlipAppsScript_(attempt){
   return fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
@@ -215,7 +263,7 @@ function uploadSlipAttempt_(attempt){
       // ถ้ายังไม่ครบ 3 ครั้ง (เว้นระยะสั้นๆ กันยิงรัวเกินไปตอนเน็ตหลุดจริงจัง)
       if (attempt < 3) {
         return new Promise(function(resolve){
-          setTimeout(function(){ resolve(uploadSlipAttempt_(attempt + 1)); }, attempt * 700);
+          setTimeout(function(){ resolve(uploadSlipAppsScript_(attempt + 1)); }, attempt * 700);
         });
       }
       throw networkErr;

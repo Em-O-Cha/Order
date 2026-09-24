@@ -1,9 +1,9 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 114 รายการ (75 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 121 รายการ (80 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
-          verifyLineIdToken_, logErrorToSheet_, ensureDebugLogSheet_, logSlowAction_, logRegistrationQueueWait_, notifyBuyerOrderConfirmation_, notifyAdminNewOrder_, checkAndGrantReferralOnFirstPurchase_, checkAndGrantPurchaseReferral_, sendLineMessages_ } = env;
+          verifyLineIdToken_, logErrorToSheet_, ensureDebugLogSheet_, logSlowAction_, logRegistrationQueueWait_, notifyBuyerOrderConfirmation_, notifyAdminNewOrder_, checkAndGrantReferralOnFirstPurchase_, checkAndGrantPurchaseReferral_, sendLineMessages_, DriveApp, scheduleSlipFinalize_ } = env;
 
 var MEMBERS_SHEET_ID = '15yYmENUcxz5VO1ajhkAgU-seeZ3cMCs43Jm4xlYKvFk';
 
@@ -331,6 +331,8 @@ var REVENUE_SHEET_ID_SHOP   = '1SSUCIrTUVe-dDB4pZF73uCG7d-SoZ-k04fM8pln6ZRY';
 var REVENUE_SHEET_NAME_SHOP = 'Revenue';
 
 var MASTER_SHEET_ID_SHOP    = '1aZ3wp-9dU1jNoQ-FVpA9uKNNOYJSSEGmL8IjZXU_40w';
+
+var SLIP_FOLDER_ID_SHOP     = '1aQQYvzFyZ79GDFQO352RdBPzdnCb0MnH';
 
 var BAHT_PER_POINT = 30;
 
@@ -1064,6 +1066,89 @@ function getAppliedPrivileges_(lineUid, subtotal, excludeRowIndexes, items, pric
 
 var CANCELLED_ORDER_MARK_ = 'ยกเลิก';
 
+function cancelShopOrder(idToken, orderId) {
+  var profile;
+  try {
+    profile = verifyLineIdToken_(idToken);
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+  if (!profile) return { success: false, error: 'ยืนยันตัวตนกับ LINE ไม่สำเร็จ (' + lastLineVerifyError_ + ')' };
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); } catch (e) { return { success: false, error: 'ระบบมีคนทำรายการพร้อมกันหลายคน กรุณาลองใหม่อีกครั้ง' }; }
+  try {
+    orderId = String(orderId || '').trim();
+    if (!orderId) return { success: false, error: 'ไม่พบเลขที่ออเดอร์' };
+
+    var memberRowIndex = findMemberRowIndex_(profile.sub);
+    if (memberRowIndex === -1) return { success: false, error: 'ไม่พบบัญชีสมาชิกของคุณ' };
+    var myPhone = String(ensureMembersSheet_().getRange(memberRowIndex, 4).getValue() || '');
+    if (!myPhone) return { success: false, error: 'ไม่พบบัญชีสมาชิกของคุณ' };
+
+    var ss = SpreadsheetApp.openById(REVENUE_SHEET_ID_SHOP);
+    var sheet = ss.getSheetByName(REVENUE_SHEET_NAME_SHOP);
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return { success: false, error: 'ไม่พบคำสั่งซื้อนี้ในระบบ' };
+
+    var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    var targetRow = -1;
+    for (var i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]) === orderId) { targetRow = i + 2; break; }
+    }
+    if (targetRow === -1) return { success: false, error: 'ไม่พบคำสั่งซื้อนี้ในระบบ (อาจถูกยกเลิกไปแล้ว)' };
+
+    // ⚡ แก้ (19/9/69) — อ่านถึงคอลัมน์ AG เพื่อเช็คสถานะเก็บเงินปลายทางด้วย
+    var mainRow = sheet.getRange(targetRow, 1, 1, Math.min(COD_STATUS_COL_, sheet.getMaxColumns())).getValues()[0];
+    var rowPhone = String(mainRow[14] || '');
+    if (rowPhone !== myPhone) return { success: false, error: 'ไม่สามารถยกเลิกคำสั่งซื้อนี้ได้ (ไม่ใช่ของคุณ)' };
+    // ⚡ เพิ่ม (19/9/69) — ออเดอร์เก็บเงินปลายทางไม่มีสลิป (คอลัมน์ K เป็นข้อความกำกับไว้แทน) จึงต้องแยกเงื่อนไข
+    // ออกมาต่างหาก: ยกเลิกเองได้ตราบใดที่ยังอยู่สถานะ "รอเก็บเงิน" (ยังไม่ได้รับเงินจากลูกค้าจริง)
+    var codStatusNow_ = String(mainRow[COD_STATUS_COL_ - 1] || '');
+    var isCodOrderRow_ = isCodPaymentLabel_(mainRow[9]);
+    if (isCodOrderRow_) {
+      if (codStatusNow_ && codStatusNow_ !== COD_STATUS_PENDING_) {
+        return { success: false, error: 'คำสั่งซื้อนี้ปิดรายการเก็บเงินปลายทางไปแล้ว ไม่สามารถยกเลิกเองได้ กรุณาติดต่อทีมงาน' };
+      }
+    } else if (mainRow[10]) {
+      return { success: false, error: 'คำสั่งซื้อนี้แนบสลิปไปแล้ว อยู่ระหว่างตรวจสอบ ไม่สามารถยกเลิกเองได้ กรุณาติดต่อทีมงาน' };
+    }
+    if (String(mainRow[2]) === CANCELLED_ORDER_MARK_) return { success: false, error: 'คำสั่งซื้อนี้ถูกยกเลิกไปแล้ว' };
+
+    // หาว่าออเดอร์นี้มีกี่แถว (สินค้าหลายรายการจะต่อกันหลายแถว โดยแถวถัดๆ ไปจะมีคอลัมน์ A ว่างไว้)
+    var numRows = 1;
+    while (targetRow + numRows <= sheet.getLastRow()) {
+      var nextId = sheet.getRange(targetRow + numRows, 1).getValue();
+      if (nextId) break;
+      numRows++;
+    }
+
+    for (var r = 0; r < numRows; r++) {
+      var rowNum = targetRow + r;
+      sheet.getRange(rowNum, 3).setValue(CANCELLED_ORDER_MARK_); // ชื่อสินค้า (คอลัมน์ C) -> "ยกเลิก"
+      sheet.getRange(rowNum, 6).setValue(0); // ส่วนลดต่อรายการ (คอลัมน์ F)
+      sheet.getRange(rowNum, 7).setValue(0); // ยอดสุทธิต่อรายการ (คอลัมน์ G) — ค่าที่รายงานยอดขายมักไปรวม
+    }
+    sheet.getRange(targetRow, 8).setValue(0); // ค่าจัดส่ง (คอลัมน์ H)
+    sheet.getRange(targetRow, 9).setValue(0); // ยอดชำระรวม (คอลัมน์ I)
+
+    var cancelNote_ = 'ลูกค้ายกเลิกเอง (' + Utilities.formatDate(new Date(), 'GMT+7', 'dd/MM/yyyy HH:mm') + ')';
+    sheet.getRange(targetRow, 20).setValue(cancelNote_); // หมายเหตุ (คอลัมน์ T) -> แทนที่ทั้งหมดด้วยข้อความนี้
+    // ⚡ เพิ่ม (19/9/69) — ออเดอร์เก็บเงินปลายทางที่ถูกยกเลิก: ล้างสถานะ COD และวันที่ชำระเงินที่เคยใส่ไว้ตอนสั่ง
+    // ออกด้วย เพื่อไม่ให้ค้างอยู่ในรายการ "รอเก็บเงิน" และไม่ถูกนับเป็นยอดขายที่ไหนอีก
+    if (isCodOrderRow_) {
+      sheet.getRange(targetRow, 31).setValue('');
+      sheet.getRange(targetRow, COD_STATUS_COL_).setValue('');
+    }
+
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function ensureShippingConfigSheet_() {
   if (_sheetCache_.shipping) return _sheetCache_.shipping;
   var ss = SpreadsheetApp.openById(MEMBERS_SHEET_ID);
@@ -1151,6 +1236,11 @@ function getMemberRowByUid_(lineUid, numCols) {
     }
   }
   return null;
+}
+
+function findMemberRowIndex_(lineUid) {
+  var found = getMemberRowByUid_(lineUid, 1);
+  return found ? found.rowIndex : -1;
 }
 
 function expiryFromDays_(baseDate, days) {
@@ -1939,5 +2029,124 @@ function getBillDataForNotify_(sheet, targetRow) {
   };
 }
 
-  return { createShopOrder, decodeItemsB64_ };
+function findMemberLineUidByPhone_(phone) {
+  var phoneClean = String(phone || '').replace(/[^0-9]/g, '');
+  if (!phoneClean) return null;
+  var sheet = ensureMembersSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return null;
+  var data = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  for (var i = 0; i < data.length; i++) {
+    var rowPhone = String(data[i][3] || '').replace(/[^0-9]/g, '');
+    if (rowPhone && rowPhone === phoneClean) return data[i][0];
+  }
+  return null;
+}
+
+function uploadShopSlip(orderId, base64Data, fileName, mimeType) {
+  var slipUrl;
+  try {
+    Logger.log('uploadShopSlip: เริ่มทำงาน orderId="' + orderId + '"');
+    var folder = DriveApp.getFolderById(SLIP_FOLDER_ID_SHOP);
+    var decoded = Utilities.base64Decode(base64Data);
+    var blob = Utilities.newBlob(decoded, mimeType, fileName);
+    var file = folder.createFile(blob);
+    // ⚡ แก้ (perf) — ย้าย setSharing() ไปทำตอนส่งแจ้งเตือน (finalizeSlipNotifications_) แทน
+    // การเปิดสิทธิ์ให้ไฟล์ใน Drive เป็นคำสั่งที่ช้ามาก (มักกินเวลา 1-2 วินาที) และคนที่ต้องใช้ลิงก์นี้จริงๆ คือ
+    // ข้อความแจ้งเตือนในไลน์กับแอดมิน ซึ่งทำงานทีหลังอยู่แล้ว ไม่มีใครต้องเปิดลิงก์ ณ วินาทีที่ลูกค้ากดยืนยัน
+    // ลูกค้าจึงไม่ต้องยืนรอคำสั่งนี้เปล่าๆ (ตัว URL ไม่ต้องรอ setSharing ก็ประกอบขึ้นจาก id ได้เลย)
+    slipUrl = 'https://drive.google.com/file/d/' + file.getId() + '/view';
+    Logger.log('uploadShopSlip: อัปโหลดไฟล์สำเร็จ ' + slipUrl);
+  } catch (uploadErr) {
+    return { success: false, error: 'อัปโหลดไฟล์ไม่สำเร็จ: ' + uploadErr.toString() };
+  }
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); } catch (e) { return { success: false, error: 'ระบบมีคนอัปโหลดพร้อมกันหลายคน กรุณาลองใหม่อีกครั้ง' }; }
+  var targetRow = -1;
+  try {
+    var sheet = ensureRevenueSheet_();
+    if (sheet.getLastRow() <= 1) return { success: false, error: 'ไม่พบเลขที่ออเดอร์นี้ในระบบ' };
+
+    targetRow = findRevenueRowByOrderId_(sheet, orderId);
+    if (targetRow === -1) return { success: false, error: 'ไม่พบเลขที่ออเดอร์ "' + orderId + '" ในระบบ' };
+
+    // ⚡ แก้ (perf) — อ่านคอลัมน์ 11-31 ของแถวนี้รวดเดียว เดิมยิงอ่านแยกกัน 3 รอบสำหรับข้อมูลแถวเดียวกัน
+    // (หมายเหตุ คอลัมน์ 20, เบอร์โทร คอลัมน์ 15, วันชำระเงิน คอลัมน์ 31)
+    var rowData_ = sheet.getRange(targetRow, 11, 1, 21).getValues()[0]; // index 0 = คอลัมน์ 11
+    var existingRemark_ = String(rowData_[9] || '');   // คอลัมน์ 20
+    var pendingPoints_ = parsePendingPointsReservation_(existingRemark_);
+    // ตัดคะแนนจริง ณ เวลาที่แนบสลิปสำเร็จเท่านั้น
+    if (pendingPoints_.points > 0) {
+      var pendingPhone_ = String(rowData_[4] || '');   // คอลัมน์ 15
+      var pendingBuyerUid_ = findMemberLineUidByPhone_(pendingPhone_);
+      var pendingBuyerFound_ = pendingBuyerUid_ ? getMemberRowByUid_(pendingBuyerUid_, 6) : null;
+      var pendingBuyerRow_ = pendingBuyerFound_ ? pendingBuyerFound_.rowIndex : -1;
+      if (pendingBuyerRow_ === -1) return { success: false, error: 'ไม่พบข้อมูลสมาชิกสำหรับตัดคะแนนของออเดอร์นี้' };
+      var pointsBeforeDeduct_ = parseInt(pendingBuyerFound_.values[5]) || 0;
+      if (pointsBeforeDeduct_ < pendingPoints_.points) {
+        return { success: false, error: 'คะแนนคงเหลือไม่เพียงพอสำหรับออเดอร์นี้ (ต้องใช้ ' + pendingPoints_.points + ' คะแนน, คงเหลือ ' + pointsBeforeDeduct_ + ' คะแนน)' };
+      }
+      var pointsAfterDeduct_ = pointsBeforeDeduct_ - pendingPoints_.points;
+      invalidatePendingPointsCache_(pendingPhone_); // ตัดคะแนนจริงแล้ว คะแนนที่ "รอหัก" ของเบอร์นี้เปลี่ยนไป
+      ensureMembersSheet_().getRange(pendingBuyerRow_, 6).setValue(pointsAfterDeduct_);
+      logPointsTransaction_(pendingBuyerUid_, 'redeem', '[' + orderId + '] แลกคะแนนเป็นส่วนลด ' + Math.round(pendingPoints_.discount) + ' บาท', -pendingPoints_.points, pointsAfterDeduct_);
+      existingRemark_ = existingRemark_.replace(/🎯 คะแนนรอหัก:\s*\d+\s*คะแนน\s*\(-฿[\d.]+\)/, '🎯 หักคะแนนแล้ว: ' + pendingPoints_.points + ' คะแนน (-฿' + Math.round(pendingPoints_.discount) + ')');
+    }
+
+    sheet.getRange(targetRow, 11).setValue(slipUrl);
+    // บันทึกวันชำระเงินจริงครั้งแรกเมื่อแนบสลิปสำเร็จ เพื่อใช้กับรายงานชำระเงินรายวัน
+    // ไม่เขียนทับวันที่เดิม หากลูกค้าอัปโหลดสลิปซ้ำภายหลัง
+    // ⚡ แก้ (perf) — รู้ค่าคอลัมน์ 31 อยู่แล้วจาก rowData_ ที่อ่านรวดเดียวด้านบน ไม่ต้องยิงอ่านซ้ำอีกรอบ
+    if (!rowData_[20]) {
+      var payDateCell_ = sheet.getRange(targetRow, 31);
+      payDateCell_.setNumberFormat('dd/MM/yyyy HH:mm:ss');
+      payDateCell_.setValue(new Date());
+    }
+    var updatedRemark_ = existingRemark_.indexOf('รอแนบสลิป - LINE Shop') !== -1
+      ? existingRemark_.replace('รอแนบสลิป - LINE Shop', 'รอตรวจสอบสลิป - LINE Shop')
+      : (existingRemark_ ? (existingRemark_ + ' | รอตรวจสอบสลิป - LINE Shop') : 'รอตรวจสอบสลิป - LINE Shop');
+    sheet.getRange(targetRow, 20).setValue(updatedRemark_);
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  } finally {
+    lock.releaseLock();
+  }
+
+  // ⚡ แก้ (perf) — เดิมส่งไลน์แจ้งเตือนลูกค้า+แอดมิน คำนวณ/ให้คะแนน และเช็ครางวัลแนะนำเพื่อน แบบ synchronous
+  // ตรงนี้เลยก่อน return ทำให้ลูกค้าต้องรอจนกว่าทุกอย่างเสร็จ (รวม LINE push API เรียก 2 รอบ) ทั้งที่ข้อมูลจริง
+  // (สลิป/สถานะออเดอร์/ตัดคะแนนที่รอหัก) บันทึกเสร็จสมบูรณ์ตั้งแต่ปล่อย lock ด้านบนไปแล้ว ทำให้ลูกค้าเห็นว่า
+  // "ยังบันทึกไม่เสร็จ" อยู่นานทั้งที่จริงๆ บันทึกเสร็จไปแล้ว — ย้ายส่วนแจ้งเตือน/ให้คะแนน/เช็ครางวัลไปทำผ่าน
+  // trigger แยกแทน (ดู scheduleSlipFinalize_/finalizeSlipNotifications_ ด้านล่าง) ตอบกลับลูกค้าได้ทันทีที่
+  // บันทึกเสร็จจริง ส่วนแจ้งเตือนจะตามมาไม่กี่วินาทีถัดไปแบบไม่ต้องรอ
+  try {
+    scheduleSlipFinalize_(orderId);
+  } catch (scheduleErr) {
+    Logger.log('uploadShopSlip: ตั้งเวลาส่งแจ้งเตือนไม่สำเร็จ: ' + scheduleErr.toString());
+    logErrorToSheet_('uploadShopSlip:schedule', 'orderId="' + orderId + '" — ' + scheduleErr.toString());
+  }
+
+  return { success: true, slipUrl: slipUrl, rowIndex: targetRow };
+}
+
+var REVENUE_ORDER_PROBE_ROWS_ = 3000;
+
+function findRevenueRowByOrderId_(sheet, orderId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return -1;
+  var target = String(orderId);
+  var probeStart = Math.max(2, lastRow - REVENUE_ORDER_PROBE_ROWS_ + 1);
+  var probe = sheet.getRange(probeStart, 1, lastRow - probeStart + 1, 1).getValues();
+  for (var i = 0; i < probe.length; i++) {
+    if (String(probe[i][0]) === target) return probeStart + i;
+  }
+  if (probeStart === 2) return -1; // ส่องครบทั้งชีตไปแล้ว ไม่ต้องอ่านซ้ำ
+  var ids = sheet.getRange(2, 1, probeStart - 2, 1).getValues();
+  for (var j = 0; j < ids.length; j++) {
+    if (String(ids[j][0]) === target) return j + 2;
+  }
+  return -1;
+}
+
+  return { createShopOrder, decodeItemsB64_, uploadShopSlip, cancelShopOrder };
 }

@@ -41,13 +41,15 @@ const TARGETS = {
     ],
   },
   'shop-order': {
-    ROOTS: ['createShopOrder', 'decodeItemsB64_'],
+    ROOTS: ['createShopOrder', 'decodeItemsB64_', 'uploadShopSlip', 'cancelShopOrder'],
     // Supabase แค่ "ทำนาย" ผลสั่งซื้อให้ลูกค้าเห็นทันที ตัวจริง Apps Script รัน createShopOrder บนชีตจริงอีกครั้ง
     // (ออกเลข REV ตัดสิทธิ์ นับคูปอง แจ้งเตือน) — งานที่ส่งข้อความ LINE / ให้รางวัลแนะนำเพื่อน จึงไม่ต้องทำที่นี่
     REPLACED: [
       'verifyLineIdToken_', 'logErrorToSheet_', 'ensureDebugLogSheet_', 'logSlowAction_',
       'logRegistrationQueueWait_', 'notifyBuyerOrderConfirmation_', 'notifyAdminNewOrder_',
       'checkAndGrantReferralOnFirstPurchase_', 'checkAndGrantPurchaseReferral_', 'sendLineMessages_',
+      // แนบสลิป: ตัวจริงอัปโหลดรูปลง Drive และตั้งเวลาส่งแจ้งเตือน/ให้แต้ม — ที่นี่แค่ตรวจเงื่อนไข/คำนวณการเขียนชีต
+      'DriveApp', 'scheduleSlipFinalize_',
     ],
   },
 };
