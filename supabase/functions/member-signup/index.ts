@@ -114,16 +114,23 @@ async function prepare(includeTests = false) {
 // ปลุก Apps Script ให้เขียนการสมัครที่รอลงชีต (Members.gs doPost ผ่าน SupabaseSignup.gs) — ไม่ throw
 async function kickWriter(url: string): Promise<string> {
   if (!url) return "ยังไม่ได้ตั้ง apps_script_url";
-  try {
-    const res = await fetch(url, {
-      method: "POST", headers: { "Content-Type": "text/plain" }, redirect: "follow",
-      body: JSON.stringify({ action: "signupWriteNow", key: await getInternalKey() }),
-    });
-    return `HTTP ${res.status} ${(await res.text()).slice(0, 200)}`;
-  } catch (e) {
-    console.error("kickWriter", e);
-    return "ข้อผิดพลาด: " + String(e);
+  // Web App ของ Google ตอบ 404 ชั่วคราวได้เป็นครั้งคราว: ลองอีกครั้ง (ถ้ายังไม่ได้ รอบสำรองทุก 1 นาทีจะเก็บงานให้)
+  let last = "";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "text/plain" }, redirect: "follow",
+        body: JSON.stringify({ action: "signupWriteNow", key: await getInternalKey() }),
+      });
+      last = `HTTP ${res.status} ${(await res.text()).slice(0, 200)}`;
+      if (res.ok) return last;
+    } catch (e) {
+      console.error("kickWriter", e);
+      last = "ข้อผิดพลาด: " + String(e);
+    }
+    await new Promise((r) => setTimeout(r, 1500));
   }
+  return last;
 }
 
 const DUPLICATE_ERRORS: Record<string, string> = {

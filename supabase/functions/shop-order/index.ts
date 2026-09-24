@@ -131,16 +131,23 @@ async function predict(profile: Record<string, unknown>, p: P, isTest: boolean) 
 // ปลุก Apps Script ให้รัน createShopOrder ตัวจริงของคำสั่งซื้อที่รอลงชีต (doPost ผ่าน SupabaseOrder.gs) — ไม่ throw
 async function kickWriter(url: string): Promise<string> {
   if (!url) return "ยังไม่ได้ตั้ง apps_script_url";
-  try {
-    const res = await fetch(url, {
-      method: "POST", headers: { "Content-Type": "text/plain" }, redirect: "follow",
-      body: JSON.stringify({ action: "orderWriteNow", key: await getInternalKey() }),
-    });
-    return `HTTP ${res.status} ${(await res.text()).slice(0, 200)}`;
-  } catch (e) {
-    console.error("kickWriter", e);
-    return "ข้อผิดพลาด: " + String(e);
+  // Web App ของ Google ตอบ 404 ชั่วคราวได้เป็นครั้งคราว: ลองอีกครั้ง (ถ้ายังไม่ได้ รอบสำรองทุก 1 นาทีจะเก็บงานให้)
+  let last = "";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "text/plain" }, redirect: "follow",
+        body: JSON.stringify({ action: "orderWriteNow", key: await getInternalKey() }),
+      });
+      last = `HTTP ${res.status} ${(await res.text()).slice(0, 200)}`;
+      if (res.ok) return last;
+    } catch (e) {
+      console.error("kickWriter", e);
+      last = "ข้อผิดพลาด: " + String(e);
+    }
+    await new Promise((r) => setTimeout(r, 1500));
   }
+  return last;
 }
 
 // ผลที่ส่งให้หน้าเว็บตอนรับคำสั่งซื้อ: ผลที่ทำนาย แต่เลข REV ยังไม่มี (Apps Script ออกตอนเขียนชีต)
