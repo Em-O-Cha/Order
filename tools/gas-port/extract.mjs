@@ -4,6 +4,7 @@
 // ใช้: npm install && node extract.mjs <path/to/Members.gs> <output.js> [target]
 //   target shop-read (ค่าเริ่มต้น)  -> ../../supabase/functions/shop-read/gas_port.js
 //   target member-signup           -> ../../supabase/functions/member-signup/gas_port.js
+//   target shop-order              -> ../../supabase/functions/shop-order/gas_port.js
 //
 // ทุกครั้งที่แก้ Members.gs ในส่วนที่ target นั้นใช้ ต้องรันสคริปต์นี้ใหม่แล้ว deploy Edge Function นั้นใหม่
 // shop-read: ส่วนลด/สิทธิ์/แต้ม/ระดับสมาชิก (ตอนสั่งซื้อจริง Apps Script คำนวณซ้ำเสมอจึงไม่เก็บเงินผิด)
@@ -37,6 +38,16 @@ const TARGETS = {
     REPLACED: [
       'verifyLineIdToken_', 'logErrorToSheet_', 'ensureDebugLogSheet_', 'logSlowAction_',
       'logRegistrationQueueWait_', 'sendLineMessages_', 'grantReferralRewardOnSignupIfNeeded_',
+    ],
+  },
+  'shop-order': {
+    ROOTS: ['createShopOrder', 'decodeItemsB64_'],
+    // Supabase แค่ "ทำนาย" ผลสั่งซื้อให้ลูกค้าเห็นทันที ตัวจริง Apps Script รัน createShopOrder บนชีตจริงอีกครั้ง
+    // (ออกเลข REV ตัดสิทธิ์ นับคูปอง แจ้งเตือน) — งานที่ส่งข้อความ LINE / ให้รางวัลแนะนำเพื่อน จึงไม่ต้องทำที่นี่
+    REPLACED: [
+      'verifyLineIdToken_', 'logErrorToSheet_', 'ensureDebugLogSheet_', 'logSlowAction_',
+      'logRegistrationQueueWait_', 'notifyBuyerOrderConfirmation_', 'notifyAdminNewOrder_',
+      'checkAndGrantReferralOnFirstPurchase_', 'checkAndGrantPurchaseReferral_', 'sendLineMessages_',
     ],
   },
 };

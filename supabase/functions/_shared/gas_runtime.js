@@ -167,7 +167,25 @@ export function prepareTab(key, raw) {
     key, source: key.slice(0, slash), name: key.slice(slash + 1),
     spreadsheetId: raw.spreadsheet_id, headers: raw.headers || [], rawHeaders, rows, lastRow,
     lastColumn: rawHeaders.length, metaOnly, metaLastRow: metaOnly ? lastRow : 0,
+    // ฉบับย่อ (mirror_load 'source/tab#slim'): ทุกแถวมีแค่คอลัมน์เหล่านี้ ช่องอื่นถูกซ่อน
+    slimCols: Array.isArray(raw.slim_cols) ? new Set(raw.slim_cols) : null,
+    slimRows: null,
   };
+}
+
+// รวมฉบับย่อกับแถวเต็มของเจ้าของ (ลูกค้าที่ถาม): แถวเจ้าของอ่านได้ทุกช่อง แถวอื่นอ่านได้แค่คอลัมน์ในฉบับย่อ
+// ownerRows: [[rowNum, data], ...] จาก mirror_load (ข้อมูลรอบคัดลอกเดียวกับฉบับย่อ)
+export function withOwnerRows(slimTab, key, ownerRows) {
+  const rows = new Map(slimTab.rows);
+  const slimRows = new Set(slimTab.rows.keys());
+  let lastRow = slimTab.lastRow;
+  for (const [rowNum, data] of ownerRows || []) {
+    rows.set(rowNum, data);
+    slimRows.delete(rowNum);
+    if (rowNum > lastRow) lastRow = rowNum;
+  }
+  const slash = key.indexOf('/');
+  return { ...slimTab, key, source: key.slice(0, slash), name: key.slice(slash + 1), rows, slimRows, lastRow };
 }
 
 function cellValue(v) {
@@ -178,6 +196,18 @@ function cellValue(v) {
 }
 
 class UnsupportedError extends Error {}
+
+// ช่องที่ถูกซ่อนในฉบับย่อ: โค้ดเดิมอ่านแถวเป็นก้อนแล้วทิ้งแถวของคนอื่นไปได้ตามปกติ แต่ถ้าเอาค่าไปใช้จริง
+// (แปลงเป็นข้อความ/ตัวเลข/วันที่/JSON) จะถูกจดว่า "ข้อมูลย่อ" แล้ว shop-read จะโหลดแท็บเต็มแล้วรันใหม่
+export const SLIM_HIDDEN = 'gas_runtime: ข้อมูลย่อ ';
+function hiddenCell(tracker, key, row, header) {
+  const trip = () => {
+    const msg = `${SLIM_HIDDEN}${key} แถว ${row} ${header}`;
+    tracker.unsupported.push(msg);
+    throw new UnsupportedError(msg);
+  };
+  return Object.freeze({ [Symbol.toPrimitive]: trip, toString: trip, valueOf: trip, toJSON: trip });
+}
 
 // ห่อ object ให้เมธอดที่ไม่ได้จำลองไว้ถูกจดและโยน error (ห้ามเงียบแล้วคืนค่าผิด)
 function guard(obj, label, tracker) {
@@ -241,7 +271,10 @@ function makeRange(key, ctx, row, col, numRows, numCols) {
         for (let c = col; c < col + numCols; c++) {
           let v;
           if (r === 1) v = t.rawHeaders[c - 1];
-          else v = data ? data[t.headers[c - 1]] : undefined;
+          else if (t.slimRows && t.slimRows.has(r) && !t.slimCols.has(t.headers[c - 1])) {
+            line[c - col] = hiddenCell(tracker, key, r, t.headers[c - 1]);
+            continue;
+          } else v = data ? data[t.headers[c - 1]] : undefined;
           line[c - col] = cellValue(v);
         }
         out.push(line);
@@ -359,6 +392,13 @@ function applyValues(ctx, key, row, col, values) {
   }
 }
 
+// 'A' -> 1, 'AH' -> 34
+function colNumber(letters) {
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n;
+}
+
 function makeSheet(key, ctx) {
   const { tracker } = ctx;
   tracker.accessed.add(key);
@@ -377,6 +417,25 @@ function makeSheet(key, ctx) {
       return makeRange(key, ctx, a, b, c === undefined ? 1 : c, d === undefined ? 1 : d);
     },
     getDataRange() { return makeRange(key, ctx, 1, 1, Math.max(tab().lastRow, 1), Math.max(tab().lastColumn, 1)); },
+    // getRangeList(['B5:B104', 'H12']) — ใช้แค่ตั้งค่าเดียวกัน/รูปแบบเดียวกันให้ทุกช่วง (createShopOrder)
+    getRangeList(list) {
+      const ranges = (list || []).map((a1) => {
+        const m = /^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/.exec(String(a1));
+        if (!m) {
+          tracker.unsupported.push('gas_runtime: getRangeList ' + a1);
+          throw new UnsupportedError('gas_runtime: getRangeList ' + a1);
+        }
+        const r1 = +m[2], c1 = colNumber(m[1]);
+        const r2 = m[4] ? +m[4] : r1, c2 = m[3] ? colNumber(m[3]) : c1;
+        return makeRange(key, ctx, Math.min(r1, r2), Math.min(c1, c2), Math.abs(r2 - r1) + 1, Math.abs(c2 - c1) + 1);
+      });
+      const rl = {
+        getRanges: () => ranges,
+        setValue(v) { ranges.forEach((r) => r.setValue(v)); return rl; },
+        setNumberFormat(f) { ranges.forEach((r) => r.setNumberFormat(f)); return rl; },
+      };
+      return guard(rl, 'RangeList', tracker);
+    },
   };
   for (const m of SHEET_WRITE_METHODS) {
     sheet[m] = (...args) => {
