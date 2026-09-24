@@ -15,9 +15,10 @@
 // deploy ด้วย verify_jwt = false เพราะหน้าเว็บไม่มี JWT ของ Supabase มีแต่โทเคน LINE
 
 import { createGas } from "./gas_port.js";
-import { createEnv, overlayJournals, PROPS_KEY } from "../_shared/gas_runtime.js";
+import { createEnv, overlayJournals, PROPS_KEY, SLIM_HIDDEN } from "../_shared/gas_runtime.js";
 import {
-  createTabLoader, isInternal, json, P, propsFrom, readParams, rpc, Tab, verifyLineIdToken, CORS,
+  baseKey, createTabLoader, isInternal, json, Owner, P, peekLineSub, propsFrom, readParams, rpc, Tab,
+  verifyLineIdToken, CORS,
 } from "../_shared/mirror_client.ts";
 
 // แท็บที่ฟังก์ชันใน gas_port.js อ่าน (แท็บที่ไม่อยู่ในรายการ ตัวจำลองจะปฏิเสธและให้ถาม Apps Script)
@@ -33,7 +34,10 @@ const TAB_KEYS = [
 // ถ้าฟังก์ชันไปอ่านแท็บนอกรายการ ตัวจำลองจะหยุด แล้วรันใหม่ด้วยทุกแท็บ (ผลเหมือนเดิมเสมอ แค่ช้าลงครั้งนั้น)
 const T = (...keys: string[]) => [...keys, PROPS_KEY];
 const M = "members/Members", MP = "members/Member_Privileges", TC = "members/Tier_Config", CP = "members/Coupons";
-const PP = "members/Points_Promos", SKU = "master/SKU", REV = "revenue/Revenue";
+const PP = "members/Points_Promos", SKU = "master/SKU";
+// Revenue ฉบับย่อ + แถวเต็มเฉพาะออเดอร์ของลูกค้า (ขนาดไม่โตตาม Revenue) — โค้ดเดิมใช้แถวของคนอื่นแค่คอลัมน์ค้นหา
+// ถ้าเอาช่องที่ซ่อนไปใช้จริงจะรันใหม่ด้วย Revenue เต็ม
+const REV = "revenue/Revenue#slim";
 
 // action -> วิธีเรียก (ตรงกับ doGet ใน Members.gs ทุกตัวอักษร) และต้องมีโทเคน LINE ไหม
 type Gas = ReturnType<typeof createGas>;
@@ -68,7 +72,7 @@ const ACTIONS: Record<string, { auth: boolean; tabs: string[]; run: (g: Gas, p: 
   },
   checkPendingOrderPromoStillValid: {
     auth: true,
-    tabs: T(M, REV),
+    tabs: T(M, MP, TC, CP, PP, SKU, REV, "members/Shipping_Config"),
     run: (g, p) => g.checkPendingOrderPromoStillValid(p.idToken, p.orderId),
   },
 };
@@ -106,8 +110,13 @@ Deno.serve(async (req) => {
     if (!spec) return fallback_("ไม่รองรับ action: " + action);
 
     // เริ่มโหลดสำเนาไปพร้อมกับตรวจโทเคน LINE (ไม่ต้องรอกัน) — ถ้าตรวจไม่ผ่านก็แค่ทิ้งผลโหลด
+    // แท็บฉบับย่อต้องรู้ LINE UID ของลูกค้า: ใช้ค่าจากโทเคนที่ยังไม่ตรวจไปก่อน แล้วเทียบกับผลตรวจอีกที
+    const usesSlim = spec.tabs.some((k) => k !== baseKey(k));
+    const ownerFor = (uid: string): Owner | null =>
+      usesSlim ? { uid, order_id: p.orderId ? String(p.orderId) : undefined } : null;
+    const guessUid = p.asUid ? String(p.asUid) : peekLineSub(String(p.idToken || ""));
     const tl = Date.now();
-    const loadingFirst = loadTabs(spec.tabs);
+    const loadingFirst = loadTabs(spec.tabs, ownerFor(guessUid));
     loadingFirst.catch(() => {});
 
     let profile: Record<string, unknown> | null = null;
@@ -125,6 +134,8 @@ Deno.serve(async (req) => {
     }
 
     let loaded = await loadingFirst;
+    const realUid = String(profile?.sub || "");
+    if (usesSlim && realUid !== guessUid) loaded = await loadTabs(spec.tabs, ownerFor(realUid));
     t.load = Date.now() - tl;
     t.prepare = loaded.ms;
     t.fetched = loaded.fetched;
@@ -132,13 +143,13 @@ Deno.serve(async (req) => {
     const tr = Date.now();
     const run = (tabs: Map<string, Tab>, keys: string[]) => {
       const { env, tracker } = createEnv({
-        tabs, loadedSources: new Set(keys), props: propsFrom(tabs.get(PROPS_KEY)), profile,
+        tabs, loadedSources: new Set(keys.map(baseKey)), props: propsFrom(tabs.get(PROPS_KEY)), profile,
       });
       return { result: spec.run(createGas(env), p), tracker, tabs };
     };
     let out = run(loaded.tabs, spec.tabs);
-    // ฟังก์ชันไปอ่านแท็บนอกรายการของ action: โหลดทุกแท็บแล้วรันใหม่
-    if (out.tracker.unsupported.some((u: string) => String(u).startsWith(NOT_LOADED))) {
+    // ฟังก์ชันไปอ่านแท็บนอกรายการของ action หรือใช้ช่องที่ซ่อนในฉบับย่อ: โหลดทุกแท็บแบบเต็มแล้วรันใหม่
+    if (out.tracker.unsupported.some((u: string) => String(u).startsWith(NOT_LOADED) || String(u).startsWith(SLIM_HIDDEN))) {
       const tf = Date.now();
       loaded = await loadTabs(TAB_KEYS);
       t.full = Date.now() - tf;
