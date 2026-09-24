@@ -980,7 +980,9 @@ function createDataCache_(storageKeyPrefix, ttlMs, fetcher){
 // Supabase รันฟังก์ชันเดิมของ Apps Script บนสำเนาชีต ผลจึงเหมือนกันทุกช่อง ถ้าสำเนายังไม่ทัน (เพิ่งมีคนเขียนชีต),
 // ต้องเขียนชีต, หรือเรียกไม่สำเร็จด้วยเหตุใดก็ตาม จะถาม Apps Script ตามเดิมทุกกรณี ลูกค้าไม่เจอ error เพิ่ม
 // ส่งพารามิเตอร์รูปแบบเดียวกับ callApi (query string) เป็น body แบบ text/plain จึงไม่มีคำขอ preflight
-var SUPABASE_READ_URL_ = 'https://qotlepudmkuniyjvqmle.supabase.co/functions/v1/shop-read';
+// forceFunctionRegion: ให้ฟังก์ชันรันที่โซลซึ่งเป็นที่ตั้งฐานข้อมูล (ถ้าไม่ระบุจะรันที่สิงคโปร์ตามตำแหน่งลูกค้า
+// แล้วต้องข้ามประเทศไปถามฐานข้อมูลทุกครั้ง ช้ากว่าราว 1 วินาที)
+var SUPABASE_READ_URL_ = 'https://qotlepudmkuniyjvqmle.supabase.co/functions/v1/shop-read?forceFunctionRegion=ap-northeast-2';
 var SUPABASE_READ_TIMEOUT_MS_ = 8000;
 function callApiFast_(action, payload){
   payload = payload || {};

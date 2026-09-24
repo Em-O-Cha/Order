@@ -15,10 +15,10 @@ export const CORS = {
   "Access-Control-Allow-Headers": "content-type, x-internal-key",
 };
 
-export function json(body: unknown, status = 200, source = "supabase"): Response {
+export function json(body: unknown, status = 200, source = "supabase", extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, "Content-Type": "application/json; charset=utf-8", "x-source": source },
+    headers: { ...CORS, "Content-Type": "application/json; charset=utf-8", "x-source": source, ...extraHeaders },
   });
 }
 
@@ -35,30 +35,42 @@ export async function rpc(fn: string, args: Record<string, unknown>): Promise<an
 // ---------------------------------------------------------------------------
 // สำเนาแท็บในหน่วยความจำ โหลดใหม่เฉพาะแท็บที่ read_at เปลี่ยน
 // ---------------------------------------------------------------------------
-type Version = { source: string; tab: string; spreadsheet_id: string; read_at: string; dirty: boolean };
 export type Tab = ReturnType<typeof prepareTab>;
 
 // ตัวโหลดต่อ Edge Function (แคชอยู่ข้ามคำขอในเครื่องเดียวกัน)
+// - เวอร์ชันแท็บ + เนื้อหาแท็บที่เปลี่ยนมาในคำขอเดียว (mirror_prepare)
+// - ขอเฉพาะบางแท็บได้ (loadTabs(keys)) เครื่องที่เพิ่งเปิดจะได้ไม่ต้องดึงทุกแท็บ
+// - คำขอที่เข้ามาพร้อมกันและขอชุดแท็บเดียวกันใช้ผลโหลดรอบเดียวกัน ไม่ต่างคนต่างโหลด
+export type Loaded = { tabs: Map<string, Tab>; dirty: Set<string>; ms: number; fetched: number; fetchMs: number };
 export function createTabLoader(tabKeys: string[]) {
   const tabCache = new Map<string, { readAt: string; tab: Tab }>();
-  return async function loadTabs(): Promise<{ tabs: Map<string, Tab>; dirty: Set<string> }> {
-    const versions: Version[] = await rpc("mirror_tab_versions", {});
-    const byKey = new Map(versions.map((v) => [v.source + "/" + v.tab, v]));
-    const stale = tabKeys.filter((k) => byKey.has(k) && tabCache.get(k)?.readAt !== byKey.get(k)!.read_at);
-    if (stale.length) {
-      const fresh = await rpc("mirror_get_tabs", { p_tabs: stale });
-      for (const [key, raw] of Object.entries(fresh as Record<string, any>)) {
-        tabCache.set(key, { readAt: raw.read_at, tab: prepareTab(key, raw) });
-      }
+  const inFlight = new Map<string, Promise<Loaded>>();
+  async function load(keys: string[]): Promise<Loaded> {
+    const t0 = Date.now();
+    const cached = Object.fromEntries(keys.filter((k) => tabCache.has(k)).map((k) => [k, tabCache.get(k)!.readAt]));
+    const r = await rpc("mirror_prepare", { p_tab_keys: keys, p_cached: cached });
+    const fetchMs = Date.now() - t0;
+    for (const [key, raw] of Object.entries(r.tabs as Record<string, any>)) {
+      tabCache.set(key, { readAt: raw.read_at, tab: prepareTab(key, raw) });
     }
+    const versions = r.versions as Record<string, { read_at: string; dirty: boolean }>;
     const tabs = new Map<string, Tab>();
-    for (const k of tabKeys) {
-      const v = byKey.get(k);
+    for (const k of keys) {
+      const v = versions[k];
       const c = tabCache.get(k);
       if (v && c && c.readAt === v.read_at) tabs.set(k, c.tab);
     }
-    const dirty = new Set(versions.filter((v) => v.dirty).map((v) => v.source + "/" + v.tab));
-    return { tabs, dirty };
+    const dirty = new Set(Object.keys(versions).filter((k) => versions[k].dirty));
+    return { tabs, dirty, ms: Date.now() - t0, fetched: Object.keys(r.tabs).length, fetchMs };
+  }
+  return function loadTabs(keys: string[] = tabKeys): Promise<Loaded> {
+    const id = keys.join("|");
+    let p = inFlight.get(id);
+    if (!p) {
+      p = load(keys).finally(() => inFlight.delete(id));
+      inFlight.set(id, p);
+    }
+    return p;
   };
 }
 
@@ -110,6 +122,7 @@ export async function isInternal(req: Request): Promise<boolean> {
 // รับได้ทั้ง query string ใน URL และใน body (แบบเดียวกับที่ส่งให้ Apps Script) หรือ body เป็น JSON
 export async function readParams(req: Request): Promise<P> {
   const out: P = Object.fromEntries(new URL(req.url).searchParams);
+  delete out.forceFunctionRegion; // ตัวเลือกภูมิภาคของ Supabase ใน URL ไม่ใช่พารามิเตอร์ของคำขอ
   if (req.method !== "GET") {
     const text = (await req.text()).trim();
     if (text.startsWith("{")) {
