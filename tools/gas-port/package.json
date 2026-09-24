@@ -1,0 +1,10 @@
+{
+  "name": "gas-port",
+  "private": true,
+  "type": "module",
+  "description": "ดึงฟังก์ชันจาก Members.gs มาใช้ใน Edge Function shop-read",
+  "dependencies": {
+    "acorn": "^8.12.0",
+    "acorn-walk": "^8.3.0"
+  }
+}
