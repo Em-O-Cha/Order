@@ -130,6 +130,11 @@ function orderWriteOne_(cfg, row, opts) {
     if (actual && actual.success) props.setProperty(doneKey, JSON.stringify(actual));
   }
 
+  // ยกเลิกออเดอร์ที่ถูกยกเลิกไปแล้ว (เช่น ยกเลิกผ่านระบบ LINE OA ระหว่างนั้น): ผลที่ลูกค้าต้องการเกิดแล้ว ถือว่าสำเร็จ
+  // ไม่ส่งข้อความ "ยกเลิกไม่สำเร็จ" ให้ลูกค้างงเปล่าๆ
+  if (kind === 'cancel' && actual && !actual.success && String(actual.error || '').indexOf('ถูกยกเลิกไปแล้ว') !== -1) {
+    actual = { success: true, alreadyCancelled: true };
+  }
   if (!actual || !actual.success) {
     var err = String((actual && actual.error) || 'ทำรายการไม่สำเร็จ');
     if (err.indexOf(ORDER_LOCK_BUSY_TEXT_) !== -1) {
