@@ -1,38 +1,57 @@
-// ดึงฟังก์ชันที่หน้าเว็บใช้อ่าน/คำนวณ ออกจาก Members.gs (Apps Script "Members LINE") มาเป็นโมดูลให้
-// Edge Function shop-read รันบนสำเนาชีตใน Supabase — โค้ดถูกคัดลอกตามต้นฉบับทุกตัวอักษร ไม่แปลงตรรกะ
+// ดึงฟังก์ชันจาก Members.gs (Apps Script "Members LINE") มาเป็นโมดูลให้ Edge Function รันบนสำเนาชีตใน
+// Supabase — โค้ดถูกคัดลอกตามต้นฉบับทุกตัวอักษร ไม่แปลงตรรกะ
 //
-// ใช้: npm install && node extract.mjs <path/to/Members.gs> ../../supabase/functions/shop-read/gas_port.js
+// ใช้: npm install && node extract.mjs <path/to/Members.gs> <output.js> [target]
+//   target shop-read (ค่าเริ่มต้น)  -> ../../supabase/functions/shop-read/gas_port.js
+//   target member-signup           -> ../../supabase/functions/member-signup/gas_port.js
 //
-// ทุกครั้งที่แก้ Members.gs ในส่วนที่เกี่ยวกับส่วนลด/สิทธิ์/แต้ม/ระดับสมาชิก ต้องรันสคริปต์นี้ใหม่แล้ว deploy
-// shop-read ใหม่ ไม่งั้นหน้าเว็บจะเห็นตรรกะเก่า (ตอนสั่งซื้อจริง Apps Script คำนวณซ้ำเสมอจึงไม่เก็บเงินผิด)
+// ทุกครั้งที่แก้ Members.gs ในส่วนที่ target นั้นใช้ ต้องรันสคริปต์นี้ใหม่แล้ว deploy Edge Function นั้นใหม่
+// shop-read: ส่วนลด/สิทธิ์/แต้ม/ระดับสมาชิก (ตอนสั่งซื้อจริง Apps Script คำนวณซ้ำเสมอจึงไม่เก็บเงินผิด)
+// member-signup: registerMember และทุกฟังก์ชันที่มันเรียก (เงื่อนไขการสมัคร สิทธิ์/แต้มต้อนรับ ผู้แนะนำ)
 
 import fs from 'node:fs';
 import * as acorn from 'acorn';
 import * as walk from 'acorn-walk';
 
-// action ที่ Edge Function ให้บริการ (ชื่อฟังก์ชันใน Members.gs)
-const ROOTS = [
-  'getShopBootstrap', 'getPrivilegesPanelData', 'checkMemberStatus', 'getMyPrivileges',
-  'getPointsHistory', 'getActiveCoupons', 'getReferralPublicStatus', 'getMyShippingAddress',
-  'getMyOrderHistory', 'checkShopDiscounts', 'checkPendingOrderPromoStillValid',
-  'getTierConfig_', 'getSignupBonusPoints_', 'getSignupPrivilegeConfig_', 'getPointsRedeemConfig_',
-  'decodeItemsB64_',
-];
-
-// ฟังก์ชันที่ตัวจำลองเขียนแทน (ตรวจโทเคน LINE ทำใน Edge Function แล้ว, log ส่งไป console แทนชีต)
-const REPLACED = new Set([
-  'verifyLineIdToken_', 'logErrorToSheet_', 'ensureDebugLogSheet_', 'logSlowAction_',
-  'logRegistrationQueueWait_',
-]);
+// ROOTS: ฟังก์ชันใน Members.gs ที่ Edge Function เรียก
+// REPLACED: ฟังก์ชันที่ตัวจำลองส่งเข้ามาแทน (ไม่คัดลอกโค้ดเดิม)
+const TARGETS = {
+  'shop-read': {
+    ROOTS: [
+      'getShopBootstrap', 'getPrivilegesPanelData', 'checkMemberStatus', 'getMyPrivileges',
+      'getPointsHistory', 'getActiveCoupons', 'getReferralPublicStatus', 'getMyShippingAddress',
+      'getMyOrderHistory', 'checkShopDiscounts', 'checkPendingOrderPromoStillValid',
+      'getTierConfig_', 'getSignupBonusPoints_', 'getSignupPrivilegeConfig_', 'getPointsRedeemConfig_',
+      'decodeItemsB64_',
+    ],
+    // ตรวจโทเคน LINE ทำใน Edge Function แล้ว, log ส่งไป console แทนชีต
+    REPLACED: [
+      'verifyLineIdToken_', 'logErrorToSheet_', 'ensureDebugLogSheet_', 'logSlowAction_',
+      'logRegistrationQueueWait_',
+    ],
+  },
+  'member-signup': {
+    ROOTS: ['registerMember'],
+    // นอกจากชุดเดียวกับ shop-read: ส่งข้อความ LINE และให้รางวัลผู้แนะนำ เป็นงานหลังสมัครที่ registerMember
+    // ทำหลังปล่อยล็อกแล้ว — Edge Function จดไว้เฉยๆ ให้ Apps Script ทำจริงหลังเขียนชีตเสร็จ (ส่งครั้งเดียว)
+    REPLACED: [
+      'verifyLineIdToken_', 'logErrorToSheet_', 'ensureDebugLogSheet_', 'logSlowAction_',
+      'logRegistrationQueueWait_', 'sendLineMessages_', 'grantReferralRewardOnSignupIfNeeded_',
+    ],
+  },
+};
 
 // ตัวแปรที่ห้ามติดไปด้วย (ความลับ) — ถ้าโค้ดที่ดึงมาอ้างถึง ให้หยุดทำงานแทนที่จะคัดลอก
 const FORBIDDEN = new Set(['LINE_CHANNEL_ACCESS_TOKEN', 'ADMIN_PIN']);
 
-const [,, inputPath, outputPath] = process.argv;
-if (!inputPath || !outputPath) {
-  console.error('ใช้: node extract.mjs <Members.gs> <output.js>');
+const [,, inputPath, outputPath, targetName = 'shop-read'] = process.argv;
+const target = TARGETS[targetName];
+if (!inputPath || !outputPath || !target) {
+  console.error('ใช้: node extract.mjs <Members.gs> <output.js> [' + Object.keys(TARGETS).join(' | ') + ']');
   process.exit(1);
 }
+const ROOTS = target.ROOTS;
+const REPLACED = new Set(target.REPLACED);
 const src = fs.readFileSync(inputPath, 'utf8');
 const ast = acorn.parse(src, { ecmaVersion: 2022, sourceType: 'script' });
 
@@ -80,12 +99,12 @@ const chosen = items.filter((it) => needed.has(it));
 const body = chosen.map((it) => src.slice(it.node.start, it.node.end)).join('\n\n');
 const exported = ROOTS.join(', ');
 
-const out = `// สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs — ห้ามแก้ไฟล์นี้ตรงๆ ให้รันสคริปต์ใหม่แทน
-// ${chosen.length} รายการ (${chosen.filter((it) => it.node.type === 'FunctionDeclaration').length} ฟังก์ชัน)
+const out = `// สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target ${targetName}) — ห้ามแก้ไฟล์นี้ตรงๆ
+// ให้รันสคริปต์ใหม่แทน — ${chosen.length} รายการ (${chosen.filter((it) => it.node.type === 'FunctionDeclaration').length} ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
-          verifyLineIdToken_, logErrorToSheet_, ensureDebugLogSheet_, logSlowAction_, logRegistrationQueueWait_ } = env;
+          ${[...REPLACED].join(', ')} } = env;
 
 ${body}
 

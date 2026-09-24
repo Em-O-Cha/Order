@@ -5,6 +5,10 @@
 //
 // การเขียนใดๆ (setValue, appendRow, insertSheet, ...) ไม่ทำจริง แต่ถูกจดไว้ใน tracker.writes และเมธอดที่ไม่รู้จัก
 // จะถูกจดไว้ใน tracker.unsupported — Edge Function จะไม่ใช้ผลลัพธ์นั้นและให้หน้าเว็บถาม Apps Script แทน
+//
+// โหมดบันทึกการเขียน (createEnv({ journal: true })): การเขียนมีผลกับสำเนาในหน่วยความจำของคำขอนั้น
+// (อ่านซ้ำแล้วเห็นค่าใหม่เหมือนชีตจริง ไม่แตะแคชที่ใช้ร่วมกัน) และถูกจดครบทุกค่าไว้ใน tracker.journal
+// เพื่อนำไปเทียบกับ/เขียนลงชีตจริงภายหลัง การเขียนที่เลื่อนแถว (insertRow/deleteRow/sort) ยังไม่รองรับ
 // ใช้ได้ทั้ง Deno (Edge Function) และ Node (ทดสอบ)
 
 const BKK_OFFSET_MS = 7 * 3600 * 1000;
@@ -153,12 +157,16 @@ export function prepareTab(key, raw) {
     if (rowNum > lastRow) lastRow = rowNum;
   }
   const rawHeaders = Array.isArray(raw.raw_headers) ? raw.raw_headers : (raw.headers || []);
+  // แท็บแบบ meta_only (signup_prepare): ได้แค่หัวตาราง + แถวสุดท้าย ใช้กับโค้ดที่แค่ต่อท้ายแท็บ
+  // อ่านแถวข้อมูลเดิมไม่ได้ (ตัวจำลองจะปฏิเสธแทนการคืนค่าว่างผิดๆ)
+  const metaOnly = !!raw.meta_only;
+  if (metaOnly && raw.last_row) lastRow = Math.max(lastRow, raw.last_row);
   if (!lastRow && rawHeaders.length) lastRow = 1;
   const slash = key.indexOf('/');
   return {
     key, source: key.slice(0, slash), name: key.slice(slash + 1),
     spreadsheetId: raw.spreadsheet_id, headers: raw.headers || [], rawHeaders, rows, lastRow,
-    lastColumn: rawHeaders.length,
+    lastColumn: rawHeaders.length, metaOnly, metaLastRow: metaOnly ? lastRow : 0,
   };
 }
 
@@ -191,17 +199,49 @@ const SHEET_WRITE_METHODS = ['appendRow', 'insertRowAfter', 'insertRowBefore', '
   'deleteRow', 'deleteRows', 'setFrozenRows', 'setColumnWidth', 'hideColumns', 'autoResizeColumns', 'setName',
   'insertColumnAfter', 'insertColumns', 'sort'];
 
-function makeRange(tab, tracker, row, col, numRows, numCols) {
+// โหมดบันทึกการเขียน: เมธอดที่เปลี่ยนค่าในเซลล์ (มีผลกับการอ่านครั้งถัดไป)
+const JOURNAL_VALUE_METHODS = new Set(['setValue', 'setValues', 'clearContent']);
+// เมธอดรูปแบบ/การแสดงผล: จดไว้อย่างเดียว ไม่เปลี่ยนค่า
+const JOURNAL_FORMAT_METHODS = new Set(['setNumberFormat', 'setNumberFormats', 'setFontWeight', 'setBackground',
+  'setNote', 'setFrozenRows', 'setColumnWidth', 'hideColumns', 'autoResizeColumns']);
+
+// ค่าในบันทึกการเขียน: Date เป็น { $date: ISO } ที่เหลือเป็นค่า JSON ตามจริง
+function journalValue(v) {
+  if (v instanceof RealDate) return { $date: isNaN(v.getTime()) ? null : v.toISOString() };
+  if (v === undefined) return null;
+  return v;
+}
+// ค่าที่เก็บในสำเนา: รูปแบบเดียวกับ mirror.rows (Date เป็น ISO, ช่องว่างไม่เก็บ)
+function storedValue(v) {
+  if (v instanceof RealDate) return isNaN(v.getTime()) ? '' : v.toISOString();
+  if (v === undefined || v === null) return '';
+  return v;
+}
+
+// ctx: { tabs (Map ของคำขอนี้), tracker, journal, writable(key) }
+function makeRange(key, ctx, row, col, numRows, numCols) {
+  const { tracker } = ctx;
+  const tab = () => ctx.tabs.get(key);
   const range = {
     getValues() {
+      const t = tab();
+      if (t.metaOnly) {
+        for (let r = Math.max(row, 2); r < row + numRows && r <= t.metaLastRow; r++) {
+          if (!t.rows.has(r)) {
+            const msg = `gas_runtime: ${key} โหลดมาแค่แถวสุดท้าย อ่านแถว ${r} ไม่ได้`;
+            tracker.unsupported.push(msg);
+            throw new UnsupportedError(msg);
+          }
+        }
+      }
       const out = [];
       for (let r = row; r < row + numRows; r++) {
         const line = new Array(numCols);
-        const data = r === 1 ? null : tab.rows.get(r);
+        const data = r === 1 ? null : t.rows.get(r);
         for (let c = col; c < col + numCols; c++) {
           let v;
-          if (r === 1) v = tab.rawHeaders[c - 1];
-          else v = data ? data[tab.headers[c - 1]] : undefined;
+          if (r === 1) v = t.rawHeaders[c - 1];
+          else v = data ? data[t.headers[c - 1]] : undefined;
           line[c - col] = cellValue(v);
         }
         out.push(line);
@@ -212,28 +252,151 @@ function makeRange(tab, tracker, row, col, numRows, numCols) {
     getRow: () => row, getColumn: () => col, getNumRows: () => numRows, getNumColumns: () => numCols,
     getLastRow: () => row + numRows - 1, getLastColumn: () => col + numCols - 1,
   };
-  for (const m of WRITE_METHODS) range[m] = () => { tracker.writes.push(`${tab.key} range.${m}`); return range; };
+  for (const m of WRITE_METHODS) {
+    range[m] = (...args) => {
+      tracker.writes.push(`${key} range.${m}`);
+      if (!ctx.journal) return range;
+      if (JOURNAL_VALUE_METHODS.has(m)) {
+        let values;
+        if (m === 'setValues') values = args[0];
+        else if (m === 'setValue') values = Array.from({ length: numRows }, () => new Array(numCols).fill(args[0]));
+        else values = Array.from({ length: numRows }, () => new Array(numCols).fill(''));
+        if (!Array.isArray(values) || values.length !== numRows || values.some((l) => !Array.isArray(l) || l.length !== numCols)) {
+          const msg = `gas_runtime: ${key} range.${m} ขนาดข้อมูลไม่ตรงกับช่วง`;
+          tracker.unsupported.push(msg);
+          throw new UnsupportedError(msg);
+        }
+        applyValues(ctx, key, row, col, values);
+        tracker.journal.push({ tab: key, op: 'setValues', row, col, values: values.map((l) => l.map(journalValue)) });
+      } else if (JOURNAL_FORMAT_METHODS.has(m)) {
+        tracker.journal.push({ tab: key, op: m, row, col, numRows, numCols, args: args.map(journalValue) });
+      } else {
+        const msg = `gas_runtime: ${key} range.${m} ยังไม่รองรับในโหมดบันทึกการเขียน`;
+        tracker.unsupported.push(msg);
+        throw new UnsupportedError(msg);
+      }
+      return range;
+    };
+  }
   return guard(range, 'Range', tracker);
 }
 
-function makeSheet(tab, tracker) {
-  tracker.accessed.add(tab.key);
+// ctx.writable(key): คืนแท็บที่แก้ได้ของคำขอนี้ (คัดลอกก่อนแก้ครั้งแรก จึงไม่กระทบแคชที่ใช้ร่วมกันระหว่างคำขอ)
+function attachWritable(ctx) {
+  ctx.writable = (key) => {
+    if (!ctx.cloned.has(key)) {
+      const t = ctx.tabs.get(key);
+      ctx.tabs.set(key, { ...t, rows: new Map(t.rows), headers: [...t.headers], rawHeaders: [...t.rawHeaders] });
+      ctx.cloned.add(key);
+    }
+    return ctx.tabs.get(key);
+  };
+  return ctx;
+}
+
+// ค่าจาก journal ({ $date: ISO } -> Date) ก่อนเขียนซ้ำ
+function fromJournal(v) {
+  if (v && typeof v === 'object' && !Array.isArray(v) && Object.prototype.hasOwnProperty.call(v, '$date')) {
+    return v.$date ? new RealDate(v.$date) : '';
+  }
+  return v;
+}
+
+// เล่น journal ของการสมัครที่ Supabase รับแล้วแต่ยังไม่อยู่ในสำเนาทับลงไป (ตามลำดับเวลา) ให้การเช็คซ้ำและการออก
+// รหัสสมาชิกนับรวมด้วย — แถวที่เกิน base_rows (ต่อท้าย) จะต่อท้ายแท็บปัจจุบันตามลำดับเดิม, แถวเดิมแก้ที่เดิม
+// pending: [{ journal, base_rows }] คืน Map ใหม่ (แท็บที่ไม่ถูกแตะใช้ object เดิม)
+export function overlayJournals(tabs, pending) {
+  const ctx = attachWritable({ tabs: new Map(tabs), cloned: new Set() });
+  for (const p of pending || []) {
+    const offsets = {};
+    for (const e of p.journal || []) {
+      if ((e.op !== 'setValues' && e.op !== 'appendRow') || !ctx.tabs.has(e.tab)) continue;
+      const base = (p.base_rows && p.base_rows[e.tab]) || 0;
+      if (!(e.tab in offsets)) offsets[e.tab] = ctx.tabs.get(e.tab).lastRow - base;
+      const values = (e.op === 'appendRow' ? [e.values] : e.values).map((line) => line.map(fromJournal));
+      const row = e.row > base ? e.row + offsets[e.tab] : e.row;
+      applyValues(ctx, e.tab, row, e.op === 'appendRow' ? 1 : e.col, values);
+    }
+  }
+  return ctx.tabs;
+}
+
+// เขียนค่าลงสำเนาของคำขอนี้
+function applyValues(ctx, key, row, col, values) {
+  const t = ctx.writable(key);
+  for (let i = 0; i < values.length; i++) {
+    const r = row + i;
+    let data = null;
+    if (r !== 1) data = { ...(t.rows.get(r) || {}) };
+    for (let j = 0; j < values[i].length; j++) {
+      const c = col + j;
+      const v = storedValue(values[i][j]);
+      if (r === 1) {
+        t.rawHeaders[c - 1] = v;
+        if (t.headers[c - 1] === undefined) t.headers[c - 1] = String(v);
+      } else {
+        if (t.headers[c - 1] === undefined) t.headers[c - 1] = '__col' + c;
+        if (v === '') delete data[t.headers[c - 1]];
+        else data[t.headers[c - 1]] = v;
+      }
+      if (v !== '' && c > t.lastColumn) t.lastColumn = c;
+    }
+    if (r === 1) {
+      if (r > t.lastRow) t.lastRow = r;
+      continue;
+    }
+    if (Object.keys(data).length) {
+      t.rows.set(r, data);
+      if (r > t.lastRow) t.lastRow = r;
+    } else {
+      t.rows.delete(r);
+      if (r === t.lastRow) {
+        let last = 1;
+        for (const k of t.rows.keys()) if (k > last) last = k;
+        t.lastRow = t.rawHeaders.length ? last : (t.rows.size ? last : 0);
+      }
+    }
+  }
+}
+
+function makeSheet(key, ctx) {
+  const { tracker } = ctx;
+  tracker.accessed.add(key);
+  const tab = () => ctx.tabs.get(key);
   const sheet = {
-    getName: () => tab.name,
-    getLastRow: () => tab.lastRow,
-    getLastColumn: () => tab.lastColumn,
-    getMaxRows: () => Math.max(tab.lastRow, 1000),
-    getMaxColumns: () => Math.max(tab.lastColumn, 26),
+    getName: () => tab().name,
+    getLastRow: () => tab().lastRow,
+    getLastColumn: () => tab().lastColumn,
+    getMaxRows: () => Math.max(tab().lastRow, 1000),
+    getMaxColumns: () => Math.max(tab().lastColumn, 26),
     getRange(a, b, c, d) {
       if (typeof a !== 'number') {
         tracker.unsupported.push('gas_runtime: getRange แบบ A1 ยังไม่รองรับ');
         throw new UnsupportedError('gas_runtime: getRange แบบ A1 ยังไม่รองรับ');
       }
-      return makeRange(tab, tracker, a, b, c === undefined ? 1 : c, d === undefined ? 1 : d);
+      return makeRange(key, ctx, a, b, c === undefined ? 1 : c, d === undefined ? 1 : d);
     },
-    getDataRange() { return makeRange(tab, tracker, 1, 1, Math.max(tab.lastRow, 1), Math.max(tab.lastColumn, 1)); },
+    getDataRange() { return makeRange(key, ctx, 1, 1, Math.max(tab().lastRow, 1), Math.max(tab().lastColumn, 1)); },
   };
-  for (const m of SHEET_WRITE_METHODS) sheet[m] = () => { tracker.writes.push(`${tab.key} sheet.${m}`); return sheet; };
+  for (const m of SHEET_WRITE_METHODS) {
+    sheet[m] = (...args) => {
+      tracker.writes.push(`${key} sheet.${m}`);
+      if (!ctx.journal) return sheet;
+      if (m === 'appendRow') {
+        const values = Array.isArray(args[0]) ? args[0] : [];
+        const row = tab().lastRow + 1;
+        applyValues(ctx, key, row, 1, [values]);
+        tracker.journal.push({ tab: key, op: 'appendRow', row, values: values.map(journalValue) });
+      } else if (JOURNAL_FORMAT_METHODS.has(m)) {
+        tracker.journal.push({ tab: key, op: m, args: args.map(journalValue) });
+      } else {
+        const msg = `gas_runtime: ${key} sheet.${m} ยังไม่รองรับในโหมดบันทึกการเขียน`;
+        tracker.unsupported.push(msg);
+        throw new UnsupportedError(msg);
+      }
+      return sheet;
+    };
+  }
   return guard(sheet, 'Sheet', tracker);
 }
 
@@ -247,9 +410,11 @@ function emptyTab(source, name) {
 // ---------------------------------------------------------------------------
 // tabs: Map<'source/tab', prepared tab>, props: object ของ Script Properties ที่คัดลอกมา
 // profile: ผลตรวจโทเคน LINE (รูปแบบเดียวกับ LINE verify API)
-export function createEnv({ tabs, loadedSources, props, profile }) {
+// journal: เปิดโหมดบันทึกการเขียน (ดูหัวไฟล์) — ผลอยู่ใน tracker.journal
+export function createEnv({ tabs, loadedSources, props, profile, journal = false }) {
   // loadedSources: แท็บทั้งหมดที่ขอโหลดมา (แท็บที่ขอแล้วแต่ไม่มีในสำเนา = ไม่มีอยู่จริงในชีต)
-  const tracker = { accessed: new Set(), writes: [], unsupported: [], logs: [] };
+  const tracker = { accessed: new Set(), writes: [], unsupported: [], logs: [], journal: [] };
+  const ctx = attachWritable({ tabs: new Map(tabs), tracker, journal, cloned: new Set() });
   const sourcesById = new Map();
   for (const tab of tabs.values()) if (tab.spreadsheetId) sourcesById.set(tab.spreadsheetId, tab.source);
 
@@ -263,8 +428,7 @@ export function createEnv({ tabs, loadedSources, props, profile }) {
       getId: () => id,
       getSheetByName(name) {
         const key = source + '/' + name;
-        const tab = tabs.get(key);
-        if (tab) return makeSheet(tab, tracker);
+        if (ctx.tabs.has(key)) return makeSheet(key, ctx);
         // แท็บที่ไม่ได้โหลดมา: ถ้ามีอยู่จริงในสำเนาแต่ไม่ได้โหลด ถือว่ารองรับไม่ครบ ให้ถาม Apps Script แทน
         if (!loadedSources.has(key)) {
           tracker.unsupported.push('gas_runtime: ไม่ได้โหลดแท็บ ' + key);
@@ -273,8 +437,14 @@ export function createEnv({ tabs, loadedSources, props, profile }) {
         return null;
       },
       insertSheet(name) {
-        tracker.writes.push(`${source}/${name} insertSheet`);
-        return makeSheet(emptyTab(source, name), tracker);
+        const key = source + '/' + name;
+        tracker.writes.push(`${key} insertSheet`);
+        const tab = emptyTab(source, name);
+        tab.spreadsheetId = id;
+        ctx.tabs.set(key, tab);
+        ctx.cloned.add(key);
+        if (journal) tracker.journal.push({ tab: key, op: 'insertSheet' });
+        return makeSheet(key, ctx);
       },
     };
     return guard(ss, 'Spreadsheet', tracker);

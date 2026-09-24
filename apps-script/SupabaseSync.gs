@@ -39,12 +39,15 @@ var MIRROR_SKIP_TABS_ = {
 };
 
 // action ของ doGet/doPost ที่เขียนชีต -> แท็บที่ต้องส่งต่อ (ส่งเกินได้ แท็บที่ไม่เปลี่ยนถูกข้ามด้วย hash)
+// ธงย่อย "ข้อมูลตัวตนสมาชิกเปลี่ยน" (สมาชิกใหม่ / เปลี่ยนเบอร์-ชื่อ) — การสมัครผ่าน Supabase ถอยไป Apps Script
+// เฉพาะตอนธงนี้ค้าง ไม่ใช่ทุกครั้งที่แต้ม/ยอดซื้อในแท็บ Members เปลี่ยนจากออเดอร์ (ส่งสำเนาใช้แท็บ members/Members)
+var MIRROR_IDENTITY_KEY_ = 'members/Members#identity';
 var MIRROR_ORDER_TABS_ = [
   'revenue/Revenue', 'members/Members', 'members/Member_Privileges', 'members/Points_Log',
   'members/Coupons', 'members/Purchase_Referral_Log'
 ];
 var MIRROR_SIGNUP_TABS_ = [
-  'members/Members', 'members/Registration_Queue', 'members/Member_Privileges',
+  'members/Members', MIRROR_IDENTITY_KEY_, 'members/Registration_Queue', 'members/Member_Privileges',
   'members/Points_Log', 'members/Referral_Log'
 ];
 // Script Properties ที่ฟังก์ชันอ่าน/คำนวณใช้ (คัดลอกเฉพาะรายการนี้เท่านั้น ห้ามใส่ token/PIN/key)
@@ -58,7 +61,7 @@ var MIRROR_WRITE_ACTIONS_ = {
   registerMember:            MIRROR_SIGNUP_TABS_,
   enqueueMemberRegistration: ['members/Registration_Queue'],
   processRegistrationQueue:  MIRROR_SIGNUP_TABS_,
-  updateMemberProfile:       ['members/Members', 'revenue/Revenue'],
+  updateMemberProfile:       ['members/Members', MIRROR_IDENTITY_KEY_, 'revenue/Revenue'],
   createShopOrder:           MIRROR_ORDER_TABS_,
   cancelShopOrder:           MIRROR_ORDER_TABS_,
   confirmPendingOrderRecalc: MIRROR_ORDER_TABS_,
@@ -171,7 +174,11 @@ function mirrorSyncTabsNow_(tabKeys, touch) {
   var cfg = mirrorConfig_();
   if (!cfg) return [];
   var bySource = {};
+  var seen = {};
   tabKeys.forEach(function (k) {
+    k = k.split('#')[0]; // ธงย่อย (เช่น members/Members#identity) ส่งสำเนาทั้งแท็บ
+    if (seen[k]) return;
+    seen[k] = true;
     var i = k.indexOf('/');
     var source = k.substring(0, i), tab = k.substring(i + 1);
     if (!MIRROR_SOURCES_[source] || MIRROR_SKIP_TABS_[k]) return;
