@@ -8,6 +8,9 @@
 // ด้วยข้อมูลชุดเดียวกัน (ออกเลข REV ตัดสิทธิ์ นับคูปอง แจ้งเตือน เหมือนสั่งซื้อทาง Apps Script ทุกอย่าง) แล้วส่ง
 // เลข REV + ผลจริงกลับไปให้หน้าเว็บ
 //
+// ขั้น 5: แนบสลิป / ยกเลิกออเดอร์ ใช้คิวเดียวกัน (kind 'slip' / 'cancel') — ตัวเขียนรัน uploadShopSlip /
+// cancelShopOrder ตัวเดิมบนชีตจริง ไม่สำเร็จ -> แจ้งลูกค้าทาง LINE (ถ้ารู้ LINE UID) และแจ้งกลุ่มแอดมิน
+//
 // ส่วนที่ 1 ตัวเขียน
 //   - เขียนตามลำดับที่ Supabase รับเสมอ (คำสั่งซื้อหลังถูกคำนวณโดยถือว่าคำสั่งซื้อก่อนหน้าลงชีตแล้ว)
 //   - เขียนซ้ำไม่ได้: จำผลไว้ใน Script Properties ทันทีหลัง createShopOrder สำเร็จ ถ้ารายงานกลับไม่สำเร็จ รอบถัดไป
@@ -25,7 +28,7 @@ var ORDER_EDGE_PATH_ = '/functions/v1/shop-order?forceFunctionRegion=ap-northeas
 var ORDER_BACKUP_EVERY_SEC_ = 60;
 var ORDER_BACKUP_CACHE_KEY_ = 'order_writer_backup';
 var ORDER_DONE_PREFIX_ = 'order_done:';              // + id คำสั่งซื้อ -> ผล createShopOrder (JSON)
-var ORDER_LOCK_BUSY_TEXT_ = 'ระบบมีคนสั่งซื้อพร้อมกันหลายคน';
+var ORDER_LOCK_BUSY_TEXT_ = 'พร้อมกันหลายคน';        // ข้อความ "ระบบไม่ว่าง" ของ createShopOrder/uploadShopSlip/cancelShopOrder
 var ORDER_MAX_ATTEMPTS_ = 5;
 // ช่องที่ลูกค้าเห็น — ถ้าผลจริงต่างจากที่ Supabase คำนวณไว้ในช่องเหล่านี้ = changed
 var ORDER_COMPARE_FIELDS_ = ['subtotal', 'discount', 'cashDiscount', 'shippingCost', 'codFee', 'isCod', 'totalAmount',
@@ -108,51 +111,88 @@ function orderWritePending_(opts) {
   return { success: true, processed: results.length, results: results };
 }
 
-// รัน/เก็บผล 1 คำสั่งซื้อ คืน { ok, written, stop, id, orderId, changed, error }
+// รัน/เก็บผล 1 รายการในคิว (คำสั่งซื้อ / แนบสลิป / ยกเลิก) คืน { ok, written, stop, id, orderId, changed, error }
 function orderWriteOne_(cfg, row, opts) {
+  var kind = row.kind || 'order';
   var props = PropertiesService.getScriptProperties();
   var doneKey = ORDER_DONE_PREFIX_ + row.id;
   var actual = null, note = '';
   var done = props.getProperty(doneKey);
   if (done) {
     actual = JSON.parse(done);
-    note = 'สั่งซื้อไว้แล้ว รายงานผลต่อ';
+    note = 'ทำไว้แล้ว รายงานผลต่อ';
   } else if (row.attempts > 1) {
-    actual = orderFindWritten_(row);
-    if (actual) note = 'พบออเดอร์ในชีตแล้ว (หยุดกลางทางรอบก่อน) ไม่สั่งซ้ำ';
+    actual = kind === 'order' ? orderFindWritten_(row) : orderFindActionDone_(row);
+    if (actual) note = 'พบในชีตแล้ว (หยุดกลางทางรอบก่อน) ไม่ทำซ้ำ';
   }
   if (!actual) {
-    var req = row.request || {};
-    var token = 'supabase-order:' + row.id;
-    ORDER_INJECT_ = { token: token, profile: { sub: row.line_uid, name: req.profileName || '', picture: '' } };
-    try {
-      // ลำดับ/ค่าเหมือน doGet ของ Members.gs (existingOrderId ว่างเสมอ: แก้ไขออเดอร์ใช้ทางเดิม)
-      actual = createShopOrder(token, decodeItemsB64_(req.itemsB64), req.paymentMethod, req.couponCode,
-        req.shippingAddress, req.province, req.excludePrivilegeName, '', req.purchaseReferrerCode, req.pointsToRedeem);
-    } finally {
-      ORDER_INJECT_ = null;
-    }
+    actual = orderRunOriginal_(row);
     if (actual && actual.success) props.setProperty(doneKey, JSON.stringify(actual));
   }
 
   if (!actual || !actual.success) {
-    var err = String((actual && actual.error) || 'สั่งซื้อไม่สำเร็จ');
+    var err = String((actual && actual.error) || 'ทำรายการไม่สำเร็จ');
     if (err.indexOf(ORDER_LOCK_BUSY_TEXT_) !== -1) {
       orderGiveUpOrRelease_(cfg, row, err);
       return { ok: false, id: row.id, error: err, stop: true };
     }
     signupRpc_(cfg, 'order_update', { p_id: row.id, p_patch: { status: 'failed', last_error: err, result: actual || null } });
+    if (kind !== 'order' && !opts.tests) orderNotifyActionFailed_(row, err);
     return { ok: false, id: row.id, error: err };
   }
 
-  var changed = orderChanged_(row.predicted, actual);
-  // ตั้งธงข้อมูลเปลี่ยนก่อนรายงาน: คำสั่งซื้อถัดไปจะไม่คำนวณจากสำเนาเก่า (ช่วงนี้ถอยไปทาง Apps Script)
+  var changed = kind === 'order' ? orderChanged_(row.predicted, actual) : false;
+  var orderId = kind === 'order' ? String(actual.orderId) : String(row.order_id);
+  // ตั้งธงข้อมูลเปลี่ยนก่อนรายงาน: รายการถัดไปจะไม่คำนวณจากสำเนาเก่า (ช่วงนี้ถอยไปทาง Apps Script)
   if (!opts.tests) mirrorMarkDirtyRemote_(cfg, MIRROR_ORDER_TABS_);
   signupRpc_(cfg, 'order_update', { p_id: row.id, p_patch: {
-    status: 'written', revenue_id: String(actual.orderId), result: actual, changed: changed } });
+    status: 'written', revenue_id: orderId, result: actual, changed: changed } });
   props.deleteProperty(doneKey);
-  if (changed) Logger.log('order ' + row.id + ' ' + actual.orderId + ': ยอดจริงต่างจากที่แสดงไว้');
-  return { ok: true, written: true, id: row.id, orderId: String(actual.orderId), changed: changed, note: note };
+  if (changed) Logger.log('order ' + row.id + ' ' + orderId + ': ยอดจริงต่างจากที่แสดงไว้');
+  return { ok: true, written: true, id: row.id, kind: kind, orderId: orderId, changed: changed, note: note };
+}
+
+// รันฟังก์ชันตัวเดิมด้วยค่าเดียวกับ doGet/doPost ของ Members.gs
+function orderRunOriginal_(row) {
+  var kind = row.kind || 'order';
+  var req = row.request || {};
+  if (kind === 'slip') return uploadShopSlip(row.order_id, row.payload, req.fileName, req.mimeType);
+  var token = 'supabase-order:' + row.id;
+  ORDER_INJECT_ = { token: token, profile: { sub: row.line_uid, name: req.profileName || '', picture: '' } };
+  try {
+    if (kind === 'cancel') return cancelShopOrder(token, row.order_id);
+    // existingOrderId ว่างเสมอ: แก้ไขออเดอร์ใช้ทางเดิม
+    return createShopOrder(token, decodeItemsB64_(req.itemsB64), req.paymentMethod, req.couponCode,
+      req.shippingAddress, req.province, req.excludePrivilegeName, '', req.purchaseReferrerCode, req.pointsToRedeem);
+  } finally {
+    ORDER_INJECT_ = null;
+  }
+}
+
+// หยุดกลางทางรอบก่อน (แนบสลิป/ยกเลิก): ดูในชีตว่าทำไปแล้วหรือยัง
+function orderFindActionDone_(row) {
+  var sheet = ensureRevenueSheet_();
+  var target = findRevenueRowByOrderId_(sheet, row.order_id);
+  if (target === -1) return null;
+  var v = sheet.getRange(target, 1, 1, 20).getValues()[0];
+  if (row.kind === 'cancel' && String(v[2]) === CANCELLED_ORDER_MARK_) return { success: true, recovered: true };
+  if (row.kind === 'slip' && v[10] && String(v[19]).indexOf('รอตรวจสอบสลิป') !== -1) {
+    return { success: true, slipUrl: String(v[10]), rowIndex: target, recovered: true };
+  }
+  return null;
+}
+
+// แนบสลิป/ยกเลิกที่หน้าเว็บบอกลูกค้าว่าสำเร็จไปแล้ว แต่ลงชีตไม่ได้ (เงื่อนไขเปลี่ยนระหว่างนั้น): แจ้งลูกค้า + แอดมิน
+function orderNotifyActionFailed_(row, err) {
+  var what = row.kind === 'slip' ? 'แนบสลิป' : 'ยกเลิกคำสั่งซื้อ';
+  if (row.line_uid) {
+    try {
+      sendLineMessages_(row.line_uid, [{ type: 'text', text: '⚠️ ' + what + ' ' + row.order_id + ' ไม่สำเร็จ: ' + err +
+        (row.kind === 'slip' ? '\nกรุณาแนบสลิปอีกครั้ง หรือติดต่อทีมงาน 🙏' : '\nกรุณาติดต่อทีมงาน 🙏') }]);
+    } catch (e) {}
+  }
+  orderAlertAdmin_(what + ' ' + row.order_id + ' ผ่าน Supabase ลงชีตไม่สำเร็จ — ' + err +
+    (row.line_uid ? '' : ' (ไม่ทราบ LINE ลูกค้า กรุณาติดต่อลูกค้า)'));
 }
 
 // ผิดพลาด/ระบบไม่ว่าง: ปล่อยให้รอบถัดไปลองใหม่ ครบ ORDER_MAX_ATTEMPTS_ ครั้งแล้วเลิก (failed + แจ้งกลุ่มแอดมิน)
@@ -273,7 +313,8 @@ function orderWriterTest() {
   mirrorSyncTabsNow_(ORDER_MIRROR_TABS_, true);
 
   var saved = { members: MEMBERS_SHEET_ID, revenue: REVENUE_SHEET_ID_SHOP, master: MASTER_SHEET_ID_SHOP,
-                send: sendLineMessages_ };
+                send: sendLineMessages_, slipFolder: SLIP_FOLDER_ID_SHOP, finalize: scheduleSlipFinalize_ };
+  var finalized = [];
   var copies = [], sent = [], lines = [], fails = 0;
   function check(label, ok, detail) {
     if (!ok) fails++;
@@ -293,8 +334,13 @@ function orderWriterTest() {
     MASTER_SHEET_ID_SHOP = copies[2].getId();
     signupResetSheetCache_();
     sendLineMessages_ = function (to, messages) { sent.push({ to: to, messages: messages }); return true; };
+    // สลิปทดสอบลงโฟลเดอร์ชั่วคราว และไม่ตั้งเวลาให้แต้ม/แจ้งเตือนจริง (เลข REV ทดสอบมีแค่ในไฟล์ชั่วคราว)
+    var slipFolder = DriveApp.createFolder('ทดสอบสลิป (ลบได้) ' + stamp);
+    copies.push(slipFolder);
+    SLIP_FOLDER_ID_SHOP = slipFolder.getId();
+    scheduleSlipFinalize_ = function (orderId) { finalized.push(orderId); };
 
-    orderTestRun_(cfg, internalKey, check, touched);
+    orderTestRun_(cfg, internalKey, check, touched, finalized);
   } catch (e) {
     check('ชุดทดสอบทำงานจบ', false, String(e && e.stack || e));
   } finally {
@@ -302,6 +348,8 @@ function orderWriterTest() {
     REVENUE_SHEET_ID_SHOP = saved.revenue;
     MASTER_SHEET_ID_SHOP = saved.master;
     sendLineMessages_ = saved.send;
+    SLIP_FOLDER_ID_SHOP = saved.slipFolder;
+    scheduleSlipFinalize_ = saved.finalize;
     ORDER_TEST_MODE_ = false;
     signupResetSheetCache_();
     orderTestClearCaches_(touched);
@@ -374,7 +422,7 @@ function orderTestData_() {
   return { skus: skus, members: members, privMember: privMember, pointsMember: pointsMember, manualCoupon: manualCoupon };
 }
 
-function orderTestRun_(cfg, internalKey, check, touched) {
+function orderTestRun_(cfg, internalKey, check, touched, finalized) {
   var d = orderTestData_();
   if (d.skus.length < 2 || d.members.length < 3) throw new Error('ข้อมูลไม่พอสำหรับทดสอบ');
   var n = 0;
@@ -538,6 +586,69 @@ function orderTestRun_(cfg, internalKey, check, touched) {
     var ws = status(w.requestId);
     check('ข้อมูลสมาชิกเปลี่ยนระหว่างรอ -> สั่งไม่สำเร็จ แจ้งลูกค้า', ws.status === 'failed' && !!ws.error, ws.status + ' ' + ws.error);
   }
+  // ---------- ขั้น 5: แนบสลิป / ยกเลิกออเดอร์ ----------
+  function action(kind, member, orderId, opt) {
+    opt = opt || {};
+    var q = kind === 'slip'
+      ? { action: 'uploadShopSlip', asUid: String(member[0]), orderId: orderId, base64: opt.base64 || orderTestB64_('ทดสอบสลิป'),
+          fileName: 'slip.jpg', mimeType: 'image/jpeg', clientKey: opt.clientKey || key() }
+      : { action: 'cancelShopOrder', asUid: String(member[0]), orderId: orderId, clientKey: opt.clientKey || key() };
+    return orderTestEdge_(cfg, internalKey, q);
+  }
+  function mainRow(orderId) {
+    var sh = ensureRevenueSheet_();
+    var r = findRevenueRowByOrderId_(sh, orderId);
+    return r === -1 ? null : { row: r, v: sh.getRange(r, 1, 1, 34).getValues()[0] };
+  }
+  var so = order(m1);
+  write();
+  var sst = status(so.requestId);
+  if (sst && sst.status === 'written') {
+    var sl = action('slip', m1, sst.revenue_id);
+    check('แนบสลิป: Supabase รับทันที', !!sl.pending, JSON.stringify(sl).substring(0, 200));
+    var cx = action('cancel', m1, sst.revenue_id);
+    check('ยกเลิกหลังแนบสลิป (ยังไม่ลงชีต) -> ให้ Apps Script ตัดสิน', !!cx.needsAppsScript, cx.detail || cx.reason);
+    write();
+    var sls = status(sl.requestId), mr = mainRow(sst.revenue_id);
+    check('แนบสลิป: ลงชีตแล้ว (ลิงก์สลิป + รอตรวจสอบสลิป + ตั้งเวลาแจ้งเตือน)',
+      sls.status === 'written' && mr && !!mr.v[10] && String(mr.v[19]).indexOf('รอตรวจสอบสลิป') !== -1 &&
+      finalized.indexOf(sst.revenue_id) !== -1, sls.status + ' ' + (mr ? String(mr.v[10]).substring(0, 40) : 'ไม่พบแถว'));
+  }
+  // แนบสลิปออเดอร์ที่จองแต้มไว้ -> ตัดแต้มจริงตอนแนบสลิป
+  var rs = status(r1.requestId);
+  if (rs && rs.status === 'written' && pts > 0) {
+    var ms0 = ensureMembersSheet_(), before = null, after = null;
+    var mv0 = ms0.getRange(2, 1, ms0.getLastRow() - 1, 6).getValues();
+    mv0.forEach(function (r) { if (String(r[0]) === String(d.pointsMember[0])) before = Number(r[5]) || 0; });
+    var sp = action('slip', d.pointsMember, rs.revenue_id);
+    write();
+    signupResetSheetCache_();
+    mv0 = ms0.getRange(2, 1, ms0.getLastRow() - 1, 6).getValues();
+    mv0.forEach(function (r) { if (String(r[0]) === String(d.pointsMember[0])) after = Number(r[5]) || 0; });
+    var sps = status(sp.requestId);
+    check('แนบสลิปออเดอร์ที่แลกคะแนน: ตัดแต้มจริง ' + pts, sps.status === 'written' && before - after === pts,
+      'ก่อน ' + before + ' หลัง ' + after);
+  }
+  // ยกเลิกออเดอร์ที่ยังไม่แนบสลิป
+  var co = order(m2);
+  write();
+  var cst = status(co.requestId);
+  if (cst && cst.status === 'written') {
+    var cc = action('cancel', m2, cst.revenue_id);
+    check('ยกเลิก: Supabase รับทันที', !!cc.pending, JSON.stringify(cc).substring(0, 200));
+    var cs2 = action('slip', m2, cst.revenue_id);
+    write();
+    var ccs = status(cc.requestId), cr = mainRow(cst.revenue_id);
+    check('ยกเลิก: ลงชีตแล้ว (สินค้า = ยกเลิก, ยอด 0)', ccs.status === 'written' && cr &&
+      String(cr.v[2]) === CANCELLED_ORDER_MARK_ && Number(cr.v[8]) === 0, ccs.status);
+    // แนบสลิปที่ส่งมาหลังยกเลิก (ก่อนลงชีต): ต้องตัดสินตามลำดับ ไม่ค้างในคิว (ผลเป็นไปตาม uploadShopSlip เดิม)
+    var s2s = cs2.pending ? status(cs2.requestId) : null;
+    check('แนบสลิปหลังยกเลิก: ทำตามลำดับ ไม่ค้าง', !cs2.pending || (s2s && s2s.status !== 'pending_sheet'),
+      cs2.pending ? ('สถานะ ' + s2s.status + (s2s.error ? ' ' + s2s.error : '')) : ('Supabase ให้ Apps Script ตัดสิน: ' + (cs2.detail || '')));
+  }
+  var nf = action('slip', m1, 'REV0000000');
+  check('แนบสลิปเลขออเดอร์ไม่มีจริง -> ให้ Apps Script ตัดสิน', !!nf.needsAppsScript, nf.detail || nf.reason);
+
   if (d.manualCoupon) {
     var y = order(m2, { coupon: d.manualCoupon.code });
     if (y.pending) {

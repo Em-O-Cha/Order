@@ -20,6 +20,12 @@
 //   ตอบ { success:true, requestId, status: 'pending'|'written'|'failed', orderId, result, changed, error }
 //   result = ผลจริงจาก Apps Script (หลัง written), changed = ยอดจริงไม่ตรงกับที่แสดงไว้
 //
+// action=uploadShopSlip — orderId, base64, fileName, mimeType, clientKey (ไม่ต้องมีโทเคน LINE เหมือนทางเดิม)
+// action=cancelShopOrder — idToken, orderId, clientKey
+//   ตรวจเงื่อนไขด้วย uploadShopSlip / cancelShopOrder ตัวเดิมบนสำเนา แล้วตอบ { success:true, pending:true, requestId }
+//   ทันที Apps Script รันฟังก์ชันตัวจริงบนชีตตามหลัง (คิวเดียวกับคำสั่งซื้อ ลำดับเดียวกัน) สวิตช์ actions_live
+//   ไม่ผ่านเงื่อนไข / สวิตช์ปิด / สำเนายังไม่ทัน -> needsAppsScript ให้หน้าเว็บทำทางเดิม (ได้ข้อความ error เดิม)
+//
 // action=createShopOrderDryRun — (ทดสอบเท่านั้น ต้องมี x-internal-key) คำนวณโดยไม่บันทึก
 //   ตอบ { success:true, dryRun:true, result, journal, baseRows, accessed, notReady, unsupported, blocked }
 //
@@ -46,6 +52,9 @@ const FULL_TABS = [
   "members/Rewards_Catalog", "members/Referral_Log", "members/Purchase_Referral_Log", "members/Redemption_Log",
   "members/Shipping_Config", "revenue/Revenue", "master/SKU", PROPS_KEY,
 ];
+// แท็บที่แนบสลิป/ยกเลิกใช้ (อ่านนอกรายการ = คำนวณใหม่ด้วยทุกแท็บ)
+const ACTION_TABS = ["members/Members", "members/Points_Log", "revenue/Revenue#slim", PROPS_KEY];
+const MAX_SLIP_BASE64 = 12 * 1024 * 1024;
 const NOT_LOADED = "gas_runtime: ไม่ได้โหลดแท็บ ";
 const MAX_ATTEMPTS = 5;
 // พารามิเตอร์ของ createShopOrder ที่เก็บไว้ให้ Apps Script รันซ้ำ (ไม่เก็บโทเคน LINE)
@@ -83,25 +92,39 @@ async function prepare(keys: string[], owner: Owner, includeTests: boolean) {
   return {
     tabs, dirty, pending: (r.pending || []) as any[], lastSeq: Number(r.last_seq) || 0,
     blocked: (Array.isArray(r.blocked) ? r.blocked : []) as string[], live: r.settings?.live === true,
+    actionsLive: r.settings?.actions_live === true,
     appsScriptUrl: typeof r.settings?.apps_script_url === "string" ? r.settings.apps_script_url : "",
   };
 }
 
-// รัน createShopOrder ตัวเดิม (โหมดบันทึกการเขียน) — งานแจ้งเตือน/รางวัลแนะนำเพื่อน Apps Script ทำตอนรันจริง
-function runOrder(tabs: Map<string, Tab>, keys: string[], profile: Record<string, unknown>, p: P) {
+type Kind = "order" | "slip" | "cancel";
+
+// รันฟังก์ชันตัวเดิม (โหมดบันทึกการเขียน) — งานแจ้งเตือน/อัปโหลดรูป/ให้แต้ม Apps Script ทำตอนรันจริง
+function runKind(kind: Kind, tabs: Map<string, Tab>, keys: string[], profile: Record<string, unknown>, p: P) {
   const { env, tracker } = createEnv({
     tabs, loadedSources: new Set(keys.map(baseKey)), props: propsFrom(tabs.get(PROPS_KEY)), profile, journal: true,
   });
   const noop = () => {};
+  const DriveApp = {
+    getFolderById: () => ({ createFile: () => ({ getId: () => "supabase-pending-slip" }) }),
+  };
   const gas = createGas({
     ...env, notifyBuyerOrderConfirmation_: noop, notifyAdminNewOrder_: noop,
     checkAndGrantReferralOnFirstPurchase_: noop, checkAndGrantPurchaseReferral_: noop, sendLineMessages_: noop,
+    DriveApp, scheduleSlipFinalize_: noop,
   });
   let result: Result;
   try {
-    // ลำดับ/ค่าเหมือน doGet ของ Members.gs ทุกตัวอักษร (existingOrderId ว่างเสมอ: แก้ไขออเดอร์ใช้ทางเดิม)
-    result = gas.createShopOrder("supabase", gas.decodeItemsB64_(p.itemsB64), p.paymentMethod, p.couponCode,
-      p.shippingAddress, p.province, p.excludePrivilegeName, "", p.purchaseReferrerCode, p.pointsToRedeem);
+    // ลำดับ/ค่าเหมือน doGet/doPost ของ Members.gs (existingOrderId ว่างเสมอ: แก้ไขออเดอร์ใช้ทางเดิม)
+    if (kind === "order") {
+      result = gas.createShopOrder("supabase", gas.decodeItemsB64_(p.itemsB64), p.paymentMethod, p.couponCode,
+        p.shippingAddress, p.province, p.excludePrivilegeName, "", p.purchaseReferrerCode, p.pointsToRedeem);
+    } else if (kind === "slip") {
+      // รูปจริงไม่ต้องใช้ตอนตรวจเงื่อนไข (ตัวจริงอัปโหลดลง Drive ตอนเขียนชีต)
+      result = gas.uploadShopSlip(p.orderId, "AA==", p.fileName, p.mimeType);
+    } else {
+      result = gas.cancelShopOrder("supabase", p.orderId);
+    }
   } catch (e) {
     result = { thrown: String(e) };
   }
@@ -109,14 +132,13 @@ function runOrder(tabs: Map<string, Tab>, keys: string[], profile: Record<string
   return { result, tracker, baseRows };
 }
 
-// คำนวณคำสั่งซื้อบนสำเนา (+ คำสั่งซื้อที่ยังไม่ลงชีต) — โหลดเต็มแล้วคำนวณใหม่เมื่อฉบับย่อไม่พอ
-async function predict(profile: Record<string, unknown>, p: P, isTest: boolean) {
-  const owner: Owner = { uid: String(profile.sub) };
-  let keys = ORDER_TABS;
+// คำนวณบนสำเนา (+ คำสั่งที่ยังไม่ลงชีต) — โหลดเต็มแล้วคำนวณใหม่เมื่อฉบับย่อไม่พอ
+async function predict(kind: Kind, profile: Record<string, unknown>, p: P, isTest: boolean, owner: Owner) {
+  let keys = kind === "order" ? ORDER_TABS : ACTION_TABS;
   for (;;) {
     const prep = await prepare(keys, owner, isTest);
     const tabs = overlayJournals(prep.tabs, prep.pending);
-    const run = runOrder(tabs, keys, profile, p);
+    const run = runKind(kind, tabs, keys, profile, p);
     const needFull = run.tracker.unsupported.some((u: string) =>
       String(u).startsWith(NOT_LOADED) || String(u).startsWith(SLIM_HIDDEN));
     if (needFull && keys !== FULL_TABS) {
@@ -162,7 +184,7 @@ async function createOrder(p: P, profile: Record<string, unknown>, isTest: boole
   const timings: Record<string, number> = {};
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const tp = Date.now();
-    const { prep, run, notReady } = await predict(profile, p, isTest);
+    const { prep, run, notReady } = await predict("order", profile, p, isTest, { uid: String(profile.sub) });
     timings["predict" + attempt] = Date.now() - tp;
     if (!prep.live && !isTest) return fallback("ยังไม่เปิดใช้การสั่งซื้อผ่าน Supabase");
     if (prep.blocked.length) return fallback("สำเนายังไม่ทัน", { detail: prep.blocked });
@@ -201,6 +223,47 @@ async function createOrder(p: P, profile: Record<string, unknown>, isTest: boole
   return fallback("มีคำสั่งซื้อพร้อมกันหลายรายการ");
 }
 
+// แนบสลิป / ยกเลิกออเดอร์: ตรวจเงื่อนไขด้วยฟังก์ชันตัวเดิมบนสำเนา แล้วเข้าคิวให้ Apps Script ทำตัวจริง
+async function createAction(kind: "slip" | "cancel", p: P, profile: Record<string, unknown> | null, isTest: boolean) {
+  const clientKey = String(p.clientKey || "").trim();
+  if (!/^[A-Za-z0-9-]{16,64}$/.test(clientKey)) return fallback("ไม่มี clientKey");
+  const orderId = String(p.orderId || "").trim();
+  if (!orderId) return fallback("ไม่มีเลขออเดอร์");
+  const base64 = kind === "slip" ? String(p.base64 || "") : "";
+  if (kind === "slip" && (!base64 || base64.length > MAX_SLIP_BASE64)) return fallback("รูปสลิปว่าง/ใหญ่เกิน");
+  const who = profile || { sub: "", name: "", picture: "" };
+  const owner: Owner = { uid: String(who.sub || "") || undefined, order_id: orderId };
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const { prep, run, notReady } = await predict(kind, who, p, isTest, owner);
+    if (!prep.actionsLive && !isTest) return fallback("ยังไม่เปิดใช้แนบสลิป/ยกเลิกผ่าน Supabase");
+    if (prep.blocked.length) return fallback("สำเนายังไม่ทัน", { detail: prep.blocked });
+    if (run.tracker.unsupported.length) return fallback("ตัวจำลองไม่รองรับ", { detail: run.tracker.unsupported.slice(0, 3) });
+    if (notReady.length) return fallback("สำเนายังไม่ทัน", { detail: notReady });
+    if (!run.result || run.result.success !== true) {
+      return fallback("ให้ Apps Script ตัดสิน", { detail: String(run.result?.error || run.result?.thrown || "") });
+    }
+    const request: Record<string, unknown> = kind === "slip"
+      ? { fileName: p.fileName, mimeType: p.mimeType } : { profileName: String(who.name || "") };
+    const ins = await rpc("order_insert", {
+      p_row: {
+        client_key: clientKey, line_uid: String(who.sub || ""), is_test: isTest, kind, order_id: orderId,
+        payload: kind === "slip" ? base64 : null, request, predicted: plain(run.result),
+        journal: run.tracker.journal, base_rows: run.baseRows,
+      },
+      p_last_seq: prep.lastSeq,
+    });
+    if (ins.ok || ins.conflict === "duplicate") {
+      if (ins.ok && !isTest) {
+        const kick = kickWriter(prep.appsScriptUrl);
+        if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(kick);
+      }
+      return json({ success: true, pending: true, requestId: ins.id, ...(kind === "slip" ? { slipUrl: "" } : {}),
+                    ...(ins.ok ? {} : { duplicate: true }) });
+    }
+  }
+  return fallback("มีคำสั่งพร้อมกันหลายรายการ");
+}
+
 async function orderStatus(p: P) {
   const id = String(p.requestId || "").trim();
   const key = String(p.clientKey || "").trim();
@@ -217,7 +280,7 @@ async function orderStatus(p: P) {
 }
 
 async function dryRun(p: P, profile: Record<string, unknown>) {
-  const { prep, run, notReady, keys } = await predict(profile, p, true);
+  const { prep, run, notReady, keys } = await predict("order", profile, p, true, { uid: String(profile.sub) });
   return json({
     success: true, dryRun: true, result: plain(run.result), journal: run.tracker.journal, baseRows: run.baseRows,
     accessed: [...run.tracker.accessed], notReady, unsupported: run.tracker.unsupported, blocked: prep.blocked,
@@ -237,7 +300,8 @@ Deno.serve(async (req) => {
         p_tab_keys: ORDER_TABS, p_cached: {}, p_owner: null, p_include_tests: false,
       });
       return json({
-        success: true, live: r.settings?.live === true, pending: (r.pending || []).length, blocked: r.blocked,
+        success: true, live: r.settings?.live === true, actionsLive: r.settings?.actions_live === true,
+        pending: (r.pending || []).length, blocked: r.blocked,
         appsScriptUrl: !!r.settings?.apps_script_url, ms: Date.now() - t0,
       });
     }
@@ -247,7 +311,12 @@ Deno.serve(async (req) => {
       const r = await rpc("order_prepare", { p_tab_keys: [], p_cached: {}, p_owner: null, p_include_tests: false });
       return json({ success: true, kick: await kickWriter(String(r.settings?.apps_script_url || "")) });
     }
-    if (action !== "createShopOrder" && action !== "createShopOrderDryRun") {
+    // แนบสลิปไม่ต้องใช้โทเคน LINE (เหมือนทางเดิม) — ชุดทดสอบภายในใช้ asUid ได้ (แถวทดสอบ)
+    if (action === "uploadShopSlip") {
+      const internal = !!p.asUid && (await isInternal(req));
+      return await createAction("slip", p, internal ? { sub: p.asUid, name: "", picture: "" } : null, internal);
+    }
+    if (action !== "createShopOrder" && action !== "createShopOrderDryRun" && action !== "cancelShopOrder") {
       return fallback("ไม่รองรับ action: " + action);
     }
 
@@ -268,6 +337,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "createShopOrderDryRun") return await dryRun(p, profile);
+    if (action === "cancelShopOrder") return await createAction("cancel", p, profile, isTest);
     return await createOrder(p, profile, isTest, t0);
   } catch (e) {
     console.error(e);

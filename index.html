@@ -696,7 +696,14 @@ function handleSlipFile(inp){
   reader.readAsDataURL(file);
 }
 
+// ⚡ เพิ่ม (Supabase) — แนบสลิปผ่าน Supabase ก่อน: ตรวจเงื่อนไขด้วย uploadShopSlip ตัวเดิมแล้วรับรูปไว้ทันที
+// (Apps Script อัปโหลดลง Drive/บันทึกชีต/แจ้งเตือนตามหลังไม่กี่วินาที) ถ้า Supabase ให้ถอย/เรียกไม่สำเร็จ ใช้ทางเดิม
 function uploadSlipAttempt_(){
+  return submitViaSupabase_({ action: 'uploadShopSlip', orderId: slipTargetOrderId, base64: slipUploadData.base64,
+    fileName: slipUploadData.fileName, mimeType: slipUploadData.mimeType, clientKey: newOrderClientKey_() }, 25000)
+    .then(function(r){ return r ? { success: true, viaSupabase: true } : uploadSlipAppsScript_(); });
+}
+function uploadSlipAppsScript_(){
   var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
   var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, 40000) : null;
 
@@ -1015,9 +1022,9 @@ function newOrderClientKey_(){
   return 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 }
 function supabaseOrderCall_(params, timeoutMs){
-  var body = Object.keys(params).map(function(k){
-    return encodeURIComponent(k) + '=' + encodeURIComponent(params[k] === undefined || params[k] === null ? '' : params[k]);
-  }).join('&');
+  var clean = {};
+  Object.keys(params).forEach(function(k){ clean[k] = params[k] === undefined || params[k] === null ? '' : String(params[k]); });
+  var body = JSON.stringify(clean); // text/plain (ไม่มี preflight) — Edge Function อ่าน JSON ได้
   var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
   var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, timeoutMs || SUPABASE_ORDER_TIMEOUT_MS_) : null;
   return fetch(SUPABASE_ORDER_URL_, { method: 'POST', body: body, signal: controller ? controller.signal : undefined })
@@ -1033,19 +1040,18 @@ function acceptedOrderFromStatus_(st){
   r.success = true; r.pending = true; r.orderId = ''; r.requestId = st.requestId;
   return r;
 }
-function createOrderViaSupabase_(payload){
-  var params = { action: 'createShopOrder' };
-  Object.keys(payload).forEach(function(k){ params[k] = payload[k]; });
-  return supabaseOrderCall_(params)
+// ส่งคำสั่ง (สั่งซื้อ / แนบสลิป / ยกเลิก) ให้ Supabase — คืนผลที่รับแล้ว หรือ null = ให้ทำทางเดิม
+// เรียกไม่สำเร็จ/ช้าเกิน: Supabase อาจรับไปแล้ว — ถามด้วย clientKey ก่อน (กันทำซ้ำทางเดิม)
+function submitViaSupabase_(params, timeoutMs){
+  return supabaseOrderCall_(params, timeoutMs)
     .then(function(r){
       if (r && r.success && r.pending && r.requestId) return r;
       if (r && r.needsAppsScript) return null;
       throw new Error('Supabase ตอบไม่ถูกต้อง');
     })
     .catch(function(){
-      // เรียกไม่สำเร็จ/ช้าเกิน: Supabase อาจรับไปแล้ว — ถามด้วย clientKey ก่อน (กันสั่งซ้ำทางเดิม)
       function lookup(attempt){
-        return supabaseOrderCall_({ action: 'orderStatus', clientKey: payload.clientKey }, 6000)
+        return supabaseOrderCall_({ action: 'orderStatus', clientKey: params.clientKey }, 6000)
           .then(function(st){
             if (st && st.success && st.found) return acceptedOrderFromStatus_(st);
             if (st && st.success && !st.found) return null;
@@ -1058,6 +1064,11 @@ function createOrderViaSupabase_(payload){
       }
       return lookup(1);
     });
+}
+function createOrderViaSupabase_(payload){
+  var params = { action: 'createShopOrder' };
+  Object.keys(payload).forEach(function(k){ params[k] = payload[k]; });
+  return submitViaSupabase_(params);
 }
 // ถามสถานะจนได้เลข REV (ถี่ช่วงแรก แล้วค่อยห่างออก) — onWritten(result, changed) / onFailed(error)
 var orderStatusPollTimer_ = null;
@@ -1568,7 +1579,10 @@ function confirmCancelOrder_(orderId){
   if (btn) { btn.disabled = true; btn.textContent = '⏳ กำลังยกเลิก...'; }
 
   getFreshIdToken().then(function(idToken){
-    return callApi('cancelShopOrder', { idToken: idToken, orderId: orderId });
+    // ⚡ เพิ่ม (Supabase) — ยกเลิกผ่าน Supabase ก่อน (ตรวจเงื่อนไขด้วย cancelShopOrder ตัวเดิม ตอบทันที Apps Script
+    // บันทึกชีตตามหลัง) ถ้า Supabase ให้ถอย/เรียกไม่สำเร็จ ใช้ทางเดิม
+    return submitViaSupabase_({ action: 'cancelShopOrder', idToken: idToken, orderId: orderId, clientKey: newOrderClientKey_() })
+      .then(function(r){ return r ? { success: true, viaSupabase: true } : callApi('cancelShopOrder', { idToken: idToken, orderId: orderId }); });
   }).then(function(r){
     cancelOrderInFlight_ = false;
     if (r && r.success) {
@@ -2116,7 +2130,13 @@ function renderDiscountSummary(){
     h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">🎁 ' + escHtml(p.name) + privBogoNote_ + '</span>'
       + '<span style="display:flex;align-items:center;gap:8px;white-space:nowrap;flex-shrink:0"><span style="color:#c62828">-฿' + Math.round(p.discount).toLocaleString('th-TH') + '</span>' + removeBtnHtml + '</span></div>';
   });
-  if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.discount > 0) {
+  // โปรลดค่าจัดส่งไม่แสดงเป็นบรรทัด "-฿" แยก (ดูเหมือนหักจากยอดสินค้าอีกรอบ ทั้งที่หักในค่าจัดส่งไปแล้ว)
+  // ย้ายชื่อโปรไปต่อท้ายบรรทัดค่าจัดส่งแทน — ยอดคำนวณเหมือนเดิมทุกอย่าง
+  var shipPromoNames_ = [];
+  function isShipPromo_(c){ return c && (c.type === 'ship_percent' || c.type === 'ship_fixed'); }
+  if (lastDiscountInfo && isShipPromo_(lastDiscountInfo.coupon) && lastDiscountInfo.coupon.discount > 0) {
+    shipPromoNames_.push('โค้ด ' + lastDiscountInfo.coupon.code);
+  } else if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.discount > 0) {
     var manualCouponBogoNote_ = lastDiscountInfo.coupon.type === 'bogo' ? '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
     h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + manualCouponBogoNote_ + '</span><span style="color:#c62828;white-space:nowrap;flex-shrink:0">-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
   } else if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.physicalFreeQty > 0) {
@@ -2127,6 +2147,7 @@ function renderDiscountSummary(){
   // ก่อนถึงบรรทัด wrap.innerHTML = h ผลคือหน้าจอ "ค้าง" ที่ข้อความ "กำลังคำนวณสิทธิ์และยอดชำระ..."
   // ตลอดไป ไม่ขึ้นทั้งคำเตือน ไม่ขึ้นทั้งปุ่มลองใหม่ ไม่ขึ้นทั้งยอดสุทธิ ลูกค้าไปต่อไม่ได้เลย
   ((lastDiscountInfo && lastDiscountInfo.autoCoupons) || []).forEach(function(c){
+    if (isShipPromo_(c) && c.discount > 0) { shipPromoNames_.push(c.code); return; }
     if (c.discount <= 0) {
       if (c.physicalFreeQty > 0) {
         h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(c.code) + ' — มีของแถม ' + c.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
@@ -2168,7 +2189,9 @@ function renderDiscountSummary(){
   var shipHtml = shipDiscount > 0
     ? '<span style="text-decoration:line-through;color:#999;margin-right:6px">฿' + Math.round(getShippingCost()).toLocaleString('th-TH') + '</span><span style="color:#c62828;font-weight:700">฿' + Math.round(getFinalShippingCost()).toLocaleString('th-TH') + '</span>'
     : '฿' + Math.round(getShippingCost()).toLocaleString('th-TH');
-  h += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>' + shipHtml + '</span></div>';
+  var shipLabel_ = '🚚 ค่าจัดส่ง' + (shipPromoNames_.length && shipDiscount > 0
+    ? '<span style="display:block;font-size:11px;color:#c62828;line-height:1.35">🎉 ' + escHtml(shipPromoNames_.join(', ')) + '</span>' : '');
+  h += '<div class="row" style="align-items:flex-start"><span>' + shipLabel_ + '</span><span style="white-space:nowrap">' + shipHtml + '</span></div>';
   var codFeeRow_ = codFeeAmount_();
   if (codFeeRow_ > 0) {
     h += '<div class="row"><span>💵 ค่าธรรมเนียมเก็บเงินปลายทาง</span><span>฿' + codFeeRow_.toLocaleString('th-TH') + '</span></div>';
@@ -2545,7 +2568,10 @@ function confirmSubmitOrder(){
 }
 
 // สรุปคำสั่งซื้อ (รูปเดียวกับผลของ createShopOrder) — orderIdHtml: เลขออเดอร์ หรือข้อความ "กำลังออกเลข"
-function renderOrderSummary_(r, orderIdHtml, noticeHtml){
+// shipCodes: ชื่อโปร/โค้ดลดค่าจัดส่งของออเดอร์นี้ (จากผลคำนวณหน้าชำระเงิน) — แสดงในบรรทัดค่าจัดส่งแทนบรรทัด "-฿"
+function renderOrderSummary_(r, orderIdHtml, noticeHtml, shipCodes){
+  shipCodes = shipCodes || [];
+  var shipNotes_ = [];
   var summaryHtml = (noticeHtml || '')
     + '<div class="row"><span>เลขที่ออเดอร์</span><span><b>' + orderIdHtml + '</b></span></div>'
     + '<div class="row"><span>ยอดสินค้า</span><span>฿' + r.subtotal.toLocaleString('th-TH') + '</span></div>';
@@ -2561,9 +2587,11 @@ function renderOrderSummary_(r, orderIdHtml, noticeHtml){
     var amountMatch = detail.match(/\(-([0-9,.]+)\)/);
     var label = detail.replace(/\s*\(-[0-9,.]+\)/, '').trim();
     if (!amountMatch || !label) return;
+    var code_ = label.replace(/^(คูปอง|สิทธิ์):\s*/, '');
+    if (shipCodes.indexOf(code_) !== -1) { shipNotes_.push(code_); return; }
     summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>' + escHtml(label) + '</span><span style="color:#c62828">-฿' + amountMatch[1] + '</span></div>';
   });
-  summaryHtml += '<div class="row"><span>🚚 ค่าจัดส่ง</span><span>฿' + Math.round(r.shippingCost || 0).toLocaleString('th-TH') + '</span></div>';
+  summaryHtml += '<div class="row" style="align-items:flex-start"><span>🚚 ค่าจัดส่ง' + (shipNotes_.length ? '<span style="display:block;font-size:11px;color:#c62828;line-height:1.35">🎉 ' + escHtml(shipNotes_.join(', ')) + '</span>' : '') + '</span><span>฿' + Math.round(r.shippingCost || 0).toLocaleString('th-TH') + '</span></div>';
   summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span><b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
     + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : (selectedPayment === 'cod' ? '💵 เก็บเงินปลายทาง' : 'โอนธนาคาร')) + '</span></div>';
   document.getElementById('orderSummary').innerHTML = summaryHtml;
@@ -2603,9 +2631,20 @@ function showOrderDoneNoSlip_(r, waitingForId){
   if (!waitingForId) setTimeout(closeThisShopWindow_, isCodDone_ ? 6000 : 3000);
 }
 
+// ชื่อโปร/โค้ดลดค่าจัดส่งจากผลคำนวณหน้าชำระเงินล่าสุด
+function shipPromoCodes_(){
+  var out = [];
+  if (!lastDiscountInfo) return out;
+  var isShip = function(c){ return c && (c.type === 'ship_percent' || c.type === 'ship_fixed'); };
+  if (isShip(lastDiscountInfo.coupon)) out.push(lastDiscountInfo.coupon.code);
+  (lastDiscountInfo.autoCoupons || []).forEach(function(c){ if (isShip(c)) out.push(c.code); });
+  return out;
+}
+
 function showOrderResult_(r){
   var pending = !!r.pending;
-  renderOrderSummary_(r, pending ? '⏳ กำลังออกเลขออเดอร์...' : escHtml(r.orderId));
+  var shipCodes_ = shipPromoCodes_();
+  renderOrderSummary_(r, pending ? '⏳ กำลังออกเลขออเดอร์...' : escHtml(r.orderId), '', shipCodes_);
 
   currentOrderId = r.orderId;
   lastOrderAmount_ = r.totalAmount;
@@ -2637,7 +2676,7 @@ function showOrderResult_(r){
       notice = '<div style="background:#fff3e0;color:#e65100;border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:8px">'
         + '⚠️ ยอดชำระมีการเปลี่ยนแปลง (สิทธิ์/โปรโมชั่นเปลี่ยนระหว่างสั่งซื้อ) กรุณาชำระตามยอดใหม่ด้านล่าง</div>';
     }
-    renderOrderSummary_(finalR, escHtml(orderId), notice);
+    renderOrderSummary_(finalR, escHtml(orderId), notice, shipCodes_);
     currentOrderId = orderId;
     lastOrderAmount_ = finalR.totalAmount;
     orderHistoryCache_.invalidate();
