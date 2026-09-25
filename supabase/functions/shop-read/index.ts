@@ -68,7 +68,7 @@ const ACTIONS: Record<string, { auth: boolean; tabs: string[]; run: (g: Gas, p: 
     tabs: T(M, MP, TC, CP, PP, SKU, REV, "members/Shipping_Config"),
     run: (g, p) =>
       g.checkShopDiscounts(p.idToken, p.couponCode, p.subtotal, g.decodeItemsB64_(p.itemsB64),
-        p.excludePrivilegeName, p.pointsToRedeem),
+        p.excludePrivilegeName, p.pointsToRedeem, p.existingOrderId),
   },
   checkPendingOrderPromoStillValid: {
     auth: true,

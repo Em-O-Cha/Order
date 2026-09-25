@@ -1772,7 +1772,7 @@ function fetchDiscounts_(sig, idTokenParam){
   var itemsB64 = btoa(unescape(encodeURIComponent(JSON.stringify(items))));
   var tokenPromise = idTokenParam ? Promise.resolve(idTokenParam) : getFreshIdToken();
   var p = tokenPromise.then(function(idToken){
-    return callApiFast_('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), pointsToRedeem: pointsToRedeemInput_ });
+    return callApiFast_('checkShopDiscounts', { idToken: idToken, couponCode: appliedCouponCode, subtotal: subtotal, itemsB64: itemsB64, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), pointsToRedeem: pointsToRedeemInput_, existingOrderId: currentOrderId || '' });
   }).then(function(r){
     delete discountInFlightBySig_[sig];
     if (r && r.success) discountCacheBySig_[sig] = { result: cloneDiscount_(r), time: Date.now() };

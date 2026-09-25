@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 86 รายการ (60 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 93 รายการ (64 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1015,9 +1015,13 @@ function listGlobalCoupons(pin) {
     var lastRow = sheet.getLastRow();
     if (lastRow <= 1) return { success: true, results: [] };
     var data = sheet.getRange(2, 1, lastRow - 1, 16).getValues();
+    var audienceInfo_ = getCouponAudienceInfoByCode_();
     var tierConfig = getTierConfig_();
     var now = new Date();
     var results = data.map(function (row, idx) {
+      var audInfo_ = audienceInfo_[String(row[0]).trim().toUpperCase()] || { audienceCount: 0, usedCount: 0 };
+      var audienceCount_ = audInfo_.audienceCount;
+      var usedByCount_ = audInfo_.usedCount;
       var startDateVal = row[10];
       var expiryVal = row[6];
       var tierKeys = String(row[13] || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
@@ -1041,7 +1045,8 @@ function listGlobalCoupons(pin) {
         tierRestriction: row[13] || '',
         tierNames: tierNames,
         freeDiscountPercent: (row[14] === '' || row[14] === null || row[14] === undefined) ? 100 : row[14],
-        stubText: row[15] || ''
+        stubText: row[15] || '',
+        audienceCount: audienceCount_, audienceUsedCount: usedByCount_
       };
     });
     results.reverse();
@@ -1096,6 +1101,59 @@ function listRedemptionLog(pin) {
   } catch (e) {
     return { success: false, error: e.toString() };
   }
+}
+
+var COUPONS_RAW_CACHE_KEY_ = 'coupons_raw_v2';
+
+function getCouponsRawBundle_() {
+  try {
+    var cached = CacheService.getScriptCache().get(COUPONS_RAW_CACHE_KEY_);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {}
+  var sheet = ensureCouponsSheet_();
+  var lastRow = sheet.getLastRow();
+  var width = Math.max(sheet.getLastColumn(), 16);
+  var header = sheet.getRange(1, 1, 1, width).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var bundle = {
+    rows: lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [],
+    a: header.indexOf(COUPON_AUDIENCE_HEADER_),
+    u: header.indexOf(COUPON_USED_BY_HEADER_)
+  };
+  try {
+    CacheService.getScriptCache().put(COUPONS_RAW_CACHE_KEY_, JSON.stringify(bundle), 15);
+  } catch (e) {
+    // ชีตใหญ่เกิน 100KB ต่อ cache key ก็แค่ข้าม cache ไปเฉยๆ ไม่กระทบความถูกต้องของข้อมูลเลย
+  }
+  return bundle;
+}
+
+var COUPON_AUDIENCE_HEADER_ = 'เฉพาะผู้รับ(LINE UID คั่นด้วยจุลภาค — ระบบใส่ให้ตอนยิงโปร เว้นว่าง=ทุกคน)';
+
+var COUPON_USED_BY_HEADER_ = 'ใช้แล้วโดย(LINE UID@เลขออเดอร์ — ระบบบันทึกเอง)';
+
+function parseCouponUidList_(value) {
+  return String(value || '').split(/[\s,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+function parseCouponUsedBy_(value) {
+  return parseCouponUidList_(value).map(function (entry) {
+    var at = entry.indexOf('@');
+    return at === -1 ? { uid: entry, orderId: '' } : { uid: entry.substring(0, at), orderId: entry.substring(at + 1) };
+  });
+}
+
+function getCouponAudienceInfoByCode_() {
+  var bundle = getCouponsRawBundle_();
+  var out = {};
+  if (bundle.a < 0) return out;
+  bundle.rows.forEach(function (row) {
+    var n = parseCouponUidList_(row[bundle.a]).length;
+    if (!n) return;
+    out[String(row[0]).trim().toUpperCase()] = {
+      audienceCount: n, usedCount: bundle.u >= 0 ? parseCouponUsedBy_(row[bundle.u]).length : 0
+    };
+  });
+  return out;
 }
 
 var COD_SCAN_ROWS_ = 3000;
