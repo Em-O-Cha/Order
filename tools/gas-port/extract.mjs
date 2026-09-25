@@ -5,6 +5,7 @@
 //   target shop-read (ค่าเริ่มต้น)  -> ../../supabase/functions/shop-read/gas_port.js
 //   target member-signup           -> ../../supabase/functions/member-signup/gas_port.js
 //   target shop-order              -> ../../supabase/functions/shop-order/gas_port.js
+//   target admin-read              -> ../../supabase/functions/admin-read/gas_port.js
 //
 // ทุกครั้งที่แก้ Members.gs ในส่วนที่ target นั้นใช้ ต้องรันสคริปต์นี้ใหม่แล้ว deploy Edge Function นั้นใหม่
 // shop-read: ส่วนลด/สิทธิ์/แต้ม/ระดับสมาชิก (ตอนสั่งซื้อจริง Apps Script คำนวณซ้ำเสมอจึงไม่เก็บเงินผิด)
@@ -50,6 +51,22 @@ const TARGETS = {
       'checkAndGrantReferralOnFirstPurchase_', 'checkAndGrantPurchaseReferral_', 'sendLineMessages_',
       // แนบสลิป: ตัวจริงอัปโหลดรูปลง Drive และตั้งเวลาส่งแจ้งเตือน/ให้แต้ม — ที่นี่แค่ตรวจเงื่อนไข/คำนวณการเขียนชีต
       'DriveApp', 'scheduleSlipFinalize_',
+    ],
+  },
+  'admin-read': {
+    // หน้าแอดมิน: ฟังก์ชันที่ดู/ค้นหาอย่างเดียว (ชื่อ get/list/search/find) — ปุ่มที่แก้ข้อมูลยังเรียก Apps Script
+    ROOTS: [
+      'searchMembers', 'getMemberPrivileges', 'getBlockedMembers', 'getCampaignAudience', 'getAutoMemberConfig',
+      'getBirthdayPromoConfigForAdmin', 'getCodConfigForAdmin', 'getPurchaseReferralConfigForAdmin',
+      'getReferralConfigForAdmin', 'getShippingConfigForAdmin', 'getShopProducts', 'getTierConfigForAdmin',
+      'listCodBlockedMembers', 'listCodOrders', 'listGlobalCoupons', 'listPointsPromos', 'listPurchaseReferrals',
+      'listRedemptionLog', 'listReferrals', 'listRewardsCatalogAdmin', 'listSignupPrivilegeItems', 'listTierPerks',
+      'findLineUidByPhoneFromRevenue',
+    ],
+    // PIN ตรวจแล้วที่ Apps Script (Edge Function ตรวจตั๋วที่ Apps Script ออกให้แทน)
+    REPLACED: [
+      'verifyLineIdToken_', 'logErrorToSheet_', 'ensureDebugLogSheet_', 'logSlowAction_',
+      'logRegistrationQueueWait_', 'checkAdminPin_', 'sendLineMessages_',
     ],
   },
 };
