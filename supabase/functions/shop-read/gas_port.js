@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 139 รายการ (94 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 140 รายการ (95 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1738,6 +1738,10 @@ function getCouponAudienceInfoByCode_() {
   return out;
 }
 
+function withoutSameCoupon_(autoCoupons, manual) {
+  return (autoCoupons || []).filter(function (c) { return String(c.rowIndex) !== String(manual.rowIndex); });
+}
+
 function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey) {
   try {
     var bundle_ = getCouponsRawBundle_();
@@ -2030,13 +2034,9 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     }
 
     var rawAutoCoupons = findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey_);
-    var autoCoupons;
-    if (coupon) {
-      var couponIsShipping = (coupon.type === 'ship_percent' || coupon.type === 'ship_fixed');
-      autoCoupons = couponIsShipping ? [] : rawAutoCoupons.filter(function (c) { return c.type === 'ship_percent' || c.type === 'ship_fixed'; });
-    } else {
-      autoCoupons = rawAutoCoupons;
-    }
+    // ⚡ แก้ (25/9/69) — โค้ดที่ลูกค้าพิมพ์เอง "ลดเพิ่ม" จากคูปองอัตโนมัติทุกใบ (เดิมตัดคูปองอัตโนมัติที่ลดค่าสินค้าออก
+    // เหลือแค่ลดค่าส่ง) — ตัดเฉพาะกรณีพิมพ์โค้ดของคูปองอัตโนมัติใบเดียวกันซ้ำ กันลดซ้ำ 2 รอบ (ใช้ร่วมกับ createShopOrder)
+    var autoCoupons = coupon ? withoutSameCoupon_(rawAutoCoupons, coupon) : rawAutoCoupons;
 
     // เพิ่ม — มีสิทธิพิเศษสมาชิกอยู่ = ตัดคูปองทุกใบออก (ทั้งโค้ดที่กรอกเอง คูปองอัตโนมัติ และคูปองลดค่าส่ง)
     // โค้ดที่ถูกปัดตกตรงนี้ไม่โดนนับ usedCount เพราะไม่ได้เข้าไปอยู่ใน couponResults ตอนสั่งซื้อจริง

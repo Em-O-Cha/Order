@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 127 รายการ (84 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 128 รายการ (85 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1391,6 +1391,10 @@ function ensureCouponAudienceColumns_(sheet) {
   return { audienceCol: a, usedByCol: u };
 }
 
+function withoutSameCoupon_(autoCoupons, manual) {
+  return (autoCoupons || []).filter(function (c) { return String(c.rowIndex) !== String(manual.rowIndex); });
+}
+
 function recordAudienceCouponUse_(couponResults, lineUid, orderId) {
   var used = (couponResults || []).filter(function (c) { return c.audience && c.rowIndex; });
   if (!used.length) return;
@@ -1718,12 +1722,9 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       var manualResult = validateCoupon_(couponCode, subtotal, items, priceMap, shippingCost, memberTierKeyForCoupon_, profile.sub, { orderId: existingOrderId });
       if (manualResult && manualResult.error) return { success: false, error: manualResult.error };
       if (manualResult) couponResults = [manualResult];
-      var manualIsShipping_ = manualResult && (manualResult.type === 'ship_percent' || manualResult.type === 'ship_fixed');
-      if (!manualIsShipping_) {
-        var rawAutoForOrder_ = findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKeyForCoupon_);
-        var shipAutoForOrder_ = rawAutoForOrder_.filter(function (c) { return c.type === 'ship_percent' || c.type === 'ship_fixed'; });
-        couponResults = couponResults.concat(shipAutoForOrder_);
-      }
+      // ⚡ แก้ (25/9/69) — โค้ดที่พิมพ์เองลดเพิ่มจากคูปองอัตโนมัติทุกใบ (กติกาเดียวกับ checkShopDiscounts)
+      var rawAutoForOrder_ = findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKeyForCoupon_);
+      couponResults = couponResults.concat(manualResult ? withoutSameCoupon_(rawAutoForOrder_, manualResult) : rawAutoForOrder_);
     } else {
       couponResults = findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKeyForCoupon_);
     }
