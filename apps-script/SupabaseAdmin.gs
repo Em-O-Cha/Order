@@ -9,8 +9,8 @@
 //    ปุ่มที่แก้ข้อมูลเรียก Apps Script เหมือนเดิมทุกอย่าง
 // 2) ความปลอดภัย: ไม่ส่ง PIN ไป Supabase — หลังกรอก PIN ถูก หน้าแอดมินขอ "ตั๋ว" จาก adminSupabaseToken(pin)
 //    (ตรวจ PIN ที่นี่ ด้วย checkAdminPin_ ตัวเดิม) ตั๋วอายุ 12 ชั่วโมง ลงลายเซ็นด้วย internal key
-// 3) ฟังก์ชันแอดมินที่แก้ข้อมูล: ตั้งธง "ข้อมูลเปลี่ยน" ทันที (Supabase ถอยไป Apps Script จนกว่าสำเนาจะทัน)
-//    ทั้งตอนกดจากหน้าแอดมินและตอน trigger เรียก (เช่น ปิดสิทธิ์หมดอายุอัตโนมัติ)
+// 3) ฟังก์ชันแอดมินที่แก้ข้อมูล: ตั้งธง "ข้อมูลเปลี่ยน" เฉพาะแท็บที่ฟังก์ชันนั้นแก้ แล้วส่งสำเนาแท็บนั้นทันที
+//    ในการกดครั้งเดียวกัน (Supabase ถอยไป Apps Script แค่ไม่กี่วินาที) ส่งไม่สำเร็จ -> trigger สำรองส่งให้
 // 4) ชุดทดสอบ adminCompareReads(): เทียบผลฟังก์ชันอ่านทุกตัว Apps Script vs Supabase (รันเองจาก editor)
 
 var ADMIN_READ_PATH_ = '/functions/v1/admin-read?forceFunctionRegion=ap-northeast-2';
@@ -25,19 +25,66 @@ var ADMIN_READS_ = {
   listReferrals: true, listRewardsCatalogAdmin: true, listSignupPrivilegeItems: true, listTierPerks: true,
   findLineUidByPhoneFromRevenue: true
 };
-// ฟังก์ชันแอดมินที่แก้ข้อมูล -> ตั้งธงข้อมูลเปลี่ยนทุกแท็บที่ Supabase ใช้ (กว้างไว้ก่อน: แอดมินกดไม่บ่อย)
-var ADMIN_WRITE_FNS_ = [
-  'addMemberPrivilege', 'addPointsToAllMembers', 'addPrivilegeToAllMembers', 'adjustMemberPoints',
-  'backfillMembersFromRevenue', 'confirmCodPayment', 'createGlobalCoupon', 'createManualShopOrder',
-  'createPointsPromo', 'createRewardCatalogItem', 'createSignupPrivilegeItem', 'createTierPerk',
-  'deactivateIssuedPrivilegesByName', 'deactivatePrivilege', 'markCodReturned', 'markRedemptionFulfilled',
-  'runBlockedMembersSync', 'runExpiryAutoDisable', 'runPromoCampaign', 'setMemberCodBlock', 'toggleGlobalCoupon',
-  'togglePointsPromo', 'toggleRewardCatalogItem', 'toggleSignupPrivilegeConfigEnabled', 'toggleSignupPrivilegeItem',
-  'toggleTierPerk', 'updateAutoMemberConfig', 'updateBirthdayPromoConfig', 'updateCodConfig', 'updateGlobalCoupon',
-  'updateMemberPrivilege', 'updatePointsPromo', 'updatePointsRedeemConfig', 'updatePurchaseReferralConfig',
-  'updateReferralConfig', 'updateRewardCatalogItem', 'updateShippingConfig', 'updateSignupBonus',
-  'updateSignupPrivilegeConfig', 'updateSignupPrivilegeItem', 'updateTierConfig', 'updateTierPerk'
+// ฟังก์ชันแอดมินที่แก้ข้อมูล -> แท็บที่ฟังก์ชันนั้นแก้ (ใส่เกินได้ แท็บที่ไม่เปลี่ยนเสียแค่เวลาอ่านไม่กี่ร้อยมิลลิวินาที)
+// หลังกดปุ่ม: ตั้งธงเฉพาะแท็บเหล่านี้ แล้วส่งสำเนาแท็บเหล่านี้ไป Supabase ทันทีในการกดครั้งเดียวกัน
+// (เดิมตั้งธงทุกแท็บแล้วรอ trigger มาส่ง ~2 นาที ระหว่างนั้นหน้าร้านของลูกค้าต้องถอยไปใช้ Apps Script ซึ่งช้า)
+var ADMIN_EXPIRY_TABS_ = [
+  'members/Member_Privileges', 'members/Coupons', 'members/Signup_Privileges', 'members/Points_Promos',
+  'members/Rewards_Catalog', 'members/Expiry_Disable_Log'
 ];
+var ADMIN_ORDER_TABS_ = [
+  'revenue/Revenue', 'members/Members', 'members/Member_Privileges', 'members/Points_Log', 'members/Coupons',
+  'members/Purchase_Referral_Log', 'members/Referral_Log', 'members/Signup_Privileges', 'members/Tier_Config',
+  'members/Points_Promos', 'members/Point_Rewards', 'members/Rewards_Catalog'
+];
+var ADMIN_WRITE_TABS_ = {
+  addMemberPrivilege:                 ['members/Member_Privileges', 'members/Members'],
+  addPointsToAllMembers:              ['members/Members', 'members/Points_Log'],
+  addPrivilegeToAllMembers:           ['members/Member_Privileges', 'members/Members'],
+  adjustMemberPoints:                 ['members/Members', 'members/Points_Log'],
+  backfillMembersFromRevenue:         ['members/Members', 'members/Member_Privileges', 'members/Points_Log',
+                                       'members/Signup_Privileges', 'members/Tier_Config', 'revenue/Revenue'],
+  confirmCodPayment:                  ADMIN_ORDER_TABS_.concat(['props/script']),
+  createGlobalCoupon:                 ['members/Coupons', 'members/Members'],
+  createManualShopOrder:              ADMIN_ORDER_TABS_,
+  createPointsPromo:                  ['members/Points_Promos'],
+  createRewardCatalogItem:            ['members/Rewards_Catalog'],
+  createSignupPrivilegeItem:          ['members/Signup_Privileges', 'members/Members'],
+  createTierPerk:                     ['members/Tier_Perks'],
+  deactivateIssuedPrivilegesByName:   ['members/Member_Privileges'],
+  deactivatePrivilege:                ['members/Member_Privileges'],
+  markCodReturned:                    ['revenue/Revenue', 'members/Members'],
+  markRedemptionFulfilled:            ['members/Redemption_Log'],
+  runBlockedMembersSync:              ['members/Members'].concat(ADMIN_EXPIRY_TABS_),
+  runExpiryAutoDisable:               ADMIN_EXPIRY_TABS_,
+  runPromoCampaign:                   ['members/Member_Privileges', 'members/Coupons', 'members/Members',
+                                       'members/Campaign_Log'],
+  setMemberCodBlock:                  ['members/Members'],
+  toggleGlobalCoupon:                 ['members/Coupons'],
+  togglePointsPromo:                  ['members/Points_Promos'],
+  toggleRewardCatalogItem:            ['members/Rewards_Catalog'],
+  toggleSignupPrivilegeConfigEnabled: ['props/script'],
+  toggleSignupPrivilegeItem:          ['members/Signup_Privileges'],
+  toggleTierPerk:                     ['members/Tier_Perks'],
+  updateAutoMemberConfig:             ['props/script'],
+  updateBirthdayPromoConfig:          ['props/script'],
+  updateCodConfig:                    ['props/script'],
+  updateGlobalCoupon:                 ['members/Coupons'],
+  updateMemberPrivilege:              ['members/Member_Privileges'],
+  updatePointsPromo:                  ['members/Points_Promos'],
+  updatePointsRedeemConfig:           ['props/script'],
+  updatePurchaseReferralConfig:       ['props/script'],
+  updateReferralConfig:               ['props/script'],
+  updateRewardCatalogItem:            ['members/Rewards_Catalog'],
+  updateShippingConfig:               ['members/Shipping_Config'],
+  updateSignupBonus:                  ['props/script'],
+  updateSignupPrivilegeConfig:        ['props/script'],
+  updateSignupPrivilegeItem:          ['members/Signup_Privileges'],
+  updateTierConfig:                   ['members/Tier_Config', 'members/Members'],
+  updateTierPerk:                     ['members/Tier_Perks']
+};
+var ADMIN_WRITE_FNS_ = Object.keys(ADMIN_WRITE_TABS_);
+// ทุกแท็บที่ Supabase ใช้ (ชุดทดสอบ adminCompareReads ส่งสำเนาทั้งหมดนี้ก่อนเทียบ)
 var ADMIN_DIRTY_TABS_ = [
   'members/Members', 'members/Member_Privileges', 'members/Points_Log', 'members/Coupons', 'members/Tier_Config',
   'members/Signup_Privileges', 'members/Points_Promos', 'members/Tier_Perks', 'members/Point_Rewards',
@@ -148,20 +195,45 @@ function adminInstallHooks_() {
     };
   });
 
-  // ฟังก์ชันแอดมินที่แก้ข้อมูล: ตั้งธงข้อมูลเปลี่ยน (Supabase ถอยไป Apps Script จนกว่าสำเนาจะทัน)
+  // ฟังก์ชันแอดมินที่แก้ข้อมูล: ตั้งธงเฉพาะแท็บที่แก้ แล้วส่งสำเนาทันที (หน้าร้านใช้ Supabase ต่อได้ภายในไม่กี่วินาที)
   ADMIN_WRITE_FNS_.forEach(function (name) {
+    var tabs = ADMIN_IDENTITY_FNS_[name] ? ADMIN_WRITE_TABS_[name].concat(['members/Members#identity']) : ADMIN_WRITE_TABS_[name];
     wrap(name, function (orig) {
       return function () {
         try {
           return orig.apply(this, arguments);
         } finally {
-          signupMarkDirty_(ADMIN_IDENTITY_FNS_[name] ? ADMIN_DIRTY_TABS_.concat(['members/Members#identity']) : ADMIN_DIRTY_TABS_);
+          adminAfterWrite_(tabs);
         }
       };
     });
   });
 }
 adminInstallHooks_();
+
+
+// หลังฟังก์ชันแอดมินแก้ชีต: ตั้งธง (+ trigger สำรอง) แล้วส่งสำเนาแท็บที่แก้ทันที ไม่ throw ไม่ว่ากรณีใด
+// ส่งสำเร็จ -> ลบเครื่องหมายที่จดไว้ (trigger สำรองไม่ต้องอ่านซ้ำ) ถ้ามีใครจดใหม่ระหว่างส่ง เก็บไว้ให้ trigger ส่งอีกรอบ
+function adminAfterWrite_(tabKeys) {
+  try {
+    if (!mirrorConfig_()) return;
+    signupMarkDirty_(tabKeys);
+    var props = PropertiesService.getScriptProperties();
+    var marked = props.getProperties();
+    var failed = {};
+    mirrorSyncTabsNow_(tabKeys, true).forEach(function (r) {
+      if (!r || r.status === 'error') failed[r ? r.key : ''] = true;
+    });
+    var after = props.getProperties();
+    tabKeys.forEach(function (k) {
+      var p = MIRROR_DIRTY_PREFIX_ + k;
+      if (failed[k.split('#')[0]] || !marked[p] || after[p] !== marked[p]) return;
+      props.deleteProperty(p);
+    });
+  } catch (e) {
+    Logger.log('adminAfterWrite_ error: ' + e);
+  }
+}
 
 
 // ------------------------------------------------------------------------------------------
