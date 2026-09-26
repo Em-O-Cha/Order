@@ -1988,7 +1988,8 @@ function getUnusedMemberPrivileges_(lineUid) {
 }
 
 function hasUnusedMemberPrivilege_(lineUid) {
-  return getUnusedMemberPrivileges_(lineUid).length > 0;
+  // ⚡ แก้ (26/9/69) — สิทธิ์ที่แอดมินติ๊ก "ใช้ร่วมกับคูปองได้" ไม่ซ่อนคูปอง/โปรหน้าแรก (ตรงกับกติกาหน้าชำระเงิน)
+  return getUnusedMemberPrivileges_(lineUid).some(function (p) { return !p.stackable; });
 }
 
 function bahtText_(n) {
