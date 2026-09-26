@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 93 รายการ (64 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 96 รายการ (65 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -829,6 +829,21 @@ function getBirthdayPromoConfigForAdmin(pin) {
   return { success: true, config: getBirthdayPromoConfig_(), tiers: getTierConfig_() };
 }
 
+var PRIVILEGE_STACKABLE_HEADER_ = 'ใช้ร่วมกับคูปอง/ส่วนลดอื่นได้(TRUE/FALSE)';
+
+var privilegeStackableColCache_ = null;
+
+function privilegeStackableCol_(create) {
+  if (privilegeStackableColCache_ !== null && (privilegeStackableColCache_ > 0 || !create)) return privilegeStackableColCache_;
+  var sheet = ensurePrivilegesSheet_();
+  var width = Math.max(sheet.getLastColumn(), 15);
+  var header = sheet.getRange(1, 1, 1, width).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var c = header.indexOf(PRIVILEGE_STACKABLE_HEADER_) + 1;
+  if (!c && create) { c = width + 1; sheet.getRange(1, c).setValue(PRIVILEGE_STACKABLE_HEADER_); }
+  privilegeStackableColCache_ = c;
+  return c;
+}
+
 var CANCELLED_ORDER_MARK_ = 'ยกเลิก';
 
 function getTierConfigForAdmin() {
@@ -976,10 +991,13 @@ function getMemberPrivileges(pin, lineUid) {
     var lastRow = sheet.getLastRow();
     if (lastRow <= 1) return { success: true, results: [] };
     var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
+    var stackCol_ = privilegeStackableCol_();
+    var stackVals_ = stackCol_ ? sheet.getRange(2, stackCol_, lastRow - 1, 1).getValues() : [];
     var now = new Date();
     var results = [];
     data.forEach(function (row, idx) {
       if (String(row[0]) !== String(lineUid)) return;
+      var stackRaw_ = stackVals_[idx] ? stackVals_[idx][0] : '';
       var active = row[7] === true || String(row[7]).toUpperCase() === 'TRUE';
       var startDateVal = row[9];
       var expiryVal = row[4];
@@ -998,7 +1016,8 @@ function getMemberPrivileges(pin, lineUid) {
         expiryDaysApprox: expiryDaysApprox,
         active: active,
         isUpcoming: !!(startDateVal && new Date(startDateVal) > now),
-        restriction: row[10] || '', freeProduct: row[11] || '', freeQty: row[12] || ''
+        restriction: row[10] || '', freeProduct: row[11] || '', freeQty: row[12] || '',
+        stackable: stackRaw_ === true || String(stackRaw_).toUpperCase() === 'TRUE'
       });
     });
     results.sort(function (a, b) { return b.rowIndex - a.rowIndex; });

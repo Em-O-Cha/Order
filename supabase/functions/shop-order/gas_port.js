@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 128 รายการ (85 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 134 รายการ (89 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1017,7 +1017,30 @@ function getPrivilegeRowsForLineUid_(lineUid) {
   var sheet = ensurePrivilegesSheet_();
   var rowNumbers = getKeyRowIndexCached_(sheet, 1, String(lineUid), 'privrows_', PRIVILEGE_ROWS_CACHE_TTL_, normalizeAsString_);
   if (!rowNumbers.length) return [];
-  return readRowsMerged_(sheet, rowNumbers, 15);
+  // อ่านกว้างพอให้ถึงคอลัมน์ "ใช้ร่วมกับคูปองได้" (ถ้ามี) ด้วย
+  return readRowsMerged_(sheet, rowNumbers, Math.max(15, privilegeStackableCol_()));
+}
+
+var PRIVILEGE_STACKABLE_HEADER_ = 'ใช้ร่วมกับคูปอง/ส่วนลดอื่นได้(TRUE/FALSE)';
+
+var privilegeStackableColCache_ = null;
+
+function privilegeStackableCol_(create) {
+  if (privilegeStackableColCache_ !== null && (privilegeStackableColCache_ > 0 || !create)) return privilegeStackableColCache_;
+  var sheet = ensurePrivilegesSheet_();
+  var width = Math.max(sheet.getLastColumn(), 15);
+  var header = sheet.getRange(1, 1, 1, width).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var c = header.indexOf(PRIVILEGE_STACKABLE_HEADER_) + 1;
+  if (!c && create) { c = width + 1; sheet.getRange(1, c).setValue(PRIVILEGE_STACKABLE_HEADER_); }
+  privilegeStackableColCache_ = c;
+  return c;
+}
+
+function isStackablePrivilegeRow_(row) {
+  var c = privilegeStackableCol_();
+  if (!c) return false;
+  var v = row[c - 1];
+  return v === true || String(v).toUpperCase() === 'TRUE';
 }
 
 function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shippingCost) {
@@ -1047,7 +1070,8 @@ function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shipp
         productDiscount: calc.productDiscount, shippingDiscount: calc.shippingDiscount,
         discount: discount, givenBy: row[5],
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
-        physicalFreeQty: calc.physicalFreeQty || 0, minPurchase: minPurchase, freeDiscountPercent: calc.freeDiscountPercent || 100
+        physicalFreeQty: calc.physicalFreeQty || 0, minPurchase: minPurchase, freeDiscountPercent: calc.freeDiscountPercent || 100,
+        stackable: isStackablePrivilegeRow_(row)
       });
     });
     return results;
@@ -1391,6 +1415,25 @@ function ensureCouponAudienceColumns_(sheet) {
   return { audienceCol: a, usedByCol: u };
 }
 
+function trimCouponShippingDiscounts_(privileges, coupons, shippingCost) {
+  var remaining = Math.max(0, (Number(shippingCost) || 0) - (privileges || []).reduce(function (s, p) { return s + (p.shippingDiscount || 0); }, 0));
+  return (coupons || []).map(function (c) {
+    if (!c || !(c.shippingDiscount > 0)) return c;
+    var take = Math.min(c.shippingDiscount, remaining);
+    remaining -= take;
+    if (take === c.shippingDiscount) return c;
+    var copy = {};
+    Object.keys(c).forEach(function (k) { copy[k] = c[k]; });
+    copy.shippingDiscount = take;
+    copy.discount = (copy.productDiscount || 0) + take;
+    return copy;
+  });
+}
+
+function isUsefulAutoCoupon_(c) {
+  return !!c && ((c.discount || 0) > 0 || (c.physicalFreeQty || 0) > 0);
+}
+
 function withoutSameCoupon_(autoCoupons, manual) {
   return (autoCoupons || []).filter(function (c) { return String(c.rowIndex) !== String(manual.rowIndex); });
 }
@@ -1606,7 +1649,7 @@ function getUnusedMemberPrivileges_(lineUid) {
       var startDate = row[9];
       if (startDate && new Date(startDate) > now) return;    // ยังไม่ถึงวันเริ่มใช้
       if (isExpired_(row[4], now)) return;                   // หมดอายุแล้ว
-      out.push({ name: String(row[1] || ''), minPurchase: parseFloat(row[13]) || 0, restriction: String(row[10] || '') });
+      out.push({ name: String(row[1] || ''), minPurchase: parseFloat(row[13]) || 0, restriction: String(row[10] || ''), stackable: isStackablePrivilegeRow_(row) });
     });
     return out;
   } catch (e) {
@@ -1619,6 +1662,8 @@ function bahtText_(n) {
 }
 
 function getPrivilegeLockState_(lineUid, appliedPrivileges, subtotal) {
+  // ⚡ แก้ (26/9/69) — สิทธิ์ที่แอดมินติ๊ก "ใช้ร่วมกับคูปองได้" ไม่นับเป็นตัวล็อก (ทั้งสิทธิ์ที่ใช้กับตะกร้านี้และที่ถือค้าง)
+  appliedPrivileges = (appliedPrivileges || []).filter(function (p) { return !p.stackable; });
   if (appliedPrivileges && appliedPrivileges.length) {
     return {
       locked: true, pending: false,
@@ -1627,7 +1672,7 @@ function getPrivilegeLockState_(lineUid, appliedPrivileges, subtotal) {
   }
   if (!PRIVILEGE_BLOCKS_COUPONS_EVEN_IF_UNUSABLE_) return { locked: false, pending: false, note: '' };
 
-  var pendingList = getUnusedMemberPrivileges_(lineUid);
+  var pendingList = getUnusedMemberPrivileges_(lineUid).filter(function (p) { return !p.stackable; });
   if (!pendingList.length) return { locked: false, pending: false, note: '' };
 
   // เลือกใบที่ "ใกล้ใช้ได้ที่สุด" (ยอดขั้นต่ำน้อยสุด) มาอธิบายให้ลูกค้าฟัง
@@ -1733,6 +1778,9 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     // ต้องทำซ้ำตรงนี้ด้วย ไม่งั้นยอดที่ตัดจริงจะไม่ตรงกับที่ลูกค้าเห็นตอนกดยืนยัน และคูปองจะโดนนับ usedCount ทิ้งฟรีๆ
     var privilegeLock_ = getPrivilegeLockState_(profile.sub, appliedPrivileges, subtotal);
     if (privilegeLock_.locked) couponResults = [];
+    // ส่วนลดค่าส่งรวมกันไม่เกินค่าส่ง (กติกาเดียวกับ checkShopDiscounts) — โค้ดที่พิมพ์เองอยู่ลำดับแรกเสมอ ไม่ถูกตัดทิ้ง
+    couponResults = trimCouponShippingDiscounts_(appliedPrivileges, couponResults, shippingCost)
+      .filter(function (c) { return (manualResult && String(c.rowIndex) === String(manualResult.rowIndex)) || isUsefulAutoCoupon_(c); });
 
     var privilegeProductDiscount = appliedPrivileges.reduce(function (sum, p) { return sum + (p.productDiscount || 0); }, 0);
     var privilegeShippingDiscount = appliedPrivileges.reduce(function (sum, p) { return sum + (p.shippingDiscount || 0); }, 0);
