@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 146 รายการ (99 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 147 รายการ (100 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1056,17 +1056,20 @@ function isStackablePrivilegeRow_(row) {
   return v === true || String(v).toUpperCase() === 'TRUE';
 }
 
-function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shippingCost) {
+function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shippingCost, usedByOrderRows) {
   try {
     var rows = getPrivilegeRowsForLineUid_(lineUid);
     if (!rows.length) return [];
     var now = new Date();
     var itemsSafe = items || [];
     var results = [];
+    // สิทธิ์ที่ออเดอร์ที่กำลังตรวจยอดซ้ำใช้ไปเองตอนสั่งซื้อ (ระบบปิดไว้แล้ว) นับว่ายังใช้ได้กับออเดอร์นั้น
+    var usedByOrder_ = {};
+    (usedByOrderRows || []).forEach(function (n) { usedByOrder_[String(n)] = true; });
     rows.forEach(function (entry) {
       var row = entry.values;
       var active = row[7] === true || String(row[7]).toUpperCase() === 'TRUE';
-      if (!active) return;
+      if (!active && !usedByOrder_[String(entry.rowIndex)]) return;
       var startDate = row[9];
       if (startDate && new Date(startDate) > now) return;
       var expiry = row[4];
@@ -1093,11 +1096,11 @@ function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shipp
   }
 }
 
-function getAppliedPrivileges_(lineUid, subtotal, excludeRowIndexes, items, priceMap, shippingCost) {
+function getAppliedPrivileges_(lineUid, subtotal, excludeRowIndexes, items, priceMap, shippingCost, usedByOrderRows) {
   var excludeList = Array.isArray(excludeRowIndexes) ? excludeRowIndexes : (excludeRowIndexes ? [excludeRowIndexes] : []);
   var excludeSet = {};
   excludeList.forEach(function (n) { if (n !== '' && n !== null && n !== undefined) excludeSet[String(n)] = true; });
-  var all = getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shippingCost);
+  var all = getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shippingCost, usedByOrderRows);
   return all.filter(function (p) { return !excludeSet[String(p.rowIndex)]; });
 }
 
@@ -1930,6 +1933,8 @@ function validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTi
       if (subtotal < minPurchase) return { error: 'ยอดซื้อขั้นต่ำ ฿' + minPurchase.toLocaleString('th-TH') + ' จึงจะใช้โค้ดนี้ได้' };
       var maxUses = parseInt(row[4]) || 0;
       var usedCount = parseInt(row[5]) || 0;
+      // ตรวจยอดซ้ำของออเดอร์ที่ใช้โค้ดนี้ไปแล้ว: ครั้งที่นับไปตอนสั่งซื้อคือของออเดอร์นี้เอง ไม่นับว่าเต็ม
+      if (opts && opts.countedInOrder) usedCount = Math.max(0, usedCount - 1);
       if (maxUses > 0 && usedCount >= maxUses) return { error: 'โค้ดนี้ถูกใช้ครบจำนวนแล้ว' };
       var type = String(row[1]);
       var restriction = row[9];
@@ -2148,6 +2153,38 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
   }
 }
 
+function privilegeRowsUsedByOrder_(lineUid, remark, orderTime) {
+  try {
+    var want = {};
+    var re = /สิทธิ์:\s*([^\(]+?)\s*\(-\d/g, m;
+    while ((m = re.exec(remark || '')) !== null) want[m[1].trim()] = (want[m[1].trim()] || 0) + 1;
+    if (!Object.keys(want).length) return [];
+    var t0 = orderTime ? new Date(orderTime).getTime() : NaN;
+    if (isNaN(t0)) return [];
+    var sheet = ensurePrivilegesSheet_();
+    if (String(sheet.getRange(1, 17).getValue() || '').trim() !== 'ใช้สิทธิ์เมื่อ') return [];
+    var rowNumbers = getKeyRowIndexCached_(sheet, 1, String(lineUid), 'privrows_', PRIVILEGE_ROWS_CACHE_TTL_, normalizeAsString_);
+    if (!rowNumbers.length) return [];
+    var byName = {};
+    readRowsMerged_(sheet, rowNumbers, 17).forEach(function (entry) {
+      var row = entry.values;
+      if (row[7] === true || String(row[7]).toUpperCase() === 'TRUE') return;
+      var name = String(row[1] || '').trim();
+      if (!want[name] || !row[16]) return;
+      var gap = Math.abs(new Date(row[16]).getTime() - t0);
+      if (isNaN(gap) || gap > 24 * 3600 * 1000) return;
+      (byName[name] = byName[name] || []).push({ rowIndex: entry.rowIndex, gap: gap });
+    });
+    var out = [];
+    Object.keys(byName).forEach(function (name) {
+      byName[name].sort(function (a, b) { return a.gap - b.gap; }).slice(0, want[name]).forEach(function (x) { out.push(x.rowIndex); });
+    });
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
 function recalcOrderDiscounts_(lineUid, billInfo, remark, excludeOrderId) {
   var items = billInfo.items;
   var subtotal = billInfo.subtotal;
@@ -2169,7 +2206,10 @@ function recalcOrderDiscounts_(lineUid, billInfo, remark, excludeOrderId) {
     memberTierKey_ = resolveTierByStoredValue_(mRow[6], mRow[11] || 0, lineUid).key;
   }
 
-  var appliedPrivileges = getAppliedPrivileges_(lineUid, subtotal, [], items, priceMap, shippingCost);
+  // ⚡ แก้ (27/9/69) — สิทธิ์/โค้ดที่ออเดอร์นี้ใช้ไปเองตอนสั่งซื้อ ต้องนับว่ายังใช้ได้กับออเดอร์นี้ (เดิมระบบเห็นว่า
+  // สิทธิ์ถูกปิด/โค้ดถูกใช้ครบแล้ว จึงตัดส่วนลดออก ลูกค้ากดแนบสลิปจากรถเข็นแล้วเจอ "ยอดชำระเปลี่ยนแปลง" ทั้งที่ไม่มีอะไรเปลี่ยน)
+  var usedByThisOrder_ = privilegeRowsUsedByOrder_(lineUid, remark, billInfo.orderTime);
+  var appliedPrivileges = getAppliedPrivileges_(lineUid, subtotal, [], items, priceMap, shippingCost, usedByThisOrder_);
 
   var usedCouponCodes = [];
   var couponRegex = /คูปอง:\s*([^\(]+?)\s*\(-\d/g;
@@ -2178,7 +2218,7 @@ function recalcOrderDiscounts_(lineUid, billInfo, remark, excludeOrderId) {
 
   var couponResults = [];
   usedCouponCodes.forEach(function (code) {
-    var r = validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTierKey_, lineUid, { orderId: excludeOrderId });
+    var r = validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTierKey_, lineUid, { orderId: excludeOrderId, countedInOrder: true });
     if (r && !r.error) couponResults.push(r);
   });
   if (!couponResults.length) {
@@ -2324,6 +2364,7 @@ function getBillDataForNotify_(sheet, targetRow) {
     physicalFreebieItems: parsePhysicalFreebieItemsFromRemark_(mainRow[19]),
     purchaseReferrerCode: parsePurchaseReferrerCodeFromRemark_(mainRow[19]),
     slipImageUrl: String(mainRow[10] || ''),
+    orderTime: mainRow[1] || '', // คอลัมน์ B: เวลาสั่งซื้อ
     lineUid: String(mainRow[31] || '') // ⚡ คอลัมน์ AF: LINE UID ที่บันทึกไว้ตอนสั่งซื้อ (ย้ายมาจากคอลัมน์ Z เดิมเมื่อ 1/9/69 กันชนกับ Revenue Spunky Online — ออเดอร์เก่าก่อนแก้จะว่าง ให้ fallback ไปหาเบอร์โทรแทน)
   };
 }

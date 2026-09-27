@@ -1043,17 +1043,20 @@ function isStackablePrivilegeRow_(row) {
   return v === true || String(v).toUpperCase() === 'TRUE';
 }
 
-function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shippingCost) {
+function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shippingCost, usedByOrderRows) {
   try {
     var rows = getPrivilegeRowsForLineUid_(lineUid);
     if (!rows.length) return [];
     var now = new Date();
     var itemsSafe = items || [];
     var results = [];
+    // สิทธิ์ที่ออเดอร์ที่กำลังตรวจยอดซ้ำใช้ไปเองตอนสั่งซื้อ (ระบบปิดไว้แล้ว) นับว่ายังใช้ได้กับออเดอร์นั้น
+    var usedByOrder_ = {};
+    (usedByOrderRows || []).forEach(function (n) { usedByOrder_[String(n)] = true; });
     rows.forEach(function (entry) {
       var row = entry.values;
       var active = row[7] === true || String(row[7]).toUpperCase() === 'TRUE';
-      if (!active) return;
+      if (!active && !usedByOrder_[String(entry.rowIndex)]) return;
       var startDate = row[9];
       if (startDate && new Date(startDate) > now) return;
       var expiry = row[4];
@@ -1080,11 +1083,11 @@ function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shipp
   }
 }
 
-function getAppliedPrivileges_(lineUid, subtotal, excludeRowIndexes, items, priceMap, shippingCost) {
+function getAppliedPrivileges_(lineUid, subtotal, excludeRowIndexes, items, priceMap, shippingCost, usedByOrderRows) {
   var excludeList = Array.isArray(excludeRowIndexes) ? excludeRowIndexes : (excludeRowIndexes ? [excludeRowIndexes] : []);
   var excludeSet = {};
   excludeList.forEach(function (n) { if (n !== '' && n !== null && n !== undefined) excludeSet[String(n)] = true; });
-  var all = getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shippingCost);
+  var all = getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shippingCost, usedByOrderRows);
   return all.filter(function (p) { return !excludeSet[String(p.rowIndex)]; });
 }
 
@@ -1600,6 +1603,8 @@ function validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTi
       if (subtotal < minPurchase) return { error: 'ยอดซื้อขั้นต่ำ ฿' + minPurchase.toLocaleString('th-TH') + ' จึงจะใช้โค้ดนี้ได้' };
       var maxUses = parseInt(row[4]) || 0;
       var usedCount = parseInt(row[5]) || 0;
+      // ตรวจยอดซ้ำของออเดอร์ที่ใช้โค้ดนี้ไปแล้ว: ครั้งที่นับไปตอนสั่งซื้อคือของออเดอร์นี้เอง ไม่นับว่าเต็ม
+      if (opts && opts.countedInOrder) usedCount = Math.max(0, usedCount - 1);
       if (maxUses > 0 && usedCount >= maxUses) return { error: 'โค้ดนี้ถูกใช้ครบจำนวนแล้ว' };
       var type = String(row[1]);
       var restriction = row[9];
@@ -2139,6 +2144,7 @@ function getBillDataForNotify_(sheet, targetRow) {
     physicalFreebieItems: parsePhysicalFreebieItemsFromRemark_(mainRow[19]),
     purchaseReferrerCode: parsePurchaseReferrerCodeFromRemark_(mainRow[19]),
     slipImageUrl: String(mainRow[10] || ''),
+    orderTime: mainRow[1] || '', // คอลัมน์ B: เวลาสั่งซื้อ
     lineUid: String(mainRow[31] || '') // ⚡ คอลัมน์ AF: LINE UID ที่บันทึกไว้ตอนสั่งซื้อ (ย้ายมาจากคอลัมน์ Z เดิมเมื่อ 1/9/69 กันชนกับ Revenue Spunky Online — ออเดอร์เก่าก่อนแก้จะว่าง ให้ fallback ไปหาเบอร์โทรแทน)
   };
 }
