@@ -107,6 +107,9 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .coupon-ticket-body .ct-title{font-weight:700;font-size:13px;color:#bf360c;}
 .coupon-ticket-body .ct-sub{font-size:10.5px;color:#e65100;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .coupon-ticket-body .ct-exp{font-size:10px;color:var(--gm);margin-top:1px;font-weight:600;}
+/* ⚡ เพิ่ม (29/9/69) — ป้ายบอกว่าใช้ร่วมกับโปรอื่นได้หรือไม่ */
+.coupon-ticket-body .ct-stack{align-self:flex-start;font-size:9.5px;font-weight:700;margin-top:3px;padding:1px 7px;border-radius:999px;background:#e8f5e9;color:#2e7d32;white-space:nowrap;}
+.coupon-ticket-body .ct-stack.no{background:#fff3e0;color:#b45309;}
 .coupon-ticket-tag{background:#eeeeee;color:#757575;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;white-space:nowrap;}
 .coupon-ticket-side{flex:0 0 60px;background:#ffdfb3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;padding:4px 4px;}
 .coupon-ticket-side .ct-icon{font-size:15px;}
@@ -1143,6 +1146,7 @@ function applyShopBootstrap_(r){
   var scrollY_ = window.scrollY;
   categories = r.categories || [];
   activeAutoCoupons = (r.coupons || []).filter(function(c){ return c.autoApply; });
+  myPricePrivileges_ = (r.privileges || []).filter(function(p){ return p.type === 'price' && !p.isUpcoming && p.restriction; });
   renderCatalog();
   // ⚡ แก้ — เดิม showState('catalogState') รันทุกครั้งที่ฟังก์ชันนี้ทำงาน ทั้งที่ฟังก์ชันนี้ถูกเรียก 2 รอบ
   // ต่อการเปิดหน้า (รอบแคชทันที + รอบ API จริงตอบกลับมาทีหลัง) ถ้าลูกค้ากดไปหน้าชำระเงินไปแล้วก่อนรอบ API
@@ -1192,16 +1196,21 @@ function loadProducts(){
     .catch(function(e){ if (!usedCache_) showErrorState('เรียก API ไม่สำเร็จ: ' + e.message); });
 }
 
+// ⚡ เพิ่ม (29/9/69) — สิทธิพิเศษของลูกค้าแบบ "ขายราคาพิเศษต่อชิ้น" (price) ก็ขึ้นราคาขีดฆ่า+ราคาแดงบนการ์ดสินค้าด้วย
+var myPricePrivileges_ = [];
 function getBestPromoPrice_(skuName, price){
   var best = null;
-  activeAutoCoupons.forEach(function(c){
+  activeAutoCoupons.concat(myPricePrivileges_).forEach(function(c){
     if (c.type === 'bogo' || c.type === 'ship_percent' || c.type === 'ship_fixed') return;
     if (!c.restriction) return;
     var keywords = c.restriction.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
     var matches = keywords.some(function(kw){ return skuName.indexOf(kw) !== -1; });
     if (!matches) return;
-    var discounted = c.type === 'percent' ? price * (1 - c.value / 100) : Math.max(0, price - c.value);
-    if (!best || discounted < best) best = discounted;
+    // price = ขายราคาพิเศษต่อชิ้น (มูลค่าคือราคาขาย ไม่ใช่ส่วนลด) — ราคาปกติถูกกว่าอยู่แล้วไม่ขึ้นป้าย
+    var discounted = c.type === 'percent' ? price * (1 - c.value / 100)
+      : (c.type === 'price' ? Math.min(price, Number(c.value) || 0) : Math.max(0, price - c.value));
+    if (discounted >= price) return;
+    if (best === null || discounted < best) best = discounted;
   });
   return best;
 }
@@ -1240,6 +1249,7 @@ function renderMyPrivileges_(r){
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(p.name || '') + '</div>'
           + '<div class="ct-sub">' + ((p.expiry && p.expiry !== 'ไม่มีวันหมดอายุ') ? ('ใช้ได้ถึง ' + escHtml(p.expiry)) : 'ไม่มีวันหมดอายุ') + '</div>'
+          + (p.stackable === undefined ? '' : (p.stackable ? '<div class="ct-stack">🤝 ใช้ร่วมกับโปรอื่นได้</div>' : '<div class="ct-stack no">ใช้ร่วมกับโปรอื่นไม่ได้</div>'))
         + '</div>'
         + '<div class="coupon-ticket-side">'
           + '<span class="ct-icon">' + theme.icon + '</span>'
@@ -1263,6 +1273,7 @@ function stubMarkup_(label, value){
 // ด้านบน เพราะเป็นคนละความหมาย: สิทธิพิเศษของคุณ = ของเฉพาะตัวลูกค้าคนนั้น (สมัครสมาชิก/แนะนำเพื่อน/แลกแต้ม)
 // ส่วนกล่องนี้ = โปรร้านที่ลูกค้าทุกคนใช้ได้เหมือนกัน แสดงเป็นการ์ดคูปองแบบตั๋วฉีก (.coupon-ticket) ทีละใบ
 function autoPromoValueText_(c){
+  if (c.type === 'price') return 'ราคาพิเศษ ' + Number(c.value).toLocaleString('th-TH') + ' บาท/ชิ้น';
   if (c.type === 'percent') return 'ลด ' + c.value + '%';
   if (c.type === 'fixed') return 'ลด ' + c.value.toLocaleString('th-TH') + ' บาท';
   if (c.type === 'ship_percent') return c.value >= 100 ? 'ฟรีค่าจัดส่ง' : 'ลดค่าส่ง ' + c.value + '%';
@@ -1281,6 +1292,7 @@ function autoPromoStubText_(c){
   // เพราะบางโปร (เช่น bogo แบบ "ลด X%") สร้างข้อความอัตโนมัติที่คลุมเครือ (เช่น "ซื้อ 1 / ลด 50%" อ่านแล้ว
   // เข้าใจผิดว่าซื้อ 1 แถม 1) — รายละเอียดจริงโชว์อยู่ในหัวเรื่อง/บรรทัดย่อยของตัวคูปองอยู่แล้ว
   if (c.stubText) return { label: '', value: c.stubText };
+  if (c.type === 'price') return { label: 'ราคาพิเศษ', value: Number(c.value).toLocaleString('th-TH') + '.-' };
   if (c.type === 'percent') return { label: 'ลดพิเศษ', value: c.value + '%' };
   if (c.type === 'fixed') return { label: 'ลดพิเศษ', value: c.value.toLocaleString('th-TH') + '.-' };
   if (c.type === 'ship_percent') return c.value >= 100 ? { label: 'จัดส่ง', value: 'ฟรี' } : { label: 'ลดค่าส่ง', value: c.value + '%' };
@@ -1321,6 +1333,7 @@ function renderAutoPromoBox_(coupons){
           + '<div class="ct-title">' + escHtml(c.code || valueText) + '</div>'
           + (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : '')
           + (c.expiry ? '<div class="ct-exp">ใช้ได้ถึง ' + escHtml(c.expiry) + '</div>' : '')
+          + (c.stackable ? '<div class="ct-stack">🤝 ใช้ร่วมกับสิทธิพิเศษได้</div>' : '')
         + '</div>'
         + '<div class="coupon-ticket-side">'
           + '<span class="ct-icon">' + side.icon + '</span>'
@@ -2803,6 +2816,20 @@ function getFreshIdToken(){
   return Promise.resolve(token);
 }
 
+// ⚡ เพิ่ม (29/9/69) — เปิดมาจากปุ่มในข้อความโปร (ลิงก์มี ?src=<รหัสข้อความ>) จดว่าใครกดจากข้อความไหน
+// ให้หน้าแอดมินนับคนกดได้เป๊ะพร้อมรายชื่อ (LINE ไม่บอกว่าใคร) — ยิงเบื้องหลัง ไม่รอผล ไม่กระทบการเปิดหน้าร้าน
+function logPromoClickFromUrl_(){
+  try {
+    var params = new URLSearchParams(location.search);
+    var src = params.get('src');
+    if (!src && params.get('liff.state')) src = new URLSearchParams(String(params.get('liff.state')).split('?')[1] || '').get('src');
+    if (!src || !/^[A-Za-z]{1,12}\d{14}$/.test(src)) return;
+    var key = 'promoClickLogged.' + src;
+    try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch (e) {}
+    callApi('logPromoClick', { idToken: currentIdToken, src: src }).catch(function(){});
+  } catch (e) {}
+}
+
 function initLiff(){
   var initTimeout = setTimeout(function(){
     showErrorState('liff.init() ใช้เวลานานเกิน 10 วินาที — กรุณาตรวจ LIFF ID และ Endpoint URL');
@@ -2821,6 +2848,7 @@ function initLiff(){
       return;
     }
     currentLineUserId = getIdTokenSub_(currentIdToken);
+    logPromoClickFromUrl_();
     loadProducts();
   }).catch(function(e){
     clearTimeout(initTimeout);
