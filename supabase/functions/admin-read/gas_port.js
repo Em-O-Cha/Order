@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 96 รายการ (65 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 99 รายการ (67 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -175,7 +175,7 @@ function findHighestTierUpgradeRedeemed_(lineUid, tierConfig) {
   }
 }
 
-var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed'];
+var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'price'];
 
 function getSignupPrivilegeConfig_() {
   var fallback = { enabled: false, name: '', type: 'percent', value: 0, expiryDays: 0, expiryDate: '', restriction: '', freeProduct: '', freeQty: 0, startDate: '', endDate: '' };
@@ -806,7 +806,7 @@ function getBirthdayPromoConfig_() {
 
 function normalizeBirthdayPromoReward_(src) {
   src = src || {};
-  var allowed = ['none', 'percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'gift'];
+  var allowed = ['none', 'percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'gift', 'price'];
   var type = allowed.indexOf(String(src.type || 'none')) !== -1 ? String(src.type || 'none') : 'none';
   return {
     // id ต้องไม่ซ้ำภายในโปรเดียวกัน เพราะ 1 Tier สร้างหลายโปรพร้อมกันได้
@@ -820,7 +820,9 @@ function normalizeBirthdayPromoReward_(src) {
     minPurchase: Math.max(0, parseFloat(src.minPurchase) || 0),
     restriction: String(src.restriction || '').trim(),
     freeProduct: String(src.freeProduct || '').trim(),
-    freeQty: Math.max(0, parseFloat(src.freeQty) || 0)
+    freeQty: Math.max(0, parseFloat(src.freeQty) || 0),
+    // ⚡ เพิ่ม (29/9/69) — ติ๊ก = สิทธิ์วันเกิดใบนี้ใช้ร่วมกับคูปอง/ส่วนลดอื่นได้ (เหมือนช่องติ๊กของสิทธิพิเศษสมาชิก)
+    stackable: src.stackable === true || src.stackable === 'true'
   };
 }
 
@@ -1035,6 +1037,7 @@ function listGlobalCoupons(pin) {
     if (lastRow <= 1) return { success: true, results: [] };
     var data = sheet.getRange(2, 1, lastRow - 1, 16).getValues();
     var audienceInfo_ = getCouponAudienceInfoByCode_();
+    var stackableByCode_ = getCouponStackableByCode_();
     var tierConfig = getTierConfig_();
     var now = new Date();
     var results = data.map(function (row, idx) {
@@ -1065,7 +1068,8 @@ function listGlobalCoupons(pin) {
         tierNames: tierNames,
         freeDiscountPercent: (row[14] === '' || row[14] === null || row[14] === undefined) ? 100 : row[14],
         stubText: row[15] || '',
-        audienceCount: audienceCount_, audienceUsedCount: usedByCount_
+        audienceCount: audienceCount_, audienceUsedCount: usedByCount_,
+        stackable: !!stackableByCode_[String(row[0]).trim().toUpperCase()]
       };
     });
     results.reverse();
@@ -1122,7 +1126,7 @@ function listRedemptionLog(pin) {
   }
 }
 
-var COUPONS_RAW_CACHE_KEY_ = 'coupons_raw_v2';
+var COUPONS_RAW_CACHE_KEY_ = 'coupons_raw_v3';
 
 function getCouponsRawBundle_() {
   try {
@@ -1136,7 +1140,8 @@ function getCouponsRawBundle_() {
   var bundle = {
     rows: lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [],
     a: header.indexOf(COUPON_AUDIENCE_HEADER_),
-    u: header.indexOf(COUPON_USED_BY_HEADER_)
+    u: header.indexOf(COUPON_USED_BY_HEADER_),
+    s: header.indexOf(COUPON_STACKABLE_HEADER_)
   };
   try {
     CacheService.getScriptCache().put(COUPONS_RAW_CACHE_KEY_, JSON.stringify(bundle), 15);
@@ -1149,6 +1154,24 @@ function getCouponsRawBundle_() {
 var COUPON_AUDIENCE_HEADER_ = 'เฉพาะผู้รับ(LINE UID คั่นด้วยจุลภาค — ระบบใส่ให้ตอนยิงโปร เว้นว่าง=ทุกคน)';
 
 var COUPON_USED_BY_HEADER_ = 'ใช้แล้วโดย(LINE UID@เลขออเดอร์ — ระบบบันทึกเอง)';
+
+var COUPON_STACKABLE_HEADER_ = 'ใช้ร่วมกับสิทธิพิเศษสมาชิกได้(TRUE/FALSE)';
+
+function couponRowStackable_(bundle, row) {
+  if (!bundle || !(bundle.s >= 0)) return false;
+  var v = row[bundle.s];
+  return v === true || String(v).toUpperCase() === 'TRUE';
+}
+
+function getCouponStackableByCode_() {
+  var bundle = getCouponsRawBundle_();
+  var out = {};
+  if (!(bundle.s >= 0)) return out;
+  bundle.rows.forEach(function (row) {
+    if (couponRowStackable_(bundle, row)) out[String(row[0]).trim().toUpperCase()] = true;
+  });
+  return out;
+}
 
 function parseCouponUidList_(value) {
   return String(value || '').split(/[\s,]+/).map(function (s) { return s.trim(); }).filter(Boolean);

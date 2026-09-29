@@ -123,7 +123,7 @@ function calcEligibleTier_(lifetimeSpend, points) {
   return eligible;
 }
 
-var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed'];
+var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'price'];
 
 function getSignupPrivilegeConfig_() {
   var fallback = { enabled: false, name: '', type: 'percent', value: 0, expiryDays: 0, expiryDate: '', restriction: '', freeProduct: '', freeQty: 0, startDate: '', endDate: '' };
@@ -552,6 +552,16 @@ function buildOrderHeaderCard_(icon, title, subtitle) {
 
 function buildOrderSummaryRow_(label, value, opts) {
   opts = opts || {};
+  // oneLine: ป้ายกว้างเท่าที่ใช้จริง ค่า (เช่น ชื่อลูกค้า) อยู่บรรทัดเดียว ยาวเกินให้ตัวอักษรย่อลงเอง
+  if (opts.oneLine) {
+    return {
+      type: 'box', layout: 'horizontal', margin: opts.margin || 'xs',
+      contents: [
+        { type: 'text', text: label, size: opts.size || 'xs', color: opts.labelColor || '#9e9e9e', flex: 0 },
+        { type: 'text', text: value, size: opts.size || 'xs', color: opts.valueColor || '#424242', weight: opts.bold ? 'bold' : 'regular', align: 'end', flex: 1, margin: 'md', wrap: false, adjustMode: 'shrink-to-fit' }
+      ]
+    };
+  }
   return {
     type: 'box', layout: 'horizontal', margin: opts.margin || 'xs',
     contents: [

@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 147 รายการ (100 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 151 รายการ (103 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -184,7 +184,7 @@ function findHighestTierUpgradeRedeemed_(lineUid, tierConfig) {
   }
 }
 
-var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed'];
+var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'price'];
 
 function getSignupPrivilegeConfig_() {
   var fallback = { enabled: false, name: '', type: 'percent', value: 0, expiryDays: 0, expiryDate: '', restriction: '', freeProduct: '', freeQty: 0, startDate: '', endDate: '' };
@@ -1129,6 +1129,7 @@ function getMyPrivilegesForLineUid_(lineUid) {
       // การสมัครสมาชิก (ของขวัญต้อนรับสมาชิกใหม่) ต่างจากสิทธิ์ที่มาจากแหล่งอื่น (แนะนำเพื่อน/วันเกิด/แอดมินให้เอง)
       // ไม่กระทบผู้ใช้เดิมของฟังก์ชันนี้เลยเพราะเป็นแค่ field เสริม ไม่ได้ตัด field เดิมออก
       reason: row[5] || '',
+      restriction: row[2] === 'price' ? String(row[10] || '') : '', // ขายราคาพิเศษ: หน้าร้านใช้ขึ้นราคาแดงบนการ์ดสินค้า
       isUpcoming: isUpcoming,
       startDateText: startDate ? new Date(startDate).toLocaleDateString('th-TH') : ''
     });
@@ -1181,7 +1182,11 @@ function getShopBootstrap(idToken) {
     // กันลูกค้าเห็นราคาที่สุดท้ายไม่ตรงกับหน้าชำระเงิน (ตรงกับกติกาข้อ 3)
     var privilegesForShop_ = getMyPrivilegesForLineUid_(profile.sub);
     var shopPrivilegeLocked_ = hasUnusedMemberPrivilege_(profile.sub);
-    var couponsResult = shopPrivilegeLocked_ ? null : getActiveCoupons();
+    var couponsResult = getActiveCoupons();
+    // ⚡ แก้ (29/9/69) — ถือสิทธิพิเศษที่ล็อกคูปอง: ยังโชว์คูปองที่ใช้ร่วมกับสิทธิพิเศษได้
+    if (shopPrivilegeLocked_ && couponsResult && couponsResult.success) {
+      couponsResult = { success: true, results: couponsResult.results.filter(function (c) { return c.stackable; }) };
+    }
     var referralStatus = getPurchaseReferralPublicStatus();
 
     return {
@@ -1427,7 +1432,7 @@ function getMyOrderHistory(idToken) {
 
 var CANCELLED_ORDER_MARK_ = 'ยกเลิก';
 
-var ACTIVE_COUPONS_CACHE_KEY_ = 'active_coupons_v1';
+var ACTIVE_COUPONS_CACHE_KEY_ = 'active_coupons_v2';
 
 function getActiveCoupons() {
   try {
@@ -1448,6 +1453,7 @@ function getActiveCoupons() {
     var data = sheet.getRange(2, 1, lastRow - 1, 16).getValues();
     // ⚡ เพิ่ม (25/9/69) — โค้ดเฉพาะผู้รับ (จากยิงโปรตามกลุ่ม) ห้ามขึ้นในรายการคูปองหน้าร้าน คนอื่นจะเห็นโค้ด
     var audienceInfo_ = getCouponAudienceInfoByCode_();
+    var stackableByCode_ = getCouponStackableByCode_();
     var now = new Date();
     var results = [];
     data.forEach(function (row) {
@@ -1468,7 +1474,7 @@ function getActiveCoupons() {
         autoApply: row[8] === true || String(row[8]).toUpperCase() === 'TRUE',
         restriction: row[9] || '', freeProduct: row[11] || '', freeQty: row[12] || '',
         tierRestriction: row[13] || '', freeDiscountPercent: row[14] === '' || row[14] === null ? '' : row[14],
-        stubText: row[15] || ''
+        stubText: row[15] || '', stackable: !!stackableByCode_[String(row[0]).trim().toUpperCase()]
       });
     });
     var result = { success: true, results: results };
@@ -1707,12 +1713,27 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
     return result;
   }
 
+  // ⚡ เพิ่ม (29/9/69) — ขายราคาพิเศษ: สินค้าที่เลือกทุกชิ้นขายราคา value (ส่วนลด = ราคาปกติ - ราคาพิเศษ ต่อชิ้น)
+  // สินค้าที่ราคาปกติต่ำกว่าราคาพิเศษอยู่แล้วไม่ลด / ไม่ได้เลือกสินค้า = ไม่ลด (กันลดทั้งร้านโดยไม่ตั้งใจ)
+  if (type === 'price') {
+    if (!String(restriction || '').trim()) return result;
+    var keywordsPrice = String(restriction).split(',').map(function (k) { return k.trim().toLowerCase(); }).filter(Boolean);
+    var priceDiscount = 0;
+    (items || []).forEach(function (it) {
+      var name = String(it.name).toLowerCase();
+      if (!keywordsPrice.some(function (k) { return name.indexOf(k) !== -1; })) return;
+      priceDiscount += Math.max(0, (parseFloat(it.price) || 0) - value) * (parseFloat(it.qty) || 0);
+    });
+    result.productDiscount = priceDiscount;
+    return result;
+  }
+
   var eligibleInfo = computeEligibleInfo_(items, restriction);
   result.productDiscount = calcDiscountAmount_(type, value, eligibleInfo, !!restriction);
   return result;
 }
 
-var COUPONS_RAW_CACHE_KEY_ = 'coupons_raw_v2';
+var COUPONS_RAW_CACHE_KEY_ = 'coupons_raw_v3';
 
 function getCouponsRawBundle_() {
   try {
@@ -1726,7 +1747,8 @@ function getCouponsRawBundle_() {
   var bundle = {
     rows: lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [],
     a: header.indexOf(COUPON_AUDIENCE_HEADER_),
-    u: header.indexOf(COUPON_USED_BY_HEADER_)
+    u: header.indexOf(COUPON_USED_BY_HEADER_),
+    s: header.indexOf(COUPON_STACKABLE_HEADER_)
   };
   try {
     CacheService.getScriptCache().put(COUPONS_RAW_CACHE_KEY_, JSON.stringify(bundle), 15);
@@ -1739,6 +1761,38 @@ function getCouponsRawBundle_() {
 var COUPON_AUDIENCE_HEADER_ = 'เฉพาะผู้รับ(LINE UID คั่นด้วยจุลภาค — ระบบใส่ให้ตอนยิงโปร เว้นว่าง=ทุกคน)';
 
 var COUPON_USED_BY_HEADER_ = 'ใช้แล้วโดย(LINE UID@เลขออเดอร์ — ระบบบันทึกเอง)';
+
+var COUPON_STACKABLE_HEADER_ = 'ใช้ร่วมกับสิทธิพิเศษสมาชิกได้(TRUE/FALSE)';
+
+function couponRowStackable_(bundle, row) {
+  if (!bundle || !(bundle.s >= 0)) return false;
+  var v = row[bundle.s];
+  return v === true || String(v).toUpperCase() === 'TRUE';
+}
+
+function getCouponStackableByCode_() {
+  var bundle = getCouponsRawBundle_();
+  var out = {};
+  if (!(bundle.s >= 0)) return out;
+  bundle.rows.forEach(function (row) {
+    if (couponRowStackable_(bundle, row)) out[String(row[0]).trim().toUpperCase()] = true;
+  });
+  return out;
+}
+
+function hasTypeableStackableCoupon_() {
+  var bundle = getCouponsRawBundle_();
+  if (!(bundle.s >= 0)) return false;
+  var now = new Date();
+  return bundle.rows.some(function (row) {
+    if (!couponRowStackable_(bundle, row)) return false;
+    var active = row[7] === true || String(row[7]).toUpperCase() === 'TRUE';
+    var autoApply = row[8] === true || String(row[8]).toUpperCase() === 'TRUE';
+    if (!active || autoApply) return false;
+    if (row[10] && new Date(row[10]) > now) return false;
+    return !isExpired_(row[6], now);
+  });
+}
 
 function parseCouponUidList_(value) {
   return String(value || '').split(/[\s,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
@@ -1788,7 +1842,7 @@ function withoutSameCoupon_(autoCoupons, manual) {
   return (autoCoupons || []).filter(function (c) { return String(c.rowIndex) !== String(manual.rowIndex); });
 }
 
-function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey) {
+function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey, stackableOnly) {
   try {
     var bundle_ = getCouponsRawBundle_();
     var data = bundle_.rows;
@@ -1799,6 +1853,7 @@ function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey
       var autoApply = row[8] === true || String(row[8]).toUpperCase() === 'TRUE';
       if (!autoApply) return false;
       if (bundle_.a >= 0 && parseCouponUidList_(row[bundle_.a]).length) return false; // โค้ดเฉพาะผู้รับ ต้องกรอกเอง
+      if (stackableOnly && !couponRowStackable_(bundle_, row)) return false;
       var active = row[7] === true || String(row[7]).toUpperCase() === 'TRUE';
       if (!active) return false;
       var startDate = row[10];
@@ -1832,7 +1887,7 @@ function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey
 
     function calcEntry_(meta, itemsForCalc) {
       var row = meta.row;
-      if ((meta.type === 'percent' || meta.type === 'fixed') && meta.restriction) {
+      if ((meta.type === 'percent' || meta.type === 'fixed' || meta.type === 'price') && meta.restriction) {
         var eligibleCheck = itemsForCalc ? computeEligibleInfo_(itemsForCalc, meta.restriction) : { subtotal: 0, qty: 0 };
         if (eligibleCheck.subtotal <= 0) return null;
       }
@@ -1845,7 +1900,8 @@ function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey
         productDiscount: calc.productDiscount, shippingDiscount: calc.shippingDiscount,
         discount: totalDiscount, restriction: meta.restriction,
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
-        physicalFreeQty: calc.physicalFreeQty || 0, freeDiscountPercent: calc.freeDiscountPercent || 100
+        physicalFreeQty: calc.physicalFreeQty || 0, freeDiscountPercent: calc.freeDiscountPercent || 100,
+        stackable: couponRowStackable_(bundle_, row)
       };
     }
 
@@ -1938,10 +1994,10 @@ function validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTi
       if (maxUses > 0 && usedCount >= maxUses) return { error: 'โค้ดนี้ถูกใช้ครบจำนวนแล้ว' };
       var type = String(row[1]);
       var restriction = row[9];
-      if ((type === 'percent' || type === 'fixed') && restriction) {
+      if ((type === 'percent' || type === 'fixed' || type === 'price') && restriction) {
         var eligibleInfo = items ? computeEligibleInfo_(items, restriction) : { subtotal: 0, qty: 0 };
         if (eligibleInfo.subtotal <= 0) {
-          var restrictionValueText_ = type === 'percent' ? ('ลด ' + row[2] + '%') : ('ลด ' + row[2] + ' บาท');
+          var restrictionValueText_ = type === 'percent' ? ('ลด ' + row[2] + '%') : (type === 'price' ? ('ราคาพิเศษ ' + row[2] + ' บาท') : ('ลด ' + row[2] + ' บาท'));
           return { error: 'โค้ดนี้' + restrictionValueText_ + ' เฉพาะสินค้า: ' + restriction + ' (ไม่มีสินค้านี้ในตะกร้า)' };
         }
       }
@@ -1960,7 +2016,7 @@ function validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTi
         discount: calc.productDiscount + calc.shippingDiscount, restriction: restriction || '',
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
         physicalFreeQty: calc.physicalFreeQty || 0, freeDiscountPercent: calc.freeDiscountPercent || 100,
-        audience: audience_.length > 0
+        audience: audience_.length > 0, stackable: couponRowStackable_(bundle_, row)
       };
     }
     return { error: 'ไม่พบโค้ดนี้' };
@@ -2093,9 +2149,11 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     // โค้ดที่ถูกปัดตกตรงนี้ไม่โดนนับ usedCount เพราะไม่ได้เข้าไปอยู่ใน couponResults ตอนสั่งซื้อจริง
     var privilegeLock_ = getPrivilegeLockState_(profile.sub, appliedPrivileges, subtotal);
     if (privilegeLock_.locked) {
-      if (coupon) { couponError = privilegeLockCouponError_(privilegeLock_, coupon.code); coupon = null; }
-      else if (couponCode && !couponError) { couponError = privilegeLockCouponError_(privilegeLock_, couponCode); }
-      autoCoupons = [];
+      // ⚡ แก้ (29/9/69) — คูปองที่แอดมินติ๊ก "ใช้ร่วมกับสิทธิพิเศษได้" ไม่ถูกตัด (คูปองอัตโนมัติหาใบที่ดีที่สุดใหม่จากเฉพาะใบที่ติ๊ก)
+      if (coupon && !coupon.stackable) { couponError = privilegeLockCouponError_(privilegeLock_, coupon.code); coupon = null; }
+      else if (!coupon && couponCode && !couponError) { couponError = privilegeLockCouponError_(privilegeLock_, couponCode); }
+      var stackableAuto_ = findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey_, true);
+      autoCoupons = coupon ? withoutSameCoupon_(stackableAuto_, coupon) : stackableAuto_;
     }
     // ⚡ เพิ่ม (26/9/69) — ส่วนลดค่าส่งหลายก้อนรวมกันเกินค่าส่ง (เช่น สิทธิ์ส่งฟรี + คูปองลดค่าส่ง) ตัดยอดของคูปองให้
     // เหลือเท่าที่ลดได้จริง บรรทัดส่วนลดในหน้าชำระเงิน/บิล/รายงานจะได้บวกกันตรงกับยอดจริง
@@ -2146,7 +2204,7 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     }
     var pointsRedeemResult_ = calcPointsRedeemDiscount_(pointsToRedeem, memberPointsBalance_, payableBeforePoints_);
 
-    return { success: true, privileges: appliedPrivileges, privilegeDiscount: privilegeDiscount, allPrivileges: allPrivileges, privilegeLockNote: privilegeLock_.note, privilegeLocked: privilegeLock_.locked, coupon: coupon, autoCoupons: autoCoupons, couponError: couponError, shippingCost: shippingCost, shippingDiscount: totalShippingDiscount, finalShippingCost: finalShippingCost, totalWeightG: totalWeightG, repeatPromo: repeatPromo,
+    return { success: true, privileges: appliedPrivileges, privilegeDiscount: privilegeDiscount, allPrivileges: allPrivileges, privilegeLockNote: privilegeLock_.note, privilegeLocked: privilegeLock_.locked && !hasTypeableStackableCoupon_(), coupon: coupon, autoCoupons: autoCoupons, couponError: couponError, shippingCost: shippingCost, shippingDiscount: totalShippingDiscount, finalShippingCost: finalShippingCost, totalWeightG: totalWeightG, repeatPromo: repeatPromo,
       memberPoints: memberPointsBalance_, pointsRedeemConfig: getPointsRedeemConfig_(), pointsRedeemDiscount: pointsRedeemResult_.discount, pointsUsed: pointsRedeemResult_.pointsUsed, pointsRedeemError: pointsRedeemResult_.error };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -2221,13 +2279,19 @@ function recalcOrderDiscounts_(lineUid, billInfo, remark, excludeOrderId) {
     var r = validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTierKey_, lineUid, { orderId: excludeOrderId, countedInOrder: true });
     if (r && !r.error) couponResults.push(r);
   });
+  var couponsFromAuto_ = false;
   if (!couponResults.length) {
     couponResults = findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey_);
+    couponsFromAuto_ = true;
   }
 
-  // เพิ่ม — กติกาเดียวกับ 2 จุดข้างบน: มีสิทธิพิเศษอยู่ = ตัดคูปองทุกใบ + ตัดส่วนลดโปรซื้อซ้ำ
+  // เพิ่ม — กติกาเดียวกับ 2 จุดข้างบน: มีสิทธิพิเศษอยู่ = ตัดคูปอง (ยกเว้นใบที่ใช้ร่วมกับสิทธิพิเศษได้) + ตัดส่วนลดโปรซื้อซ้ำ
   var privilegeLock_ = getPrivilegeLockState_(lineUid, appliedPrivileges, subtotal);
-  if (privilegeLock_.locked) couponResults = [];
+  if (privilegeLock_.locked) {
+    couponResults = couponsFromAuto_
+      ? findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey_, true)
+      : couponResults.filter(function (c) { return c.stackable; });
+  }
   couponResults = trimCouponShippingDiscounts_(appliedPrivileges, couponResults, shippingCost);
 
   var privilegeProductDiscount = appliedPrivileges.reduce(function (s, p) { return s + (p.productDiscount || 0); }, 0);
