@@ -1215,12 +1215,11 @@ function getBestPromoPrice_(skuName, price){
   return best;
 }
 
-// ⚡ แก้ (29/9/69) — ป้ายบนตั๋วตามกติกาใช้ร่วมกัน: ติ๊กใช้ร่วมได้ = เขียว / ไม่ติ๊ก + เลือกสินค้า = ส้ม (สินค้านั้นได้โปรนี้โปรเดียว)
-// ไม่ติ๊ก + ไม่เลือกสินค้า (ลดทั้งร้าน) / ส่วนลดค่าส่ง = ไม่ขึ้นป้าย (ใช้ร่วมกับโปรอื่นได้ตามปกติ)
+// ⚡ แก้ (29/9/69) — ป้ายบนตั๋วตามช่องติ๊กของแอดมิน: ติ๊กใช้ร่วมได้ = เขียว / ไม่ติ๊ก = ส้ม (exclusive มาจากเซิร์ฟเวอร์)
 function promoStackBadge_(promo){
   if (!promo) return '';
   if (promo.stackable) return '<div class="ct-stack">🤝 ใช้ร่วมกับโปรอื่นได้</div>';
-  if (promo.exclusive) return '<div class="ct-stack no">สินค้าที่ร่วมโปร ใช้ร่วมกับโปรอื่นไม่ได้</div>';
+  if (promo.exclusive) return '<div class="ct-stack no">ใช้ร่วมกับโปรอื่นไม่ได้</div>';
   return '';
 }
 
@@ -1883,8 +1882,8 @@ function refreshDiscounts(idTokenParam){
 }
 var discountLoadError_ = null;
 
-// ⚡ แก้ (29/9/69) — เอาสิทธิ์ออก/คืน ทำให้สินค้าที่สิทธิ์นั้นจองไว้ว่าง/ถูกจองใหม่ คูปองอาจลดได้มากขึ้น/น้อยลง
-// จึงถามเซิร์ฟเวอร์ใหม่ทุกครั้ง (กติกาใช้ร่วมกันไม่ได้เฉพาะสินค้าของโปรนั้น) — ยอดชั่วคราวฝั่งหน้าเว็บวาดไว้ก่อนระหว่างรอ
+// ⚡ แก้ (29/9/69) — เอาสิทธิ์ออก/คืน ทำให้โปรที่ใช้ร่วมกันไม่ได้ใบอื่นได้ใช้/ถูกตัด จึงถามเซิร์ฟเวอร์ใหม่ทุกครั้ง
+// (ยอดชั่วคราวฝั่งหน้าเว็บวาดไว้ก่อนระหว่างรอ)
 function removePrivilegeFromOrder(rowIndex){
   if (excludedPrivilegeRowIndexes.indexOf(rowIndex) === -1) excludedPrivilegeRowIndexes.push(rowIndex);
   recomputeAppliedPrivilegesClientSide_();
@@ -1904,7 +1903,8 @@ function undoRemovePrivilege(rowIndex){
 function recomputeAppliedPrivilegesClientSide_(){
   if (!lastDiscountInfo || !lastDiscountInfo.allPrivileges) return;
   var applied = lastDiscountInfo.allPrivileges.filter(function(p){
-    return excludedPrivilegeRowIndexes.indexOf(p.rowIndex) === -1;
+    // ใบที่ชนกับโปรที่ใช้ร่วมกันไม่ได้ (เซิร์ฟเวอร์ตัดออก) ไม่นับกลับเข้าไป — ยอดจริงรอเซิร์ฟเวอร์คำนวณใหม่
+    return excludedPrivilegeRowIndexes.indexOf(p.rowIndex) === -1 && !p.exclusivityDropped;
   });
   lastDiscountInfo.privileges = applied;
   lastDiscountInfo.privilegeDiscount = applied.reduce(function(sum, p){ return sum + p.discount; }, 0);
