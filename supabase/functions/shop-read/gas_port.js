@@ -184,7 +184,7 @@ function findHighestTierUpgradeRedeemed_(lineUid, tierConfig) {
   }
 }
 
-var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'price'];
+var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'price', 'ship_price'];
 
 function getSignupPrivilegeConfig_() {
   var fallback = { enabled: false, name: '', type: 'percent', value: 0, expiryDays: 0, expiryDate: '', restriction: '', freeProduct: '', freeQty: 0, startDate: '', endDate: '' };
@@ -1678,6 +1678,11 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
     result.shippingDiscount = Math.min(shippingCost || 0, Math.max(0, value));
     return result;
   }
+  // ⚡ เพิ่ม (29/9/69) — ค่าส่งราคาพิเศษ: ค่าส่งเหลือ value บาท (ค่าส่งจริงถูกกว่าอยู่แล้ว = ไม่ลด)
+  if (type === 'ship_price') {
+    result.shippingDiscount = Math.max(0, (shippingCost || 0) - Math.max(0, value));
+    return result;
+  }
   if (type === 'bogo') {
     var eligibleInfoBogo = computeEligibleInfo_(items, restriction);
     var requiredQty = value > 0 ? value : 1;
@@ -1864,7 +1869,7 @@ function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey
       var type = String(row[1]);
       var restriction = String(row[9] || '').trim();
       var meta = { row: row, idx: idx, type: type, restriction: restriction };
-      if (type === 'ship_percent' || type === 'ship_fixed') shippingMetas.push(meta);
+      if (isShippingPromoType_(type)) shippingMetas.push(meta);
       else if (restriction) specificMetas.push(meta);
       else generalMetas.push(meta);
     });
@@ -1988,7 +1993,7 @@ function validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTi
   }
 }
 
-function isShippingPromoType_(type) { return type === 'ship_percent' || type === 'ship_fixed'; }
+function isShippingPromoType_(type) { return type === 'ship_percent' || type === 'ship_fixed' || type === 'ship_price'; }
 
 function isExclusivePromo_(type, restriction, stackable) {
   return !stackable;
