@@ -175,7 +175,7 @@ function findHighestTierUpgradeRedeemed_(lineUid, tierConfig) {
   }
 }
 
-var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'price'];
+var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'price', 'ship_price'];
 
 function getSignupPrivilegeConfig_() {
   var fallback = { enabled: false, name: '', type: 'percent', value: 0, expiryDays: 0, expiryDate: '', restriction: '', freeProduct: '', freeQty: 0, startDate: '', endDate: '' };
@@ -806,7 +806,7 @@ function getBirthdayPromoConfig_() {
 
 function normalizeBirthdayPromoReward_(src) {
   src = src || {};
-  var allowed = ['none', 'percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'gift', 'price'];
+  var allowed = ['none', 'percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'gift', 'price', 'ship_price'];
   var type = allowed.indexOf(String(src.type || 'none')) !== -1 ? String(src.type || 'none') : 'none';
   return {
     // id ต้องไม่ซ้ำภายในโปรเดียวกัน เพราะ 1 Tier สร้างหลายโปรพร้อมกันได้
