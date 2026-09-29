@@ -1130,6 +1130,7 @@ function getMyPrivilegesForLineUid_(lineUid) {
       // ไม่กระทบผู้ใช้เดิมของฟังก์ชันนี้เลยเพราะเป็นแค่ field เสริม ไม่ได้ตัด field เดิมออก
       reason: row[5] || '',
       restriction: row[2] === 'price' ? String(row[10] || '') : '', // ขายราคาพิเศษ: หน้าร้านใช้ขึ้นราคาแดงบนการ์ดสินค้า
+      stackable: isStackablePrivilegeRow_(row), // ⚡ เพิ่ม (29/9/69) — หน้าร้านขึ้นป้าย "ใช้ร่วมกับโปรอื่นได้/ไม่ได้" บนตั๋วสิทธิ์
       isUpcoming: isUpcoming,
       startDateText: startDate ? new Date(startDate).toLocaleDateString('th-TH') : ''
     });
