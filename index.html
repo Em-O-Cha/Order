@@ -1215,6 +1215,15 @@ function getBestPromoPrice_(skuName, price){
   return best;
 }
 
+// ⚡ แก้ (29/9/69) — ป้ายบนตั๋วตามกติกาใช้ร่วมกัน: ติ๊กใช้ร่วมได้ = เขียว / ไม่ติ๊ก + เลือกสินค้า = ส้ม (สินค้านั้นได้โปรนี้โปรเดียว)
+// ไม่ติ๊ก + ไม่เลือกสินค้า (ลดทั้งร้าน) / ส่วนลดค่าส่ง = ไม่ขึ้นป้าย (ใช้ร่วมกับโปรอื่นได้ตามปกติ)
+function promoStackBadge_(promo){
+  if (!promo) return '';
+  if (promo.stackable) return '<div class="ct-stack">🤝 ใช้ร่วมกับโปรอื่นได้</div>';
+  if (promo.exclusive) return '<div class="ct-stack no">สินค้าที่ร่วมโปร ใช้ร่วมกับโปรอื่นไม่ได้</div>';
+  return '';
+}
+
 // ⚡ เพิ่ม — จับคู่สิทธิพิเศษกับโทนสี/ไอคอนโดยเช็คจาก p.reason (คอลัมน์ "ให้โดย" ฝั่ง backend) เป็นหลัก
 // เพราะเป็นค่าที่ระบบกำหนดตายตัวตามที่มาของสิทธิ์ (สมัครสมาชิก/แนะนำเพื่อน/วันเกิด/แอดมินแจก) แม่นยำกว่า
 // การเดาจาก p.name ซึ่งเป็นข้อความอิสระที่พนักงาน/แอดมินพิมพ์เอง เช่น สิทธิ์ต้อนรับสมาชิกใหม่บางอันมีคำว่า
@@ -1249,7 +1258,7 @@ function renderMyPrivileges_(r){
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(p.name || '') + '</div>'
           + '<div class="ct-sub">' + ((p.expiry && p.expiry !== 'ไม่มีวันหมดอายุ') ? ('ใช้ได้ถึง ' + escHtml(p.expiry)) : 'ไม่มีวันหมดอายุ') + '</div>'
-          + (p.stackable === undefined ? '' : (p.stackable ? '<div class="ct-stack">🤝 ใช้ร่วมกับโปรอื่นได้</div>' : '<div class="ct-stack no">ใช้ร่วมกับโปรอื่นไม่ได้</div>'))
+          + promoStackBadge_(p)
         + '</div>'
         + '<div class="coupon-ticket-side">'
           + '<span class="ct-icon">' + theme.icon + '</span>'
@@ -1333,7 +1342,7 @@ function renderAutoPromoBox_(coupons){
           + '<div class="ct-title">' + escHtml(c.code || valueText) + '</div>'
           + (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : '')
           + (c.expiry ? '<div class="ct-exp">ใช้ได้ถึง ' + escHtml(c.expiry) + '</div>' : '')
-          + (c.stackable ? '<div class="ct-stack">🤝 ใช้ร่วมกับสิทธิพิเศษได้</div>' : '')
+          + promoStackBadge_(c)
         + '</div>'
         + '<div class="coupon-ticket-side">'
           + '<span class="ct-icon">' + side.icon + '</span>'
@@ -1874,11 +1883,14 @@ function refreshDiscounts(idTokenParam){
 }
 var discountLoadError_ = null;
 
+// ⚡ แก้ (29/9/69) — เอาสิทธิ์ออก/คืน ทำให้สินค้าที่สิทธิ์นั้นจองไว้ว่าง/ถูกจองใหม่ คูปองอาจลดได้มากขึ้น/น้อยลง
+// จึงถามเซิร์ฟเวอร์ใหม่ทุกครั้ง (กติกาใช้ร่วมกันไม่ได้เฉพาะสินค้าของโปรนั้น) — ยอดชั่วคราวฝั่งหน้าเว็บวาดไว้ก่อนระหว่างรอ
 function removePrivilegeFromOrder(rowIndex){
   if (excludedPrivilegeRowIndexes.indexOf(rowIndex) === -1) excludedPrivilegeRowIndexes.push(rowIndex);
   recomputeAppliedPrivilegesClientSide_();
   renderDiscountSummary();
   renderPaymentDetail();
+  refreshDiscounts();
 }
 function undoRemovePrivilege(rowIndex){
   var idx = excludedPrivilegeRowIndexes.indexOf(rowIndex);
@@ -1886,6 +1898,7 @@ function undoRemovePrivilege(rowIndex){
   recomputeAppliedPrivilegesClientSide_();
   renderDiscountSummary();
   renderPaymentDetail();
+  refreshDiscounts();
 }
 
 function recomputeAppliedPrivilegesClientSide_(){
