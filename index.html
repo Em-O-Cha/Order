@@ -107,6 +107,9 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .coupon-ticket-body .ct-title{font-weight:700;font-size:13px;color:#bf360c;}
 .coupon-ticket-body .ct-sub{font-size:10.5px;color:#e65100;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .coupon-ticket-body .ct-exp{font-size:10px;color:var(--gm);margin-top:1px;font-weight:600;}
+/* ⚡ เพิ่ม (29/9/69) — ป้ายบอกว่าใช้ร่วมกับโปรอื่นได้หรือไม่ */
+.coupon-ticket-body .ct-stack{align-self:flex-start;font-size:9.5px;font-weight:700;margin-top:3px;padding:1px 7px;border-radius:999px;background:#e8f5e9;color:#2e7d32;white-space:nowrap;}
+.coupon-ticket-body .ct-stack.no{background:#fff3e0;color:#b45309;}
 .coupon-ticket-tag{background:#eeeeee;color:#757575;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;white-space:nowrap;}
 .coupon-ticket-side{flex:0 0 60px;background:#ffdfb3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;padding:4px 4px;}
 .coupon-ticket-side .ct-icon{font-size:15px;}
@@ -1246,6 +1249,7 @@ function renderMyPrivileges_(r){
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(p.name || '') + '</div>'
           + '<div class="ct-sub">' + ((p.expiry && p.expiry !== 'ไม่มีวันหมดอายุ') ? ('ใช้ได้ถึง ' + escHtml(p.expiry)) : 'ไม่มีวันหมดอายุ') + '</div>'
+          + (p.stackable === undefined ? '' : (p.stackable ? '<div class="ct-stack">🤝 ใช้ร่วมกับโปรอื่นได้</div>' : '<div class="ct-stack no">ใช้ร่วมกับโปรอื่นไม่ได้</div>'))
         + '</div>'
         + '<div class="coupon-ticket-side">'
           + '<span class="ct-icon">' + theme.icon + '</span>'
@@ -1329,6 +1333,7 @@ function renderAutoPromoBox_(coupons){
           + '<div class="ct-title">' + escHtml(c.code || valueText) + '</div>'
           + (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : '')
           + (c.expiry ? '<div class="ct-exp">ใช้ได้ถึง ' + escHtml(c.expiry) + '</div>' : '')
+          + (c.stackable ? '<div class="ct-stack">🤝 ใช้ร่วมกับสิทธิพิเศษได้</div>' : '')
         + '</div>'
         + '<div class="coupon-ticket-side">'
           + '<span class="ct-icon">' + side.icon + '</span>'
