@@ -24,9 +24,9 @@
 // LINE Channel Access Token: อ่านจาก Script Properties ชื่อ LINE_CHANNEL_ACCESS_TOKEN
 //   (ชื่ออื่นตั้งได้ที่ LOYALTY_TOKEN_PROPS_ ด้านล่าง)
 //
-// หน้าแอดมินเดิม (doGet page=admin): แทรกปุ่ม "🧾 ใบเสร็จ 7-Eleven & ของพรีเมียม" มุมขวาล่าง ไม่ต้องแก้ admin.html
-//   กดแล้วใช้ตั๋วแอดมินที่ได้หลังกรอก PIN (จาก SupabaseAdmin.gs) หรือถาม PIN -> เปิดหน้าตรวจใบเสร็จ /
-//   ใบจัดส่ง / ตั้งค่า (บาทต่อคะแนน, อนุมัติอัตโนมัติ, Group ID, ผู้ส่ง, แบบสอบถาม ฯลฯ)
+// หน้าแอดมินเดิม (doGet page=admin): แทรกไฟล์ LoyaltyAdmin.html (ต้องเพิ่มเป็นไฟล์ HTML ชื่อ LoyaltyAdmin)
+//   = แท็บ "🧾 ใบเสร็จ 7-Eleven" (ตรวจ/อนุมัติ + ⚙️ ตั้งค่า) และ "🏷️ ใบจัดส่งพรีเมียม" (พิมพ์ใบจัดส่ง/เลขพัสดุ)
+//   ต่อท้ายแถวแท็บเดิม ไม่ต้องแก้ admin.html — แท็บขอลิงก์จาก loyaltyAdminLinks(adminPin) หลังกรอก PIN
 //
 // ใช้จาก Members.gs: getMemberRowByUid_, ensureMembersSheet_, ensurePointsLogSheet_, addPointsAndCheckRewards_,
 // logPointsTransaction_, checkAdminPin_ (และ sendLineMessages_ ถ้าไม่มี token ใน Script Properties)
@@ -586,7 +586,7 @@ function loyaltyCustomerShippedFlex_(s) {
 
 
 // ==========================================================================================
-// ส่วนที่ 5.5: เมนูในหน้าแอดมินเดิม (แทรกตอน doGet page=admin ไม่ต้องแก้ admin.html)
+// ส่วนที่ 5.5: แท็บในหน้าแอดมินเดิม (แทรกตอน doGet page=admin ไม่ต้องแก้ admin.html)
 // ==========================================================================================
 // หน้าแอดมินเรียกผ่าน google.script.run: auth = ตั๋วแอดมิน (จาก adminSupabaseToken หลังกรอก PIN) หรือ PIN
 // คืนลิงก์ (มีโทเคน) ไปหน้าตรวจใบเสร็จ / ใบจัดส่ง / ตั้งค่า + จำนวนที่ค้าง
@@ -612,61 +612,18 @@ function loyaltyAdminAuthOk_(auth) {
   return !!auth && checkAdminPin_(auth) === true;
 }
 
-// สคริปต์ฝั่งหน้าแอดมิน (แปลงเป็นข้อความด้วย toString แล้วแทรกท้ายหน้า) — ห้ามอ้างตัวแปรฝั่งเซิร์ฟเวอร์
-function loyaltyAdminClient_() {
-  var pinSaved = '';
-  function ticket() {
-    try {
-      var s = JSON.parse(sessionStorage.getItem('adminSupabase') || 'null');
-      if (s && s.token && Number(String(s.token).split('.')[0]) > Date.now() + 60000) return s.token;
-    } catch (e) {}
-    return '';
+// แท็บ "ใบเสร็จ 7-Eleven" และ "ใบจัดส่งพรีเมียม" อยู่ในไฟล์ HTML ชื่อ LoyaltyAdmin (โปรเจกต์เดียวกัน)
+// แทรกท้ายหน้าแอดมิน — ไม่มีไฟล์ = หน้าแอดมินเหมือนเดิม
+function loyaltyInjectAdminMenu_(html) {
+  var part;
+  try {
+    part = HtmlService.createHtmlOutputFromFile('LoyaltyAdmin').getContent();
+  } catch (e) {
+    Logger.log('loyaltyInjectAdminMenu_: ไม่พบไฟล์ LoyaltyAdmin (' + e + ')');
+    return html;
   }
-  function el(tag, css, html) { var x = document.createElement(tag); if (css) x.style.cssText = css; if (html != null) x.innerHTML = html; return x; }
-  var btn = el('button', 'position:fixed;right:16px;bottom:16px;z-index:9999;border:none;border-radius:999px;padding:12px 18px;' +
-    'font:700 14px Sarabun,sans-serif;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(238,39,55,.35);' +
-    'background:linear-gradient(135deg,#f58220,#ee2737 60%,#b3123a)', '🧾 ใบเสร็จ 7-Eleven & ของพรีเมียม');
-  btn.type = 'button';
-  function badge(n) { return n ? ' <span style="background:#ee2737;color:#fff;border-radius:999px;padding:1px 8px;font-size:12px">' + n + '</span>' : ''; }
-  function item(href, icon, title, sub, n) {
-    return '<a href="' + href + '" target="_blank" rel="noopener" style="display:flex;gap:12px;align-items:center;padding:14px;border:1.5px solid #eee;' +
-      'border-radius:14px;margin-bottom:10px;text-decoration:none;color:#1b2e1c"><span style="font-size:26px">' + icon + '</span>' +
-      '<span style="flex:1"><b style="font-size:15px">' + title + '</b>' + badge(n) + '<br><span style="font-size:12px;color:#757575">' + sub + '</span></span>' +
-      '<span style="color:#bbb;font-size:20px">›</span></a>';
-  }
-  function show(r) {
-    var ov = el('div', 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:flex-end;justify-content:center');
-    var sheet = el('div', 'background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:440px;padding:20px;font-family:Sarabun,sans-serif',
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><b style="font-size:16px">🧾 ใบเสร็จ 7-Eleven & ของพรีเมียม</b>' +
-      '<button type="button" data-x style="border:none;background:#f0f0f0;border-radius:50%;width:32px;height:32px;cursor:pointer">✕</button></div>' +
-      item(r.receipts, '🧾', 'ตรวจ / อนุมัติใบเสร็จ', 'ดูรูปใบเสร็จ ผลตรวจ AI แล้วอนุมัติให้คะแนน', r.pendingReceipts) +
-      item(r.shipments, '🎁', 'ใบจัดส่งของพรีเมียม', 'พิมพ์ใบจัดส่ง ใส่เลขพัสดุ แจ้งลูกค้า', r.pendingShipments) +
-      item(r.settings, '⚙️', 'ตั้งค่า', 'Group ID, คะแนนต่อบาท, อนุมัติอัตโนมัติ, ผู้ส่ง, แบบสอบถาม, สรุปผล', 0));
-    ov.appendChild(sheet);
-    ov.addEventListener('click', function (e) { if (e.target === ov || (e.target.hasAttribute && e.target.hasAttribute('data-x'))) ov.remove(); });
-    document.body.appendChild(ov);
-  }
-  btn.addEventListener('click', function () {
-    var auth = ticket() || pinSaved;
-    if (!auth) { auth = window.prompt('กรอก PIN แอดมิน'); if (!auth) return; }
-    var label = btn.innerHTML;
-    btn.disabled = true; btn.innerHTML = '⏳ กำลังโหลด...';
-    google.script.run.withSuccessHandler(function (r) {
-      btn.disabled = false; btn.innerHTML = label;
-      if (!r || !r.success) { pinSaved = ''; window.alert((r && r.error) || 'เปิดไม่สำเร็จ'); return; }
-      if (!ticket()) pinSaved = auth;
-      show(r);
-    }).withFailureHandler(function (e) {
-      btn.disabled = false; btn.innerHTML = label;
-      window.alert('เปิดไม่สำเร็จ: ' + (e && e.message ? e.message : e));
-    }).loyaltyAdminLinks(auth);
-  });
-  // หน้าแอดมินบางหน้าวาดเนื้อหาใหม่ทั้ง body หลังกรอก PIN -> ติดปุ่มไว้ที่ <html> และเช็กทุก 2 วินาทีว่ายังอยู่
-  btn.id = 'loyaltyAdminBtn';
-  function mount() { if (!document.getElementById('loyaltyAdminBtn')) (document.body || document.documentElement).appendChild(btn); }
-  mount();
-  document.addEventListener('DOMContentLoaded', mount);
-  setInterval(mount, 2000);
+  var i = html.search(/<\/body>/i);
+  return i === -1 ? html + part : html.substring(0, i) + part + html.substring(i);
 }
 
 // ตรวจการติดตั้ง: รันจาก editor แล้วดู Execution log
@@ -690,18 +647,12 @@ function loyaltyCheckSetup() {
   try {
     var out = doGet({ parameter: { page: 'admin' } });
     var html = out && typeof out.getContent === 'function' ? out.getContent() : '';
-    ok('หน้าแอดมิน (doGet page=admin) มีปุ่มใบเสร็จ 7-Eleven', html.indexOf('loyaltyAdminLinks') !== -1,
+    ok('หน้าแอดมิน (doGet page=admin) มีแท็บใบเสร็จ 7-Eleven', html.indexOf('tabLoyaltyBtn') !== -1,
       html ? 'ขนาดหน้า ' + html.length + ' ตัวอักษร' : 'doGet page=admin ไม่ได้คืนหน้า HTML');
   } catch (e2) {
     ok('หน้าแอดมิน (doGet page=admin)', false, String(e2));
   }
-  Logger.log('ถ้าทุกข้อผ่านแต่หน้าแอดมินยังไม่มีปุ่ม: Deploy > Manage deployments > แก้ Web App เป็น New version แล้วเปิดหน้าแอดมินใหม่');
-}
-
-function loyaltyInjectAdminMenu_(html) {
-  var tag = '<script>(' + loyaltyAdminClient_.toString() + ')();</script>';
-  var i = html.search(/<\/body>/i);
-  return i === -1 ? html + tag : html.substring(0, i) + tag + html.substring(i);
+  Logger.log('ถ้าทุกข้อผ่านแต่หน้าแอดมินยังไม่มีแท็บ: Deploy > Manage deployments > แก้ Web App เป็น New version แล้วเปิดหน้าแอดมินใหม่');
 }
 
 // ==========================================================================================
