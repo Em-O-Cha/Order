@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>ใบจัดส่งของพรีเมียม</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap');
+:root{ --gm:#2e7d32; --g6:#757575; --g8:#424242; --td:#1b2e1c; --bg:#f3f4f6; --p1:#8e2de2; --p2:#ff6a88; }
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--td);min-height:100vh;padding:16px;}
+.wrap{max-width:720px;margin:0 auto;}
+.top{border-radius:16px;padding:18px;color:#fff;background:linear-gradient(135deg,var(--p1),var(--p2));margin-bottom:14px;}
+.top h1{font-size:19px;font-weight:700;}
+.top p{font-size:13px;opacity:.92;margin-top:4px;}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;}
+.bar select,.bar button{height:40px;border-radius:10px;border:1.5px solid #ddd;background:#fff;font-family:inherit;font-size:14px;padding:0 12px;cursor:pointer;}
+.bar .print{background:linear-gradient(135deg,var(--p1),var(--p2));color:#fff;border:none;font-weight:700;padding:0 18px;}
+.bar label{font-size:14px;display:flex;align-items:center;gap:6px;}
+.item{background:#fff;border-radius:16px;box-shadow:0 2px 14px rgba(0,0,0,.07);margin-bottom:14px;overflow:hidden;}
+.item-hd{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #f1f1f1;}
+.item-hd input{width:20px;height:20px;}
+.item-hd b{flex:1;font-size:15px;}
+.st{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;}
+.st.pending{background:#fff3bf;color:#8a6d00;} .st.printed{background:#e7f5ff;color:#1864ab;}
+.st.shipped{background:#d3f9d8;color:#2b8a3e;} .st.cancelled{background:#f1f3f5;color:#868e96;}
+.ship-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 14px;background:#fafafa;border-top:1px solid #f1f1f1;}
+.ship-form input,.ship-form select{height:40px;border:1.5px solid #e3e3e3;border-radius:10px;padding:0 10px;font-family:inherit;font-size:14px;width:100%;}
+.ship-form button{height:40px;border:none;border-radius:10px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;color:#fff;background:linear-gradient(135deg,#00b894,#00796b);}
+.ship-form button.gray{background:#fff;color:#868e96;border:1.5px solid #ddd;}
+.ship-form .full{grid-column:1/-1;}
+.note{font-size:12px;color:var(--g6);padding:0 14px 12px;}
+.state{text-align:center;padding:48px 16px;color:var(--g6);}
+.state .ico{font-size:40px;margin-bottom:10px;}
+
+/* ---------- ใบจัดส่ง ---------- */
+.label{width:100mm;min-height:150mm;margin:14px auto;background:#fff;border:1px dashed #bbb;padding:5mm;color:#000;
+  display:flex;flex-direction:column;gap:3mm;font-size:11pt;line-height:1.35;}
+.lb-top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:2mm;}
+.lb-top img{height:14mm;}
+.lb-top .ref{text-align:right;font-size:10pt;}
+.lb-top .ref b{font-size:15pt;display:block;letter-spacing:.5px;}
+.lb-box{border:1.5px solid #000;border-radius:2mm;padding:3mm;}
+.lb-cap{font-size:9pt;font-weight:700;letter-spacing:.5px;margin-bottom:1mm;}
+.lb-to{flex:1;}
+.lb-to .name{font-size:17pt;font-weight:800;line-height:1.2;}
+.lb-to .phone{font-size:14pt;font-weight:700;margin:1mm 0;}
+.lb-to .addr{font-size:13pt;}
+.lb-to .prov{font-size:14pt;font-weight:800;margin-top:1mm;}
+.lb-items{font-size:10pt;}
+.lb-items .it{font-size:12pt;font-weight:700;}
+.lb-foot{display:flex;justify-content:space-between;align-items:flex-end;font-size:8pt;color:#333;}
+.lb-foot svg{height:12mm;max-width:60mm;}
+.warn{color:#c92a2a;font-weight:700;}
+.sh{display:none !important;}
+
+body.a4 .label{width:95mm;min-height:135mm;}
+@media print{
+  body{background:#fff;padding:0;}
+  .no-print{display:none !important;}
+  .wrap{max-width:none;}
+  .item{box-shadow:none;border-radius:0;margin:0;background:none;}
+  .item.skip{display:none;}
+  .label{border:none;margin:0;page-break-after:always;break-after:page;}
+  body.a4 .labels{display:flex;flex-wrap:wrap;}
+  body.a4 .item{width:50%;}
+  body.a4 .label{border:1px dashed #999;margin:3mm auto;page-break-after:auto;break-after:auto;break-inside:avoid;}
+}
+</style>
+<style id="pageSize">@page{size:100mm 150mm;margin:0;}</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="no-print" id="head"></div>
+  <div class="labels" id="list"><div class="state"><div class="ico">⏳</div>กำลังโหลด...</div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
+<script>
+var API_URL = 'https://qotlepudmkuniyjvqmle.supabase.co/functions/v1/loyalty?forceFunctionRegion=ap-northeast-2';
+var LOGO_URL = 'logo-em-o-cha.png';
+var qs = new URLSearchParams(location.search);
+var ID = qs.get('id') || '', TOKEN = qs.get('t') || '', ALL = qs.get('all') === '1';
+var STATUS = { pending: 'รอพิมพ์', printed: 'พิมพ์แล้ว', shipped: 'จัดส่งแล้ว', cancelled: 'ยกเลิก' };
+var CARRIERS = ['ไปรษณีย์ไทย (EMS)', 'ไปรษณีย์ไทย (ลงทะเบียน)', 'Flash Express', 'Kerry Express', 'J&T Express', 'SPX Express', 'Best Express', 'Lalamove / Grab', 'ส่งเอง'];
+var data = null, filter = ALL ? 'open' : 'all';
+
+function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function dt(s){ if (!s) return '-'; var d = new Date(s); return isNaN(d) ? esc(s) : d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) + ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }); }
+function phone(p){ var d = String(p || '').replace(/\D/g, ''); return d.length === 10 ? d.slice(0,3) + '-' + d.slice(3,6) + '-' + d.slice(6) : (p || '-'); }
+function api(params){ return fetch(API_URL, { method: 'POST', body: new URLSearchParams(params).toString() }).then(function(r){ return r.json(); }); }
+function state(ico, text){ document.getElementById('list').innerHTML = '<div class="state"><div class="ico">' + ico + '</div>' + esc(text) + '</div>'; }
+
+function load(){
+  api(ALL ? { action: 'labels', all: '1', t: TOKEN } : { action: 'labels', id: ID, t: TOKEN }).then(function(r){
+    if (!r.success) return state('🔒', r.error || 'โหลดไม่สำเร็จ');
+    data = r; render();
+  }).catch(function(e){ state('⚠️', 'เชื่อมต่อไม่สำเร็จ: ' + e.message); });
+}
+
+function visible(){
+  return (data.shipments || []).filter(function(s){
+    if (filter === 'open') return s.status === 'pending' || s.status === 'printed';
+    if (filter === 'pending') return s.status === 'pending';
+    return true;
+  });
+}
+
+function render(){
+  var all = data.shipments || [];
+  var open = all.filter(function(s){ return s.status === 'pending' || s.status === 'printed'; }).length;
+  var h = '<div class="top"><h1>🎁 ใบจัดส่งของพรีเมียม</h1><p>' + (ALL ? 'ยังไม่จัดส่ง ' + open + ' รายการ · แสดงรายการค้างและ 14 วันล่าสุด' : 'รายการ ' + esc((all[0] || {}).ref || '')) + '</p></div>'
+    + '<div class="bar">'
+    + (ALL ? '<select onchange="filter=this.value;render()"><option value="open"' + (filter === 'open' ? ' selected' : '') + '>ยังไม่จัดส่ง</option><option value="pending"' + (filter === 'pending' ? ' selected' : '') + '>รอพิมพ์</option><option value="all"' + (filter === 'all' ? ' selected' : '') + '>ทั้งหมด</option></select>' : '')
+    + '<select id="paper" onchange="setPaper(this.value)"><option value="label">ฉลาก 100×150 มม.</option><option value="a4">กระดาษ A4 (4 ใบ/หน้า)</option></select>'
+    + '<button class="print" onclick="doPrint()">🖨️ พิมพ์ที่เลือก</button>'
+    + (!ALL && data.listLink ? '<a href="' + esc(data.listLink) + '" style="font-size:14px;color:#2e7d32;font-weight:600">📦 ใบจัดส่งทั้งหมด</a>' : '')
+    + '</div>';
+  document.getElementById('head').innerHTML = h;
+  var list = visible();
+  if (!list.length) return state('🎉', 'ไม่มีรายการ');
+  var sender = data.sender || {};
+  document.getElementById('list').innerHTML = list.map(function(s){
+    var addrOk = !!(s.address && String(s.address).trim());
+    return '<div class="item" id="it-' + s.id + '">'
+      + '<div class="item-hd no-print"><input type="checkbox" class="pick" value="' + s.id + '"' + (s.status === 'pending' || !ALL ? ' checked' : '') + '>'
+      + '<b>' + esc(s.ref) + ' · ' + esc(s.rewardName) + ' ×' + esc(s.qty) + '</b><span class="st ' + esc(s.status) + '">' + esc(STATUS[s.status] || s.status) + '</span></div>'
+      + '<div class="label">'
+      +   '<div class="lb-top"><img src="' + LOGO_URL + '" alt="Em-O-Cha" onerror="this.style.display=\'none\'"><div class="ref">ของพรีเมียมสมาชิก<b>' + esc(s.ref) + '</b>' + dt(s.createdAt) + '</div></div>'
+      +   '<div class="lb-box lb-from"><div class="lb-cap">ผู้ส่ง FROM</div><b>' + esc(sender.name || 'เอมโอชา (Em-O-Cha)') + '</b>'
+      +     (sender.phone ? ' โทร ' + esc(phone(sender.phone)) : '') + (sender.address ? '<div>' + esc(sender.address) + '</div>' : '') + '</div>'
+      +   '<div class="lb-box lb-to"><div class="lb-cap">ผู้รับ TO</div>'
+      +     '<div class="name">' + esc(s.recipientName || '-') + '</div>'
+      +     '<div class="phone">โทร ' + esc(phone(s.recipientPhone)) + '</div>'
+      +     (addrOk ? '<div class="addr">' + esc(s.address) + '</div><div class="prov">' + esc(s.province || '') + '</div>'
+                    : '<div class="warn">⚠️ ลูกค้ายังไม่มีที่อยู่จัดส่ง กรุณาติดต่อลูกค้า</div>')
+      +   '</div>'
+      +   '<div class="lb-box lb-items"><div class="lb-cap">รายการ</div><div class="it">🎁 ' + esc(s.rewardName) + ' × ' + esc(s.qty) + '</div>'
+      +     '<div>รหัสสมาชิก ' + esc(s.memberCode || '-') + (s.pointsUsed ? ' · ใช้ ' + Number(s.pointsUsed).toLocaleString('th-TH') + ' คะแนน' : '') + '</div></div>'
+      +   '<div class="lb-foot"><svg class="bc" data-ref="' + esc(s.ref) + '"></svg><div>ขอบคุณที่เป็นสมาชิกเอมโอชา 💚</div></div>'
+      + '</div>'
+      + shipForm(s)
+      + '</div>';
+  }).join('');
+  if (window.JsBarcode) {
+    document.querySelectorAll('svg.bc').forEach(function(el){
+      try { JsBarcode(el, el.getAttribute('data-ref'), { format: 'CODE128', height: 40, displayValue: false, margin: 0 }); } catch (e) {}
+    });
+  }
+}
+
+function shipForm(s){
+  if (s.status === 'shipped') {
+    return '<div class="note no-print">✅ จัดส่งแล้ว ' + dt(s.shippedAt) + (s.carrier ? ' · ' + esc(s.carrier) : '') + (s.trackingNo ? ' · เลขพัสดุ ' + esc(s.trackingNo) : '') + '</div>';
+  }
+  if (s.status === 'cancelled') return '<div class="note no-print">ยกเลิกแล้ว</div>';
+  return '<div class="ship-form no-print">'
+    + '<select id="car-' + s.id + '"><option value="">— ขนส่ง —</option>' + CARRIERS.map(function(c){ return '<option' + (c === s.carrier ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select>'
+    + '<input id="trk-' + s.id + '" placeholder="เลขพัสดุ" value="' + esc(s.trackingNo || '') + '">'
+    + '<button class="full" onclick="markShipped(\'' + s.id + '\')">🚚 จัดส่งแล้ว + แจ้งลูกค้าทาง LINE</button>'
+    + '<button class="gray full" onclick="cancelShip(\'' + s.id + '\')">ยกเลิกรายการนี้</button>'
+    + '</div>';
+}
+
+function setPaper(v){
+  document.body.classList.toggle('a4', v === 'a4');
+  document.getElementById('pageSize').textContent = v === 'a4' ? '@page{size:A4;margin:8mm;}' : '@page{size:100mm 150mm;margin:0;}';
+}
+
+function doPrint(){
+  var picked = Array.prototype.map.call(document.querySelectorAll('.pick:checked'), function(el){ return el.value; });
+  if (!picked.length) return alert('กรุณาเลือกรายการที่จะพิมพ์');
+  document.querySelectorAll('.item').forEach(function(el){ el.classList.toggle('skip', picked.indexOf(el.id.slice(3)) === -1); });
+  window.print();
+  // พิมพ์แล้ว -> ขยับสถานะรายการที่ยังรอพิมพ์
+  var toMark = (data.shipments || []).filter(function(s){ return picked.indexOf(s.id) !== -1 && s.status === 'pending'; });
+  if (toMark.length && confirm('พิมพ์เรียบร้อยไหม? กด OK เพื่อเปลี่ยน ' + toMark.length + ' รายการเป็น "พิมพ์แล้ว"')) {
+    Promise.all(toMark.map(function(s){ return update(s.id, { status: 'printed' }); })).then(render);
+  }
+}
+
+function update(id, extra){
+  var params = Object.assign({ action: 'shipUpdate', id: id, t: TOKEN }, extra);
+  return api(params).then(function(r){
+    if (!r.success) { alert(r.error || 'บันทึกไม่สำเร็จ'); return; }
+    data.shipments = data.shipments.map(function(s){ return s.id === id ? r.shipment : s; });
+    return r.shipment;
+  }).catch(function(e){ alert('เชื่อมต่อไม่สำเร็จ: ' + e.message); });
+}
+
+function markShipped(id){
+  var tracking = document.getElementById('trk-' + id).value.trim();
+  var carrier = document.getElementById('car-' + id).value;
+  if (!tracking && !confirm('ยังไม่ได้ใส่เลขพัสดุ ต้องการบันทึกว่าจัดส่งแล้วใช่ไหม?')) return;
+  update(id, { status: 'shipped', tracking: tracking, carrier: carrier }).then(function(s){ if (s) render(); });
+}
+function cancelShip(id){
+  if (!confirm('ยกเลิกรายการจัดส่งนี้? (ไม่คืนคะแนนให้ลูกค้าอัตโนมัติ)')) return;
+  update(id, { status: 'cancelled' }).then(function(s){ if (s) render(); });
+}
+
+if (TOKEN && (ALL || ID)) load();
+else state('🔒', 'ลิงก์ไม่ครบ กรุณาเปิดจากข้อความในกลุ่มแอดมิน');
+</script>
+</body>
+</html>

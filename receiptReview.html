@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>ตรวจใบเสร็จ 7-Eleven</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
+:root{
+  --gd:#1a5c2a; --gm:#2e7d32; --gp:#e8f5e9; --gb:#c8e6c9;
+  --g6:#757575; --g8:#424242; --td:#1b2e1c; --bg:#f3f4f6;
+  --ok1:#11998e; --ok2:#38ef7d; --warn1:#f7971e; --warn2:#f2542d; --bad1:#cb2d3e; --bad2:#ef473a; --na1:#536976; --na2:#292e49;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--td);min-height:100vh;padding:16px;}
+.wrap{max-width:560px;margin:0 auto;}
+.card{background:#fff;border-radius:16px;box-shadow:0 2px 14px rgba(0,0,0,.07);overflow:hidden;margin-bottom:14px;}
+.hd{padding:18px 18px 16px;color:#fff;background:linear-gradient(135deg,var(--na1),var(--na2));}
+.hd.pass{background:linear-gradient(135deg,var(--ok1),var(--ok2));}
+.hd.suspect{background:linear-gradient(135deg,var(--warn1),var(--warn2));}
+.hd.fail{background:linear-gradient(135deg,var(--bad1),var(--bad2));}
+.hd h1{font-size:19px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.hd p{font-size:13px;opacity:.92;margin-top:4px;}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 10px;border-radius:999px;background:rgba(255,255,255,.25);}
+.bd{padding:16px 18px;}
+.sec-t{font-size:13px;font-weight:700;color:var(--g8);margin:4px 0 8px;text-transform:uppercase;letter-spacing:.02em;}
+.row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #f1f1f1;font-size:14px;}
+.row:last-child{border-bottom:none;}
+.row span:first-child{color:var(--g6);flex-shrink:0;}
+.row span:last-child{text-align:right;font-weight:500;word-break:break-word;}
+.big{font-size:16px;font-weight:700;color:#e8590c;}
+.img-box{background:#eceff1;text-align:center;}
+.img-box img{max-width:100%;max-height:70vh;display:block;margin:0 auto;cursor:zoom-in;}
+.img-box a{display:inline-block;padding:18px;color:var(--gm);font-weight:600;}
+.flags{background:#fff4e5;border-radius:10px;padding:10px 12px;margin-top:10px;}
+.flags li{font-size:13px;color:#b54708;margin-left:16px;line-height:1.5;}
+.summary{font-size:13px;color:var(--g8);background:#f7f7f8;border-radius:10px;padding:10px 12px;margin-top:10px;}
+.items{font-size:13px;color:var(--g8);margin-top:6px;}
+.items div{padding:2px 0;}
+.fg{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+.fg label{font-size:13px;font-weight:600;color:var(--g8);}
+.fc{height:44px;padding:0 12px;border:1.5px solid #e3e3e3;border-radius:10px;font-size:15px;font-family:inherit;width:100%;background:#fff;}
+textarea.fc{height:auto;padding:10px 12px;resize:vertical;}
+.fc:focus{outline:none;border-color:var(--gm);}
+.pts{display:flex;align-items:center;gap:8px;}
+.pts .fc{text-align:center;font-size:20px;font-weight:700;}
+.pts button{width:44px;height:44px;border-radius:10px;border:1.5px solid #e3e3e3;background:#fff;font-size:20px;cursor:pointer;flex-shrink:0;}
+.hint{font-size:12px;color:var(--g6);}
+.btn{width:100%;height:48px;border:none;border-radius:12px;color:#fff;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;
+  background:linear-gradient(135deg,#00b894,#00796b);}
+.btn.red{background:linear-gradient(135deg,var(--bad1),var(--bad2));}
+.btn.gray{background:#fff;color:var(--g8);border:1.5px solid #ddd;}
+.btn:disabled{opacity:.5;cursor:default;}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+.tabs button{height:40px;border-radius:10px;border:1.5px solid #ddd;background:#fff;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;}
+.tabs button.on.ok{border-color:#00b894;background:#e6fcf5;color:#087f5b;}
+.tabs button.on.no{border-color:var(--bad1);background:#fff0f0;color:#c92a2a;}
+.reasons{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+.reasons button{font-family:inherit;font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid #ddd;background:#fafafa;cursor:pointer;}
+.msg{border-radius:10px;padding:10px 12px;font-size:14px;margin-bottom:12px;display:none;white-space:pre-line;}
+.msg.show{display:block;}
+.msg.err{background:#ffebee;color:#c62828;}
+.msg.ok{background:#e6fcf5;color:#087f5b;}
+.state{text-align:center;padding:48px 16px;color:var(--g6);}
+.state .ico{font-size:40px;margin-bottom:10px;}
+.list-item{display:flex;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid #f1f1f1;text-decoration:none;color:inherit;}
+.list-item:last-child{border-bottom:none;}
+.dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:#9aa5b1;}
+.dot.pass{background:#20c997;} .dot.suspect{background:#fd7e14;} .dot.fail{background:#e03131;}
+.li-main{flex:1;min-width:0;}
+.li-main b{font-size:15px;}
+.li-main div{font-size:12px;color:var(--g6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.st{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;}
+.st.pending_review{background:#fff3bf;color:#8a6d00;} .st.approved{background:#d3f9d8;color:#2b8a3e;} .st.rejected{background:#ffe3e3;color:#c92a2a;}
+.top-link{display:inline-block;margin-bottom:12px;color:var(--gm);font-weight:600;text-decoration:none;font-size:14px;}
+.sh{display:none !important;}
+.zoom{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:50;overflow:auto;display:flex;align-items:flex-start;justify-content:center;}
+.zoom img{width:100%;max-width:1200px;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="state"><div class="ico">⏳</div>กำลังโหลด...</div></div>
+<div class="zoom sh" id="zoom" onclick="this.classList.add('sh')"><img id="zoomImg" alt=""></div>
+
+<script>
+var API_URL = 'https://qotlepudmkuniyjvqmle.supabase.co/functions/v1/loyalty?forceFunctionRegion=ap-northeast-2';
+var qs = new URLSearchParams(location.search);
+var ID = qs.get('id') || '', TOKEN = qs.get('t') || '', LIST_TOKEN = qs.get('lt') || '', ALL = qs.get('all') === '1';
+var VERDICT = {
+  pass: 'AI ตรวจเบื้องต้น: ผ่าน', suspect: 'AI ตรวจเบื้องต้น: น่าสงสัย', fail: 'AI ตรวจเบื้องต้น: ไม่ผ่าน', unchecked: 'AI ยังไม่ได้ตรวจ'
+};
+var STATUS = { pending_review: 'รอตรวจ', approved: 'อนุมัติแล้ว', rejected: 'ไม่อนุมัติ' };
+var REASONS = ['ไม่พบสินค้าเอมโอชาในใบเสร็จ', 'รูปใบเสร็จไม่ชัด อ่านไม่ได้', 'ใบเสร็จนี้เคยใช้สะสมคะแนนแล้ว',
+  'ไม่ใช่ใบเสร็จ 7-Eleven', 'ใบเสร็จเกินระยะเวลาที่กำหนด', 'ใบเสร็จไม่ถูกต้องหรือมีการแก้ไข'];
+var data = null, decision = 'approve';
+
+function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function baht(n){ var x = parseFloat(n); return isNaN(x) ? '-' : x.toLocaleString('th-TH', { maximumFractionDigits: 2 }) + ' บาท'; }
+function dt(s, time){
+  if (!s) return '-';
+  var d = new Date(s); if (isNaN(d)) return esc(s);
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) +
+    (time ? ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '');
+}
+function row(label, value, cls){ return '<div class="row"><span>' + esc(label) + '</span><span' + (cls ? ' class="' + cls + '"' : '') + '>' + value + '</span></div>'; }
+function api(params){
+  var body = new URLSearchParams(params).toString();
+  return fetch(API_URL, { method: 'POST', body: body }).then(function(r){ return r.json(); });
+}
+function showState(ico, text){ document.getElementById('app').innerHTML = '<div class="state"><div class="ico">' + ico + '</div>' + esc(text) + '</div>'; }
+function reviewerName(){ try { return localStorage.getItem('emocha.reviewer') || ''; } catch (e) { return ''; } }
+function saveReviewerName(v){ try { localStorage.setItem('emocha.reviewer', v); } catch (e) {} }
+
+// ---------------- รายการ ----------------
+function loadList(){
+  api({ action: 'reviewList', t: TOKEN }).then(function(r){
+    if (!r.success) return showState('🔒', r.error || 'โหลดไม่สำเร็จ');
+    var pending = r.receipts.filter(function(x){ return x.status === 'pending_review'; }).length;
+    var h = '<div class="card"><div class="hd"><h1>🧾 ใบเสร็จ 7-Eleven</h1><p>รอตรวจ ' + pending + ' ใบ · แสดงใบที่รอตรวจและ 7 วันล่าสุด</p></div>';
+    if (!r.receipts.length) h += '<div class="state"><div class="ico">🎉</div>ไม่มีใบเสร็จรอตรวจ</div>';
+    r.receipts.forEach(function(x){
+      var link = 'receiptReview.html?id=' + encodeURIComponent(x.id) + '&lt=' + encodeURIComponent(TOKEN);
+      h += '<a class="list-item" href="' + link + '"><span class="dot ' + esc(x.aiVerdict) + '"></span>'
+        + '<div class="li-main"><b>' + esc(x.ref) + '</b> · ' + esc(x.memberName || '-')
+        + '<div>' + dt(x.createdAt, true) + ' · เอมโอชา ' + (x.emochaAmount != null ? baht(x.emochaAmount) : '-')
+        + ' · ' + (x.status === 'approved' ? 'ให้ ' + x.points : 'แนะนำ ' + x.suggestedPoints) + ' คะแนน</div></div>'
+        + '<span class="st ' + esc(x.status) + '">' + esc(STATUS[x.status] || x.status) + '</span></a>';
+    });
+    document.getElementById('app').innerHTML = h + '</div>';
+  }).catch(function(e){ showState('⚠️', 'เชื่อมต่อไม่สำเร็จ: ' + e.message); });
+}
+
+// ---------------- ใบเดียว ----------------
+function loadOne(){
+  var params = { action: 'review', id: ID, t: TOKEN };
+  if (LIST_TOKEN) params.lt = LIST_TOKEN;
+  api(params).then(function(r){
+    if (!r.success) return showState('🔒', r.error || 'โหลดไม่สำเร็จ');
+    data = r;
+    render();
+  }).catch(function(e){ showState('⚠️', 'เชื่อมต่อไม่สำเร็จ: ' + e.message); });
+}
+
+function render(){
+  var r = data.receipt, m = r.member || {}, now = data.memberNow || {}, ai = (r.ai && r.ai.result) || null;
+  var h = '';
+  if (LIST_TOKEN) h += '<a class="top-link" href="receiptReview.html?all=1&t=' + encodeURIComponent(LIST_TOKEN) + '">← รายการทั้งหมด</a>';
+  else if (data.listLink) h += '<a class="top-link" href="' + esc(data.listLink) + '">📋 รายการรอตรวจทั้งหมด</a>';
+
+  // หัว + รูป
+  h += '<div class="card"><div class="hd ' + esc(r.aiVerdict) + '"><h1>🧾 ' + esc(r.ref) + ' <span class="chip">' + esc(STATUS[r.status] || r.status) + '</span></h1>'
+    + '<p>' + esc(VERDICT[r.aiVerdict] || '') + ' · ส่งเมื่อ ' + dt(r.createdAt, true) + '</p></div>';
+  var imgUrl = data.previewUrl || (r.fileMime && r.fileMime.indexOf('image/') === 0 ? data.fileUrl : '');
+  h += '<div class="img-box">';
+  if (imgUrl) h += '<img src="' + esc(imgUrl) + '" alt="ใบเสร็จ" onclick="zoom(\'' + esc(data.fileUrl && r.fileMime && r.fileMime.indexOf('image/') === 0 && r.fileMime !== 'image/heic' ? data.fileUrl : imgUrl) + '\')">';
+  if (data.fileUrl) h += '<a href="' + esc(data.fileUrl) + '" target="_blank" rel="noopener">📄 เปิดไฟล์ต้นฉบับ (' + esc(r.fileMime || '') + ', ' + Math.round((r.fileSize || 0) / 1024) + ' KB)</a>';
+  h += '</div></div>';
+
+  // ผล AI
+  h += '<div class="card"><div class="bd"><div class="sec-t">ผลอ่านใบเสร็จ</div>'
+    + row('สาขา', esc(r.store || '-'))
+    + row('เลขที่ใบเสร็จ', esc(r.receiptNo || '-'))
+    + row('วันที่ซื้อ', dt(r.receiptAt, true))
+    + row('ยอดรวม', r.receiptTotal != null ? baht(r.receiptTotal) : '-')
+    + row('ยอดสินค้าเอมโอชา', r.emochaAmount != null ? baht(r.emochaAmount) : '-', 'big')
+    + row('คะแนนที่แนะนำ', r.suggestedPoints + ' คะแนน (' + esc(data.bahtPerPoint) + ' บาท = 1 คะแนน)');
+  if (r.emochaItems && r.emochaItems.length) {
+    h += '<div class="items">' + r.emochaItems.map(function(i){ return '<div>• ' + esc(i.name) + (i.qty ? ' × ' + esc(i.qty) : '') + (i.amount ? ' = ' + baht(i.amount) : '') + '</div>'; }).join('') + '</div>';
+  }
+  if (r.aiFlags && r.aiFlags.length) h += '<ul class="flags">' + r.aiFlags.map(function(f){ return '<li>' + esc(f) + '</li>'; }).join('') + '</ul>';
+  if (ai && ai.summary_th) h += '<div class="summary">🤖 ' + esc(ai.summary_th) + '</div>';
+  if (r.ai && r.ai.meta) {
+    var meta = r.ai.meta;
+    h += '<div class="hint" style="margin-top:8px">ไฟล์: ' + (meta.hasCamera ? 'มีข้อมูลกล้องมือถือ' : 'ไม่มีข้อมูลกล้อง')
+      + (meta.editors && meta.editors.length ? ' · โปรแกรม: ' + esc(meta.editors.join(', ')) : '')
+      + (r.ai.model ? ' · ตรวจด้วย ' + esc(r.ai.model) + ' (' + Math.round((r.ai.ms || 0) / 1000) + ' วิ)' : '') + '</div>';
+  }
+  if (data.related && data.related.length) {
+    h += '<div class="flags" style="background:#fff0f0"><b style="font-size:13px;color:#c92a2a">ใบที่อาจเป็นใบเดียวกัน</b>'
+      + data.related.map(function(x){ return '<div style="font-size:13px"><a href="' + esc(x.link) + '">' + esc(x.ref) + '</a> · ' + esc(x.memberName || '-') + ' · ' + esc(STATUS[x.status] || x.status) + ' · ' + dt(x.createdAt, true) + '</div>'; }).join('')
+      + '</div>';
+  }
+  h += '</div></div>';
+
+  // ลูกค้า + แบบสอบถาม
+  var hist = data.history || {};
+  h += '<div class="card"><div class="bd"><div class="sec-t">ลูกค้า</div>'
+    + row('ชื่อ', esc(m.name || m.lineName || '-'))
+    + row('รหัสสมาชิก', esc(m.memberCode || '-'))
+    + row('เบอร์โทร', esc(m.phone || '-'))
+    + row('คะแนนตอนนี้', (now.points != null ? Number(now.points).toLocaleString('th-TH') : '-') + ' คะแนน')
+    + row('ใบเสร็จก่อนหน้า', (hist.total || 0) + ' ใบ (อนุมัติ ' + (hist.approved || 0) + ', ไม่ผ่าน ' + (hist.rejected || 0) + ') · 30 วันได้ ' + (hist.points30d || 0) + ' คะแนน');
+  var survey = r.survey || {};
+  (data.survey || []).forEach(function(q){
+    var a = survey[q.id];
+    if (a == null) return;
+    h += row(q.q, esc(Array.isArray(a) ? a.join(', ') : a));
+  });
+  h += '</div></div>';
+
+  // ตัดสิน
+  h += '<div class="card"><div class="bd" id="decideBox">' + decisionHtml(r) + '</div></div>';
+  document.getElementById('app').innerHTML = h;
+}
+
+function decisionHtml(r){
+  if (r.status === 'approved') {
+    return '<div class="sec-t">ผลการตรวจ</div>'
+      + row('สถานะ', '✅ อนุมัติแล้ว' + (r.reviewer ? ' โดย ' + esc(r.reviewer) : ''))
+      + row('คะแนนที่ให้', r.points + ' คะแนน', 'big')
+      + row('เพิ่มคะแนนเข้าระบบ', r.pointsWrittenAt ? 'เรียบร้อย (คงเหลือ ' + esc(r.balanceAfter) + ')' : '⏳ กำลังดำเนินการ' + (r.lastError ? ' — ' + esc(r.lastError) : ''))
+      + row('แจ้งลูกค้าทาง LINE', r.customerNotifiedAt ? 'ส่งแล้ว' : '⏳ รอส่ง');
+  }
+  var h = '';
+  if (r.status === 'rejected') {
+    h += '<div class="msg err show">❌ ไม่อนุมัติ' + (r.reviewer ? ' โดย ' + esc(r.reviewer) : ' (ระบบ)') + ': ' + esc(r.reviewNote || '-') + '\nเปลี่ยนเป็นอนุมัติได้ถ้าตรวจแล้วถูกต้อง</div>';
+  }
+  h += '<div class="sec-t">ตัดสิน</div><div class="msg" id="msg"></div>'
+    + '<div class="tabs"><button type="button" id="tabOk" class="ok" onclick="setDecision(\'approve\')">✅ อนุมัติ</button>'
+    + '<button type="button" id="tabNo" class="no" onclick="setDecision(\'reject\')"' + (r.status === 'rejected' ? ' disabled' : '') + '>❌ ไม่อนุมัติ</button></div>'
+    + '<div id="approveBox"><div class="fg"><label>คะแนนที่จะให้</label><div class="pts">'
+    + '<button type="button" onclick="bump(-1)">−</button><input class="fc" id="points" type="number" inputmode="numeric" min="1" value="' + Math.max(r.suggestedPoints || 0, 0) + '">'
+    + '<button type="button" onclick="bump(1)">+</button></div>'
+    + '<div class="hint">ระบบแนะนำ ' + r.suggestedPoints + ' คะแนน จากยอดสินค้าเอมโอชา ' + (r.emochaAmount != null ? baht(r.emochaAmount) : '-') + '</div></div></div>'
+    + '<div id="rejectBox" class="sh"><div class="fg"><label>เหตุผล (ลูกค้าจะเห็นข้อความนี้)</label><div class="reasons">'
+    + REASONS.map(function(x, i){ return '<button type="button" onclick="pickReason(' + i + ')">' + esc(x) + '</button>'; }).join('')
+    + '</div><textarea class="fc" id="note" rows="2" placeholder="พิมพ์เหตุผล"></textarea></div></div>'
+    + '<div class="fg"><label>ชื่อผู้ตรวจ</label><input class="fc" id="reviewer" value="' + esc(reviewerName()) + '" placeholder="ชื่อเล่นแอดมิน"></div>'
+    + '<button class="btn" id="submitBtn" onclick="submitDecision()">✅ อนุมัติและเพิ่มคะแนน</button>';
+  setTimeout(function(){ setDecision('approve'); }, 0);
+  return h;
+}
+
+function setDecision(d){
+  decision = d;
+  document.getElementById('tabOk').classList.toggle('on', d === 'approve');
+  document.getElementById('tabNo').classList.toggle('on', d === 'reject');
+  document.getElementById('approveBox').classList.toggle('sh', d !== 'approve');
+  document.getElementById('rejectBox').classList.toggle('sh', d !== 'reject');
+  var btn = document.getElementById('submitBtn');
+  btn.textContent = d === 'approve' ? '✅ อนุมัติและเพิ่มคะแนน' : '❌ ไม่อนุมัติ';
+  btn.className = 'btn' + (d === 'approve' ? '' : ' red');
+}
+function bump(n){ var el = document.getElementById('points'); el.value = Math.max(1, (parseInt(el.value, 10) || 0) + n); }
+function pickReason(i){ document.getElementById('note').value = REASONS[i]; }
+function showMsg(text, ok){ var el = document.getElementById('msg'); el.textContent = text; el.className = 'msg show ' + (ok ? 'ok' : 'err'); }
+
+function submitDecision(){
+  var r = data.receipt;
+  var reviewer = document.getElementById('reviewer').value.trim();
+  if (!reviewer) return showMsg('กรุณาใส่ชื่อผู้ตรวจ');
+  saveReviewerName(reviewer);
+  var params = { action: 'decide', id: ID, t: TOKEN, decision: decision, reviewer: reviewer };
+  if (LIST_TOKEN) params.lt = LIST_TOKEN;
+  if (decision === 'approve') {
+    var pts = parseInt(document.getElementById('points').value, 10) || 0;
+    if (pts <= 0) return showMsg('กรุณาใส่คะแนนมากกว่า 0');
+    if (!confirm('อนุมัติ ' + r.ref + ' และเพิ่ม ' + pts + ' คะแนนให้ ' + ((r.member || {}).name || 'ลูกค้า') + '?')) return;
+    params.points = pts;
+  } else {
+    var note = document.getElementById('note').value.trim();
+    if (!note) return showMsg('กรุณาใส่เหตุผลที่ไม่อนุมัติ');
+    if (!confirm('ไม่อนุมัติ ' + r.ref + '?')) return;
+    params.note = note;
+  }
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...';
+  api(params).then(function(res){
+    if (!res.success) { btn.disabled = false; setDecision(decision); return showMsg(res.error || 'บันทึกไม่สำเร็จ'); }
+    data.receipt = Object.assign({}, data.receipt, res.receipt);
+    render();
+    var box = document.getElementById('decideBox');
+    box.insertAdjacentHTML('afterbegin', '<div class="msg ok show">' + (decision === 'approve'
+      ? '✅ อนุมัติแล้ว ระบบกำลังเพิ่มคะแนนและส่ง LINE แจ้งลูกค้า (ประมาณ 5-60 วินาที)'
+      : 'บันทึกว่าไม่อนุมัติแล้ว ระบบจะแจ้งลูกค้าทาง LINE') + '</div>');
+    if (decision === 'approve') setTimeout(refreshStatus, 8000);
+  }).catch(function(e){ btn.disabled = false; setDecision(decision); showMsg('เชื่อมต่อไม่สำเร็จ: ' + e.message); });
+}
+
+// ดูผลการเพิ่มคะแนนซ้ำอีกไม่กี่ครั้ง
+var refreshCount = 0;
+function refreshStatus(){
+  var params = { action: 'review', id: ID, t: TOKEN };
+  if (LIST_TOKEN) params.lt = LIST_TOKEN;
+  api(params).then(function(r){
+    if (!r.success) return;
+    data = r; render();
+    if ((!r.receipt.pointsWrittenAt || !r.receipt.customerNotifiedAt) && ++refreshCount < 8) setTimeout(refreshStatus, 10000);
+  }).catch(function(){});
+}
+function zoom(url){ document.getElementById('zoomImg').src = url; document.getElementById('zoom').classList.remove('sh'); }
+
+if (ALL && TOKEN) loadList();
+else if (ID && (TOKEN || LIST_TOKEN)) loadOne();
+else showState('🔒', 'ลิงก์ไม่ครบ กรุณาเปิดจากข้อความในกลุ่มแอดมิน');
+</script>
+</body>
+</html>
