@@ -224,6 +224,9 @@ export function evaluate(ai: AiResult, meta: ReturnType<typeof scanMetadata> | n
     receiptAt = `${date}T${time}:00+07:00`;
     const at = new Date(receiptAt).getTime();
     const maxAge = Math.max(parseInt(String(cfg.maxReceiptAgeDays)) || 30, 1);
+    if (cfg.liveFrom && date < String(cfg.liveFrom)) {
+      flags.push("ซื้อก่อนวันเริ่มรับใบเสร็จ (" + cfg.liveFrom + ")"); soft.push("ใบเสร็จซื้อก่อนวันเริ่มกิจกรรม"); worsen("suspect");
+    }
     if (Number.isNaN(at)) receiptAt = null;
     else if (at > Date.now() + 24 * 3600 * 1000) { flags.push("วันที่ในใบเสร็จอยู่ในอนาคต"); worsen("suspect"); }
     else if (Date.now() - at > maxAge * 24 * 3600 * 1000) {

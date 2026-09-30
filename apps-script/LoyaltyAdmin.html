@@ -5,6 +5,7 @@
      - ข้อมูลมาจาก Edge Function "loyalty" ใน Supabase (ลิงก์/โทเคนขอจาก loyaltyAdminLinks(adminPin) หลังกรอก PIN)
      - ตรวจ/อนุมัติใบเสร็จ, ตั้งค่า, พิมพ์ใบจัดส่ง, บันทึกเลขพัสดุ อยู่ในหน้านี้ทั้งหมด -->
 <style>
+#tabLoyalty .hint,#tabPremiumShip .hint{font-size:11px;color:var(--g6);font-weight:400;line-height:1.5;}
 .ly-hd{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
 .ly-hd b{flex:1;font-size:14px;}
 .ly-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
@@ -336,6 +337,10 @@
       + '<div class="fg"><label>ส่งได้กี่ใบ/วัน/คน</label><input class="fc" id="lyMaxDay" type="number" min="1" value="' + h(s.max_per_day) + '"></div></div>'
       + '<div class="fg"><label>อายุใบเสร็จไม่เกิน (วัน)</label><input class="fc" id="lyMaxAge" type="number" min="1" value="' + h(s.max_receipt_age_days) + '"></div>'
       + sw('lyLive', 'เปิดรับใบเสร็จ (แสดงปุ่ม 7-Eleven ในหน้าสมาชิก)', 'ปิด = ซ่อนปุ่มในหน้าสมาชิก ลูกค้าส่งใบเสร็จไม่ได้', s.live)
+      + '<div class="ly-two" style="margin-top:8px"><div class="fg"><label>เริ่มรับใบเสร็จวันที่</label><input class="fc" id="lyFrom" type="date" value="' + h(s.live_from || '') + '"></div>'
+      + '<div class="fg"><label>รับใบเสร็จถึงวันที่</label><input class="fc" id="lyUntil" type="date" value="' + h(s.live_until || '') + '"></div></div>'
+      + '<div class="hint" style="margin:-6px 0 8px">เว้นว่าง = ไม่จำกัด · นอกช่วงวัน ปุ่มในหน้าสมาชิกซ่อนเองและส่งใบเสร็จไม่ได้ (ไม่ต้องจำปิด)</div>'
+      + '<div class="ly-note" style="font-weight:600">' + h(lyLiveStatus(settings.status)) + '</div>'
       + sw('lyAuto', 'อนุมัติอัตโนมัติเมื่อ AI ตรวจผ่าน', 'ใบที่ผ่านทุกข้อได้คะแนนทันที ใบที่น่าสงสัยยังรอแอดมิน', s.auto_approve)
       + sw('lySpend', 'นับยอดเข้ายอดซื้อสะสม', 'มีผลกับการเลื่อนระดับสมาชิก', s.count_spend)
       + sw('lyNotifyRej', 'แจ้งลูกค้าเมื่อไม่อนุมัติ', 'ส่ง LINE บอกเหตุผล', s.notify_customer_reject)
@@ -351,6 +356,15 @@
       + '<div class="ly-sec">📊 สรุปผลแบบสอบถาม</div>' + summaryHtml();
     setHtml('lySettingsCard', x);
     renderSurvey();
+  }
+function lyLiveStatus(st){
+    if (!st) return '';
+    var fmt = function(d){ return d ? new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : ''; };
+    var t = st.liveReason === 'open' ? '🟢 ตอนนี้เปิดรับใบเสร็จอยู่' + (st.liveUntil ? ' ถึง ' + fmt(st.liveUntil) : '')
+      : st.liveReason === 'not_started' ? '🟡 ยังไม่ถึงวันเริ่ม (เริ่ม ' + fmt(st.liveFrom) + ')'
+      : st.liveReason === 'ended' ? '🔴 หมดเขตแล้ว (' + fmt(st.liveUntil) + ') ปุ่มในหน้าสมาชิกซ่อนอยู่'
+      : '⚪ ปิดรับอยู่ ปุ่มในหน้าสมาชิกซ่อนอยู่';
+    return t;
   }
   function summaryHtml(){
     var sum = settings.surveySummary || {}, qs = settings.settings.survey || [];
@@ -392,7 +406,8 @@
     readSurvey();
     var v = function(id){ return el(id).value.trim(); };
     var payload = {
-      admin_group_id: v('lyGroup'), live: el('lyLive').checked, auto_approve: el('lyAuto').checked,
+      admin_group_id: v('lyGroup'), live: el('lyLive').checked, live_from: v('lyFrom'), live_until: v('lyUntil'),
+      auto_approve: el('lyAuto').checked,
       count_spend: el('lySpend').checked, notify_customer_reject: el('lyNotifyRej').checked,
       baht_per_point: Number(v('lyBpp')), max_per_day: Number(v('lyMaxDay')), max_receipt_age_days: Number(v('lyMaxAge')),
       sender: { name: v('lySndName'), phone: v('lySndPhone'), address: v('lySndAddr') },

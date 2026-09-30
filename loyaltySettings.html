@@ -107,6 +107,10 @@ function render(){
     + '<div class="fg"><label>อายุใบเสร็จไม่เกิน (วัน)</label><input class="fc" id="max_receipt_age_days" type="number" min="1" step="1" value="' + esc(s.max_receipt_age_days) + '">'
     + '<div class="hint">เกินกำหนด = ติดธงให้แอดมินพิจารณา (ไม่ปฏิเสธเอง)</div></div>'
     + toggle('live', 'เปิดรับใบเสร็จ (แสดงปุ่ม 7-Eleven ในหน้าสมาชิก)', 'ปิด = ซ่อนปุ่มในหน้าสมาชิก ลูกค้าส่งใบเสร็จไม่ได้', s.live)
+    + '<div class="grid2" style="margin-top:8px"><div class="fg"><label>เริ่มรับใบเสร็จวันที่</label><input class="fc" id="live_from" type="date" value="' + esc(s.live_from || '') + '"></div>'
+    + '<div class="fg"><label>รับใบเสร็จถึงวันที่</label><input class="fc" id="live_until" type="date" value="' + esc(s.live_until || '') + '"></div></div>'
+    + '<div class="hint" style="margin:-6px 0 8px">เว้นว่าง = ไม่จำกัด · นอกช่วงวัน ปุ่มในหน้าสมาชิกซ่อนเองและส่งใบเสร็จไม่ได้</div>'
+    + '<div class="hint" style="font-weight:600;color:#1b2e1c">' + esc(lyLiveStatus(data.status)) + '</div>'
     + toggle('auto_approve', 'อนุมัติอัตโนมัติเมื่อ AI ตรวจผ่าน', 'ผ่านทุกข้อ = ให้คะแนนทันที (แอดมินยังเห็นในกลุ่ม) ใบที่น่าสงสัยยังรอแอดมินเสมอ', s.auto_approve)
     + toggle('count_spend', 'นับยอดเข้ายอดซื้อสะสม', 'เปิด = ยอดสินค้าเอมโอชาในใบเสร็จมีผลกับระดับสมาชิก', s.count_spend)
     + toggle('notify_customer_reject', 'แจ้งลูกค้าเมื่อไม่อนุมัติ', 'ส่ง LINE บอกเหตุผลให้ลูกค้า', s.notify_customer_reject)
@@ -129,6 +133,15 @@ function render(){
   renderSurvey();
 }
 
+function lyLiveStatus(st){
+  if (!st) return '';
+  var fmt = function(d){ return d ? new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : ''; };
+  var t = st.liveReason === 'open' ? '🟢 ตอนนี้เปิดรับใบเสร็จอยู่' + (st.liveUntil ? ' ถึง ' + fmt(st.liveUntil) : '')
+    : st.liveReason === 'not_started' ? '🟡 ยังไม่ถึงวันเริ่ม (เริ่ม ' + fmt(st.liveFrom) + ')'
+    : st.liveReason === 'ended' ? '🔴 หมดเขตแล้ว (' + fmt(st.liveUntil) + ') ปุ่มในหน้าสมาชิกซ่อนอยู่'
+    : '⚪ ปิดรับอยู่ ปุ่มในหน้าสมาชิกซ่อนอยู่';
+  return t;
+}
 function summaryHtml(){
   var sum = data.surveySummary || {}, qs = data.settings.survey || [];
   var ids = Object.keys(sum);
@@ -183,6 +196,7 @@ function save(){
   var settings = {
     admin_group_id: v('admin_group_id'),
     live: document.getElementById('live').checked,
+    live_from: v('live_from'), live_until: v('live_until'),
     auto_approve: document.getElementById('auto_approve').checked,
     count_spend: document.getElementById('count_spend').checked,
     notify_customer_reject: document.getElementById('notify_customer_reject').checked,
