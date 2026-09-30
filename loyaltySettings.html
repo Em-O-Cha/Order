@@ -106,7 +106,7 @@ function render(){
     + '<div class="fg"><label>ส่งได้กี่ใบต่อวันต่อคน</label><input class="fc" id="max_per_day" type="number" min="1" step="1" value="' + esc(s.max_per_day) + '"></div></div>'
     + '<div class="fg"><label>อายุใบเสร็จไม่เกิน (วัน)</label><input class="fc" id="max_receipt_age_days" type="number" min="1" step="1" value="' + esc(s.max_receipt_age_days) + '">'
     + '<div class="hint">เกินกำหนด = ติดธงให้แอดมินพิจารณา (ไม่ปฏิเสธเอง)</div></div>'
-    + toggle('live', 'เปิดรับใบเสร็จ', 'ปิด = หน้าสมาชิกแจ้งว่ายังไม่เปิดรับ', s.live)
+    + toggle('live', 'เปิดรับใบเสร็จ (แสดงปุ่ม 7-Eleven ในหน้าสมาชิก)', 'ปิด = ซ่อนปุ่มในหน้าสมาชิก ลูกค้าส่งใบเสร็จไม่ได้', s.live)
     + toggle('auto_approve', 'อนุมัติอัตโนมัติเมื่อ AI ตรวจผ่าน', 'ผ่านทุกข้อ = ให้คะแนนทันที (แอดมินยังเห็นในกลุ่ม) ใบที่น่าสงสัยยังรอแอดมินเสมอ', s.auto_approve)
     + toggle('count_spend', 'นับยอดเข้ายอดซื้อสะสม', 'เปิด = ยอดสินค้าเอมโอชาในใบเสร็จมีผลกับระดับสมาชิก', s.count_spend)
     + toggle('notify_customer_reject', 'แจ้งลูกค้าเมื่อไม่อนุมัติ', 'ส่ง LINE บอกเหตุผลให้ลูกค้า', s.notify_customer_reject)

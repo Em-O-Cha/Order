@@ -1,6 +1,7 @@
 // loyalty: สะสมคะแนนจากใบเสร็จ 7-Eleven + ใบจัดส่งของพรีเมียม (ดู migrations/*_loyalty_receipts.sql)
 //
 // ลูกค้า (หน้าสมาชิก, โทเคน LINE)
+//   action=config                                  -> { config } เปิดรับใบเสร็จไหม (หน้าสมาชิกซ่อน/แสดงปุ่ม 7-Eleven)
 //   action=myReceipts  idToken                    -> { config (แบบสอบถาม/กติกา), receipts (ประวัติ 30 ใบล่าสุด) }
 //   action=submitReceipt (multipart/form-data)     idToken, clientKey, survey (JSON), file (ไฟล์ต้นฉบับ),
 //                                                  preview (JPEG ย่อที่หน้าเว็บทำให้ ถ้าทำได้)
@@ -292,6 +293,7 @@ Deno.serve(async (req) => {
     if (req.method === "POST" && ct.includes("multipart/form-data")) return await submitReceipt(req);
     const p = await readParams(req);
     switch (p.action) {
+      case "config": return json({ success: true, config: await rpc("loyalty_public_config", {}) });
       case "myReceipts": return await myReceipts(p);
       case "review": return await review(p);
       case "reviewList": return await reviewList(p);
