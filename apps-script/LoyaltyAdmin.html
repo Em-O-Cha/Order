@@ -1,0 +1,515 @@
+<!-- ==================== แท็บ "ใบเสร็จ 7-Eleven" และ "ใบจัดส่งพรีเมียม" ในหน้าแอดมิน ====================
+     ไฟล์ HTML ในโปรเจกต์ Apps Script "Members LINE" (ชื่อไฟล์ LoyaltyAdmin) — SupabaseLoyalty.gs แทรกไฟล์นี้ท้าย
+     หน้าแอดมิน (doGet page=admin) เอง ไม่ต้องแก้ admin.html
+     - เพิ่มปุ่มแท็บ 2 ปุ่มต่อท้ายแถวแท็บเดิม และห่อ switchTab() ให้สลับแท็บใหม่ได้เหมือนแท็บเดิม
+     - ข้อมูลมาจาก Edge Function "loyalty" ใน Supabase (ลิงก์/โทเคนขอจาก loyaltyAdminLinks(adminPin) หลังกรอก PIN)
+     - ตรวจ/อนุมัติใบเสร็จ, ตั้งค่า, พิมพ์ใบจัดส่ง, บันทึกเลขพัสดุ อยู่ในหน้านี้ทั้งหมด -->
+<style>
+#tabLoyalty .hint,#tabPremiumShip .hint{font-size:11px;color:var(--g6);font-weight:400;line-height:1.5;}
+.ly-hd{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.ly-hd b{flex:1;font-size:14px;}
+.ly-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.ly-bar .fc{flex:1;min-width:130px;height:40px;}
+.ly-bar .btn{height:40px;padding:0 14px;}
+.ly-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;}
+.ly-stats div{background:var(--gp);border-radius:10px;padding:8px 4px;text-align:center;font-size:11px;color:var(--gd);}
+.ly-stats b{display:block;font-size:16px;}
+.ly-st{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap;}
+.ly-st.pending_review,.ly-st.pending{background:#fff3bf;color:#8a6d00;}
+.ly-st.approved,.ly-st.shipped{background:#d3f9d8;color:#2b8a3e;}
+.ly-st.rejected,.ly-st.cancelled{background:#ffe3e3;color:#c92a2a;}
+.ly-st.printed{background:#e7f5ff;color:#1864ab;}
+.ly-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:#9aa5b1;}
+.ly-dot.pass{background:#20c997;} .ly-dot.suspect{background:#fd7e14;} .ly-dot.fail{background:#e03131;}
+.ly-verdict{border-radius:10px;padding:10px 12px;color:#fff;margin-bottom:10px;font-size:13px;font-weight:600;background:linear-gradient(135deg,#536976,#292e49);}
+.ly-verdict.pass{background:linear-gradient(135deg,#11998e,#38ef7d);}
+.ly-verdict.suspect{background:linear-gradient(135deg,#f7971e,#f2542d);}
+.ly-verdict.fail{background:linear-gradient(135deg,#cb2d3e,#ef473a);}
+.ly-img{background:#eceff1;border-radius:10px;text-align:center;margin-bottom:10px;overflow:hidden;}
+.ly-img img{max-width:100%;max-height:60vh;display:block;margin:0 auto;cursor:zoom-in;}
+.ly-img a{display:inline-block;padding:10px;font-size:13px;color:var(--gm);font-weight:600;}
+.ly-flags{background:#fff4e5;border-radius:10px;padding:8px 10px 8px 26px;margin:8px 0;font-size:12px;color:#b54708;line-height:1.6;}
+.ly-note{background:#f7f7f8;border-radius:10px;padding:8px 10px;font-size:12px;color:var(--g8);margin:8px 0;}
+.ly-sec{font-size:13px;font-weight:700;color:var(--g8);margin:14px 0 6px;}
+.ly-pts{display:flex;gap:8px;align-items:center;}
+.ly-pts .fc{text-align:center;font-size:18px;font-weight:700;}
+.ly-pts .btn{width:44px;height:44px;padding:0;font-size:18px;}
+.ly-reasons{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+.ly-reasons button{font-family:inherit;font-size:12px;padding:4px 10px;border-radius:20px;border:1px solid #ddd;background:#fafafa;cursor:pointer;}
+.ly-two{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.ly-sw{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #f3f3f3;font-size:13px;}
+.ly-sw small{display:block;color:var(--g6);font-size:11px;}
+.ly-sw input{width:20px;height:20px;flex-shrink:0;}
+.ly-q{border:1.5px solid #eee;border-radius:10px;padding:10px;margin-bottom:8px;}
+.ly-q-hd{display:flex;gap:6px;align-items:center;margin-bottom:6px;font-size:12px;color:var(--g6);}
+.ly-q-hd span{flex:1;}
+.ly-bars{font-size:12px;margin-bottom:10px;}
+.ly-bars .r{display:flex;align-items:center;gap:6px;margin-top:3px;}
+.ly-bars .l{width:45%;flex-shrink:0;}
+.ly-bars .t{flex:1;background:#f1f3f5;border-radius:20px;height:10px;overflow:hidden;}
+.ly-bars .t i{display:block;height:100%;background:var(--gm);border-radius:20px;}
+.ly-ship-form{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;}
+.ly-ship-form .full{grid-column:1/-1;}
+.ly-ship-form .fc{height:38px;}
+.ly-zoom{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:400;overflow:auto;}
+.ly-zoom img{width:100%;}
+/* ใบจัดส่ง (ใช้ตอนพิมพ์) */
+#lyPrintArea{display:none;}
+.ly-label{width:100mm;min-height:148mm;padding:5mm;color:#000;background:#fff;font-family:'Sarabun',sans-serif;
+  display:flex;flex-direction:column;gap:3mm;font-size:11pt;line-height:1.35;page-break-after:always;break-after:page;}
+.ly-label .top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:2mm;}
+.ly-label .top b{font-size:15pt;}
+.ly-label .box{border:1.5px solid #000;border-radius:2mm;padding:3mm;}
+.ly-label .cap{font-size:9pt;font-weight:700;}
+.ly-label .name{font-size:17pt;font-weight:700;}
+.ly-label .phone{font-size:14pt;font-weight:700;}
+.ly-label .addr{font-size:13pt;}
+.ly-label .prov{font-size:14pt;font-weight:700;}
+.ly-label .foot{font-size:8pt;margin-top:auto;text-align:right;}
+@media print{
+  body.ly-printing > *:not(#lyPrintArea){display:none !important;}
+  body.ly-printing{padding:0;background:#fff;}
+  body.ly-printing #lyPrintArea{display:block;}
+  @page{size:100mm 150mm;margin:0;}
+}
+</style>
+
+<div id="lyPrintArea"></div>
+<div class="ly-zoom sh" id="lyZoom" onclick="this.classList.add('sh')"><img id="lyZoomImg" alt=""></div>
+
+<script>
+(function(){
+  var API = 'https://qotlepudmkuniyjvqmle.supabase.co/functions/v1/loyalty?forceFunctionRegion=ap-northeast-2';
+  var STATUS = { pending_review: 'รอตรวจ', approved: 'อนุมัติแล้ว', rejected: 'ไม่อนุมัติ',
+                 pending: 'รอพิมพ์', printed: 'พิมพ์แล้ว', shipped: 'จัดส่งแล้ว', cancelled: 'ยกเลิก' };
+  var VERDICT = { pass: 'AI ตรวจเบื้องต้น: ผ่าน', suspect: 'AI ตรวจเบื้องต้น: น่าสงสัย ตรวจละเอียด',
+                  fail: 'AI ตรวจเบื้องต้น: ไม่ผ่าน', unchecked: 'AI ยังไม่ได้ตรวจ (ตรวจเอง)' };
+  var REASONS = ['ไม่พบสินค้าเอมโอชาในใบเสร็จ', 'รูปใบเสร็จไม่ชัด อ่านไม่ได้', 'ใบเสร็จนี้เคยใช้สะสมคะแนนแล้ว',
+                 'ไม่ใช่ใบเสร็จ 7-Eleven', 'ใบเสร็จเกินระยะเวลาที่กำหนด', 'ใบเสร็จไม่ถูกต้องหรือมีการแก้ไข'];
+  var CARRIERS = ['ไปรษณีย์ไทย (EMS)', 'ไปรษณีย์ไทย (ลงทะเบียน)', 'Flash Express', 'Kerry Express', 'J&T Express',
+                  'SPX Express', 'Best Express', 'Lalamove / Grab', 'ส่งเอง'];
+  var links = null;           // { receipts, shipments, settings } + โทเคน t ของแต่ละหน้า
+  var tok = {};
+  var receipt = null;         // ใบที่เปิดดูอยู่ (ผลของ action review)
+  var decision = 'approve';
+  var shipments = [], sender = {};
+  var settings = null, survey = [];
+  var filter = 'pending';
+
+  function h(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function baht(n){ var x = parseFloat(n); return isNaN(x) ? '-' : x.toLocaleString('th-TH', { maximumFractionDigits: 2 }) + ' บาท'; }
+  function dt(s, time){
+    if (!s) return '-';
+    var d = new Date(s); if (isNaN(d)) return h(s);
+    return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) +
+      (time ? ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '');
+  }
+  function phone(p){ var d = String(p || '').replace(/\D/g, ''); return d.length === 10 ? d.slice(0,3) + '-' + d.slice(3,6) + '-' + d.slice(6) : (p || '-'); }
+  function row(label, value){ return '<div class="row"><span>' + h(label) + '</span><span style="text-align:right;font-weight:600">' + value + '</span></div>'; }
+  function alertMsg(m){ if (typeof showCustomAlert_ === 'function') showCustomAlert_(m); else alert(m); }
+  function confirmMsg(m, fn){ if (typeof showCustomConfirm_ === 'function') showCustomConfirm_(m, fn); else if (confirm(m)) fn(); }
+  function el(id){ return document.getElementById(id); }
+  function setHtml(id, html){ var x = el(id); if (x) x.innerHTML = html; }
+  function tokenOf(url){ var m = /[?&]t=([0-9a-f]{32})/.exec(url || ''); return m ? m[1] : ''; }
+
+  function api(params){
+    return fetch(API, { method: 'POST', body: new URLSearchParams(params).toString() }).then(function(r){ return r.json(); });
+  }
+  // ขอลิงก์/โทเคนครั้งแรกที่เปิดแท็บ (ตรวจ PIN ที่ Apps Script)
+  function ensureLinks(){
+    if (links) return Promise.resolve(links);
+    return new Promise(function(resolve, reject){
+      google.script.run.withSuccessHandler(function(r){
+        if (!r || !r.success) { reject(new Error((r && r.error) || 'เปิดไม่สำเร็จ')); return; }
+        links = r;
+        tok = { rl: tokenOf(r.receipts), sl: tokenOf(r.shipments), cfg: tokenOf(r.settings) };
+        resolve(r);
+      }).withFailureHandler(function(e){ reject(e); }).loyaltyAdminLinks(window.adminPin || '');
+    });
+  }
+  function fail(id, e){ setHtml(id, '<div class="err show">' + h(e && e.message ? e.message : e) + '</div>'); }
+
+  // ==================== แท็บ + โครงหน้า ====================
+  function mount(){
+    var tabs = document.querySelector('.tabs');
+    var main = el('mainArea');
+    if (!tabs || !main || el('tabLoyaltyBtn')) return;
+    tabs.insertAdjacentHTML('beforeend',
+      '<button type="button" class="tab-btn" id="tabLoyaltyBtn" onclick="switchTab(\'loyalty\')">🧾 ใบเสร็จ 7-Eleven</button>' +
+      '<button type="button" class="tab-btn" id="tabPremiumShipBtn" onclick="switchTab(\'premiumShip\')">🏷️ ใบจัดส่งพรีเมียม</button>');
+    main.insertAdjacentHTML('beforeend',
+      '<div id="tabLoyalty" class="sh">' +
+        '<div class="card" id="lyListCard">' +
+          '<div class="ly-hd"><b>🧾 ใบเสร็จ 7-Eleven</b><button class="btn btn-outline" style="padding:6px 12px" onclick="LY.toggleSettings()">⚙️ ตั้งค่า</button></div>' +
+          '<div class="hint" style="margin-bottom:10px">ลูกค้าส่งใบเสร็จจากหน้าสมาชิก → AI ตรวจเบื้องต้น → กดดูแล้วอนุมัติ ระบบเพิ่มคะแนนและส่ง LINE แจ้งลูกค้าเอง</div>' +
+          '<div class="ly-bar"><select class="fc" id="lyFilter" onchange="LY.setFilter(this.value)">' +
+            '<option value="pending">รอตรวจ</option><option value="all">ทั้งหมด (7 วันล่าสุด)</option></select>' +
+          '<button class="btn" onclick="LY.loadList()">🔄 รีเฟรช</button></div>' +
+          '<div id="lyList"><div class="empty">กำลังโหลด...</div></div>' +
+        '</div>' +
+        '<div class="card sh" id="lyDetailCard"></div>' +
+        '<div class="card sh" id="lySettingsCard"></div>' +
+      '</div>' +
+      '<div id="tabPremiumShip" class="sh">' +
+        '<div class="card">' +
+          '<div class="ly-hd"><b>🏷️ ใบจัดส่งของพรีเมียม</b></div>' +
+          '<div class="hint" style="margin-bottom:10px">ลูกค้าแลกของพรีเมียม → ติ๊กเลือกแล้วพิมพ์ใบจัดส่ง (ฉลาก 100×150 มม.) → ใส่เลขพัสดุแล้วกด "จัดส่งแล้ว" ระบบแจ้งลูกค้าทาง LINE</div>' +
+          '<div class="ly-bar"><select class="fc" id="lyShipFilter" onchange="LY.renderShipments()">' +
+            '<option value="open">ยังไม่จัดส่ง</option><option value="all">ทั้งหมด (14 วันล่าสุด)</option></select>' +
+          '<button class="btn" onclick="LY.printSelected()">🖨️ พิมพ์ที่เลือก</button>' +
+          '<button class="btn btn-outline" onclick="LY.loadShipments()">🔄</button></div>' +
+          '<div id="lyShipList"><div class="empty">กำลังโหลด...</div></div>' +
+        '</div>' +
+      '</div>');
+    var orig = window.switchTab;
+    window.switchTab = function(tab){
+      var mine = tab === 'loyalty' || tab === 'premiumShip';
+      if (typeof orig === 'function') orig.call(this, mine ? '__none__' : tab);
+      el('tabLoyalty').classList.toggle('sh', tab !== 'loyalty');
+      el('tabPremiumShip').classList.toggle('sh', tab !== 'premiumShip');
+      el('tabLoyaltyBtn').classList.toggle('active', tab === 'loyalty');
+      el('tabPremiumShipBtn').classList.toggle('active', tab === 'premiumShip');
+      if (tab === 'loyalty') loadList();
+      if (tab === 'premiumShip') loadShipments();
+    };
+  }
+
+  // ==================== ใบเสร็จ: รายการ ====================
+  function loadList(){
+    showPanel('list');
+    setHtml('lyList', '<div class="empty">กำลังโหลด...</div>');
+    ensureLinks().then(function(){ return api({ action: 'reviewList', t: tok.rl }); }).then(function(r){
+      if (!r.success) throw new Error(r.error || 'โหลดไม่สำเร็จ');
+      var list = r.receipts.filter(function(x){ return filter === 'all' || x.status === 'pending_review'; });
+      var pending = r.receipts.filter(function(x){ return x.status === 'pending_review'; }).length;
+      el('tabLoyaltyBtn').innerHTML = '🧾 ใบเสร็จ 7-Eleven' + (pending ? ' (' + pending + ')' : '');
+      if (!list.length) { setHtml('lyList', '<div class="empty">' + (filter === 'all' ? 'ยังไม่มีใบเสร็จ' : '🎉 ไม่มีใบเสร็จรอตรวจ') + '</div>'); return; }
+      setHtml('lyList', list.map(function(x){
+        return '<div class="member-item" onclick="LY.open(\'' + x.id + '\')">'
+          + '<div class="nm"><span class="ly-dot ' + h(x.aiVerdict) + '"></span>' + h(x.ref) + ' · ' + h(x.memberName || '-')
+          + ' <span class="ly-st ' + h(x.status) + '">' + h(STATUS[x.status] || x.status) + '</span></div>'
+          + '<div class="sub">' + dt(x.createdAt, true) + ' · เอมโอชา ' + (x.emochaAmount != null ? baht(x.emochaAmount) : '-')
+          + ' · ' + (x.status === 'approved' ? 'ให้ ' + x.points : 'แนะนำ ' + x.suggestedPoints) + ' คะแนน</div></div>';
+      }).join(''));
+    }).catch(function(e){ fail('lyList', e); });
+  }
+
+  function showPanel(which){
+    el('lyListCard').classList.toggle('sh', which !== 'list');
+    el('lyDetailCard').classList.toggle('sh', which !== 'detail');
+    el('lySettingsCard').classList.toggle('sh', which !== 'settings');
+  }
+
+  // ==================== ใบเสร็จ: รายละเอียด + อนุมัติ ====================
+  function open(id){
+    showPanel('detail');
+    setHtml('lyDetailCard', '<div class="empty">กำลังโหลด...</div>');
+    api({ action: 'review', id: id, lt: tok.rl }).then(function(r){
+      if (!r.success) throw new Error(r.error || 'โหลดไม่สำเร็จ');
+      receipt = r;
+      renderDetail();
+    }).catch(function(e){ fail('lyDetailCard', e); });
+  }
+
+  function renderDetail(){
+    var d = receipt, r = d.receipt, m = r.member || {}, now = d.memberNow || {}, ai = (r.ai && r.ai.result) || null;
+    var x = '<button class="btn btn-outline" style="padding:6px 12px;margin-bottom:10px" onclick="LY.loadList()">← กลับไปรายการ</button>';
+    x += '<div class="ly-verdict ' + h(r.aiVerdict) + '">🧾 ' + h(r.ref) + ' · ' + h(STATUS[r.status] || r.status) + '<br><span style="font-weight:400">'
+      + h(VERDICT[r.aiVerdict] || '') + ' · ส่งเมื่อ ' + dt(r.createdAt, true) + '</span></div>';
+    var img = d.previewUrl || (r.fileMime && r.fileMime.indexOf('image/') === 0 ? d.fileUrl : '');
+    x += '<div class="ly-img">' + (img ? '<img src="' + h(img) + '" alt="ใบเสร็จ" onclick="LY.zoom(this.src)">' : '')
+      + (d.fileUrl ? '<a href="' + h(d.fileUrl) + '" target="_blank" rel="noopener">📄 เปิดไฟล์ต้นฉบับ (' + h(r.fileMime || '') + ')</a>' : '') + '</div>';
+    x += '<div class="ly-sec">ผลอ่านใบเสร็จ</div><div class="member-info">'
+      + row('สาขา', h(r.store || '-')) + row('เลขที่ใบเสร็จ', h(r.receiptNo || '-')) + row('วันที่ซื้อ', dt(r.receiptAt, true))
+      + row('ยอดรวม', r.receiptTotal != null ? baht(r.receiptTotal) : '-')
+      + row('ยอดสินค้าเอมโอชา', '<span style="color:#e8590c">' + (r.emochaAmount != null ? baht(r.emochaAmount) : '-') + '</span>')
+      + row('คะแนนที่แนะนำ', r.suggestedPoints + ' คะแนน (' + h(d.bahtPerPoint) + ' บาท = 1)') + '</div>';
+    if (r.emochaItems && r.emochaItems.length) {
+      x += '<div class="ly-note">' + r.emochaItems.map(function(i){ return '• ' + h(i.name) + (i.qty ? ' × ' + h(i.qty) : '') + (i.amount ? ' = ' + baht(i.amount) : ''); }).join('<br>') + '</div>';
+    }
+    if (r.aiFlags && r.aiFlags.length) x += '<ul class="ly-flags">' + r.aiFlags.map(function(f){ return '<li>' + h(f) + '</li>'; }).join('') + '</ul>';
+    if (ai && ai.summary_th) x += '<div class="ly-note">🤖 ' + h(ai.summary_th) + '</div>';
+    if (d.related && d.related.length) {
+      x += '<div class="ly-flags" style="background:#fff0f0;color:#c92a2a;padding-left:10px"><b>ใบที่อาจเป็นใบเดียวกัน</b><br>'
+        + d.related.map(function(o){ return '<a href="#" onclick="LY.open(\'' + o.id + '\');return false">' + h(o.ref) + '</a> · ' + h(o.memberName || '-') + ' · ' + h(STATUS[o.status] || o.status); }).join('<br>') + '</div>';
+    }
+    var hist = d.history || {};
+    x += '<div class="ly-sec">ลูกค้า</div><div class="member-info">'
+      + row('ชื่อ', h(m.name || m.lineName || '-')) + row('รหัสสมาชิก', h(m.memberCode || '-')) + row('เบอร์โทร', h(m.phone || '-'))
+      + row('คะแนนตอนนี้', (now.points != null ? Number(now.points).toLocaleString('th-TH') : '-') + ' คะแนน')
+      + row('ใบเสร็จก่อนหน้า', (hist.total || 0) + ' ใบ (อนุมัติ ' + (hist.approved || 0) + ', ไม่ผ่าน ' + (hist.rejected || 0) + ')');
+    (d.survey || []).forEach(function(q){ var a = (r.survey || {})[q.id]; if (a != null) x += row(q.q, h(Array.isArray(a) ? a.join(', ') : a)); });
+    x += '</div><div id="lyDecide">' + decisionHtml(r) + '</div>';
+    setHtml('lyDetailCard', x);
+    if (r.status !== 'approved') setDecision('approve');
+  }
+
+  function decisionHtml(r){
+    if (r.status === 'approved') {
+      return '<div class="ly-sec">ผลการตรวจ</div><div class="member-info">'
+        + row('สถานะ', '✅ อนุมัติแล้ว' + (r.reviewer ? ' โดย ' + h(r.reviewer) : ''))
+        + row('คะแนนที่ให้', r.points + ' คะแนน')
+        + row('เพิ่มคะแนนเข้าระบบ', r.pointsWrittenAt ? 'เรียบร้อย (คงเหลือ ' + h(r.balanceAfter) + ')' : '⏳ กำลังดำเนินการ' + (r.lastError ? ' — ' + h(r.lastError) : ''))
+        + row('แจ้งลูกค้าทาง LINE', r.customerNotifiedAt ? 'ส่งแล้ว' : '⏳ รอส่ง') + '</div>';
+    }
+    var x = '';
+    if (r.status === 'rejected') x += '<div class="err show">❌ ไม่อนุมัติ' + (r.reviewer ? ' โดย ' + h(r.reviewer) : ' (ระบบ)') + ': ' + h(r.reviewNote || '-') + ' — เปลี่ยนเป็นอนุมัติได้ถ้าตรวจแล้วถูกต้อง</div>';
+    x += '<div class="ly-sec">ตัดสิน</div><div class="err" id="lyDecErr"></div>'
+      + '<div class="tabs" style="margin-bottom:10px"><button type="button" class="tab-btn" id="lyTabOk" onclick="LY.setDecision(\'approve\')">✅ อนุมัติ</button>'
+      + '<button type="button" class="tab-btn" id="lyTabNo" onclick="LY.setDecision(\'reject\')"' + (r.status === 'rejected' ? ' disabled' : '') + '>❌ ไม่อนุมัติ</button></div>'
+      + '<div id="lyApprove"><div class="fg"><label>คะแนนที่จะให้</label><div class="ly-pts">'
+      + '<button type="button" class="btn btn-outline" onclick="LY.bump(-1)">−</button><input class="fc" id="lyPoints" type="number" min="1" value="' + Math.max(r.suggestedPoints || 0, 0) + '">'
+      + '<button type="button" class="btn btn-outline" onclick="LY.bump(1)">+</button></div>'
+      + '<div class="hint">ระบบแนะนำ ' + r.suggestedPoints + ' คะแนน</div></div></div>'
+      + '<div id="lyReject" class="sh"><div class="fg"><label>เหตุผล (ลูกค้าจะเห็น)</label><div class="ly-reasons">'
+      + REASONS.map(function(t, i){ return '<button type="button" onclick="LY.reason(' + i + ')">' + h(t) + '</button>'; }).join('')
+      + '</div><textarea class="fc" id="lyNote" rows="2" style="height:auto;padding:10px 12px"></textarea></div></div>'
+      + '<div class="fg"><label>ชื่อผู้ตรวจ</label><input class="fc" id="lyReviewer" value="' + h(reviewerName()) + '" placeholder="ชื่อเล่นแอดมิน"></div>'
+      + '<button class="btn btn-block" id="lyDecBtn" onclick="LY.submitDecision()">✅ อนุมัติและเพิ่มคะแนน</button>';
+    return x;
+  }
+  function reviewerName(){ try { return localStorage.getItem('emocha.reviewer') || ''; } catch (e) { return ''; } }
+  function setDecision(dcs){
+    decision = dcs;
+    el('lyTabOk').classList.toggle('active', dcs === 'approve');
+    el('lyTabNo').classList.toggle('active', dcs === 'reject');
+    el('lyApprove').classList.toggle('sh', dcs !== 'approve');
+    el('lyReject').classList.toggle('sh', dcs !== 'reject');
+    var b = el('lyDecBtn');
+    b.textContent = dcs === 'approve' ? '✅ อนุมัติและเพิ่มคะแนน' : '❌ ไม่อนุมัติ';
+    b.style.background = dcs === 'approve' ? '' : '#c62828';
+  }
+  function decErr(m){ var e = el('lyDecErr'); e.textContent = m; e.classList.add('show'); }
+  function submitDecision(){
+    var r = receipt.receipt;
+    var reviewer = el('lyReviewer').value.trim();
+    if (!reviewer) return decErr('กรุณาใส่ชื่อผู้ตรวจ');
+    try { localStorage.setItem('emocha.reviewer', reviewer); } catch (e) {}
+    var params = { action: 'decide', id: r.id, lt: tok.rl, decision: decision, reviewer: reviewer };
+    var msg;
+    if (decision === 'approve') {
+      var pts = parseInt(el('lyPoints').value, 10) || 0;
+      if (pts <= 0) return decErr('กรุณาใส่คะแนนมากกว่า 0');
+      params.points = pts;
+      msg = 'อนุมัติ ' + r.ref + ' และเพิ่ม ' + pts + ' คะแนนให้ ' + ((r.member || {}).name || 'ลูกค้า') + '?';
+    } else {
+      var note = el('lyNote').value.trim();
+      if (!note) return decErr('กรุณาใส่เหตุผลที่ไม่อนุมัติ');
+      params.note = note;
+      msg = 'ไม่อนุมัติ ' + r.ref + '?\nเหตุผล: ' + note;
+    }
+    confirmMsg(msg, function(){
+      var b = el('lyDecBtn'); b.disabled = true; b.textContent = '⏳ กำลังบันทึก...';
+      api(params).then(function(res){
+        if (!res.success) { b.disabled = false; setDecision(decision); return decErr(res.error || 'บันทึกไม่สำเร็จ'); }
+        receipt.receipt = Object.assign({}, r, res.receipt);
+        renderDetail();
+        alertMsg(decision === 'approve' ? '✅ อนุมัติแล้ว ระบบกำลังเพิ่มคะแนนและส่ง LINE แจ้งลูกค้า' : 'บันทึกว่าไม่อนุมัติแล้ว ระบบจะแจ้งลูกค้าทาง LINE');
+      }).catch(function(e){ b.disabled = false; setDecision(decision); decErr('เชื่อมต่อไม่สำเร็จ: ' + e.message); });
+    });
+  }
+
+  // ==================== ตั้งค่า ====================
+  function toggleSettings(){
+    if (!el('lySettingsCard').classList.contains('sh')) { showPanel('list'); return; }
+    showPanel('settings');
+    setHtml('lySettingsCard', '<div class="empty">กำลังโหลด...</div>');
+    ensureLinks().then(function(){ return api({ action: 'settingsGet', t: tok.cfg }); }).then(function(r){
+      if (!r.success) throw new Error(r.error || 'โหลดไม่สำเร็จ');
+      settings = r; survey = JSON.parse(JSON.stringify(r.settings.survey || []));
+      renderSettings();
+    }).catch(function(e){ fail('lySettingsCard', e); });
+  }
+  function sw(id, title, sub, on){
+    return '<label class="ly-sw"><span><b>' + title + '</b><small>' + sub + '</small></span><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '></label>';
+  }
+  function renderSettings(){
+    var s = settings.settings, st = settings.stats || {}, snd = s.sender || {};
+    var x = '<div class="ly-hd"><b>⚙️ ตั้งค่าสะสมคะแนนใบเสร็จ 7-Eleven</b><button class="btn btn-outline" style="padding:6px 12px" onclick="LY.loadList()">← กลับ</button></div>'
+      + '<div class="ly-stats"><div><b>' + (st.total || 0) + '</b>ใบเสร็จ</div><div><b>' + (st.approved || 0) + '</b>อนุมัติ</div>'
+      + '<div><b>' + Number(st.pointsGiven || 0).toLocaleString('th-TH') + '</b>คะแนนที่ให้</div><div><b>' + Number(st.emochaAmount || 0).toLocaleString('th-TH') + '</b>บาทเอมโอชา</div></div>'
+      + '<div class="err" id="lyCfgErr"></div><div class="ok" id="lyCfgOk"></div>'
+      + '<div class="ly-sec">💬 กลุ่ม LINE แจ้งเตือน</div>'
+      + '<div class="fg"><label>Group ID</label><input class="fc" id="lyGroup" value="' + h(s.admin_group_id || '') + '" placeholder="Cxxxxxxxx... (เว้นว่าง = ยังไม่ส่งเข้ากลุ่ม)">'
+      + '<div class="hint">กลุ่มที่รับแจ้งใบเสร็จใหม่ ผลอนุมัติ และการแลกของพรีเมียม — ว่างไว้ = งานแจ้งค้างไว้ ใส่แล้วส่งตามให้ครบ</div></div>'
+      + '<div class="ly-sec">⭐ การให้คะแนน</div>'
+      + '<div class="ly-two"><div class="fg"><label>บาทต่อ 1 คะแนน</label><input class="fc" id="lyBpp" type="number" min="1" value="' + h(s.baht_per_point) + '"></div>'
+      + '<div class="fg"><label>ส่งได้กี่ใบ/วัน/คน</label><input class="fc" id="lyMaxDay" type="number" min="1" value="' + h(s.max_per_day) + '"></div></div>'
+      + '<div class="fg"><label>อายุใบเสร็จไม่เกิน (วัน)</label><input class="fc" id="lyMaxAge" type="number" min="1" value="' + h(s.max_receipt_age_days) + '"></div>'
+      + sw('lyLive', 'เปิดรับใบเสร็จ (แสดงปุ่ม 7-Eleven ในหน้าสมาชิก)', 'ปิด = ซ่อนปุ่มในหน้าสมาชิก ลูกค้าส่งใบเสร็จไม่ได้', s.live)
+      + '<div class="ly-two" style="margin-top:8px"><div class="fg"><label>เริ่มรับใบเสร็จวันที่</label><input class="fc" id="lyFrom" type="date" value="' + h(s.live_from || '') + '"></div>'
+      + '<div class="fg"><label>รับใบเสร็จถึงวันที่</label><input class="fc" id="lyUntil" type="date" value="' + h(s.live_until || '') + '"></div></div>'
+      + '<div class="hint" style="margin:-6px 0 8px">เว้นว่าง = ไม่จำกัด · นอกช่วงวัน ปุ่มในหน้าสมาชิกซ่อนเองและส่งใบเสร็จไม่ได้ (ไม่ต้องจำปิด)</div>'
+      + '<div class="ly-note" style="font-weight:600">' + h(lyLiveStatus(settings.status)) + '</div>'
+      + sw('lyAuto', 'อนุมัติอัตโนมัติเมื่อ AI ตรวจผ่าน', 'ใบที่ผ่านทุกข้อได้คะแนนทันที ใบที่น่าสงสัยยังรอแอดมิน', s.auto_approve)
+      + sw('lySpend', 'นับยอดเข้ายอดซื้อสะสม', 'มีผลกับการเลื่อนระดับสมาชิก', s.count_spend)
+      + sw('lyNotifyRej', 'แจ้งลูกค้าเมื่อไม่อนุมัติ', 'ส่ง LINE บอกเหตุผล', s.notify_customer_reject)
+      + '<div class="ly-sec">📦 ผู้ส่งบนใบจัดส่งของพรีเมียม</div>'
+      + '<div class="ly-two"><div class="fg"><label>ชื่อผู้ส่ง</label><input class="fc" id="lySndName" value="' + h(snd.name) + '"></div>'
+      + '<div class="fg"><label>เบอร์โทร</label><input class="fc" id="lySndPhone" value="' + h(snd.phone) + '"></div></div>'
+      + '<div class="fg"><label>ที่อยู่ผู้ส่ง</label><textarea class="fc" id="lySndAddr" rows="2" style="height:auto;padding:10px 12px">' + h(snd.address) + '</textarea></div>'
+      + '<div class="ly-sec">🔎 คำที่ใช้หาสินค้าเอมโอชาในใบเสร็จ (1 คำต่อบรรทัด)</div>'
+      + '<textarea class="fc" id="lyKeywords" rows="5" style="height:auto;padding:10px 12px">' + h((s.product_keywords || []).join('\n')) + '</textarea>'
+      + '<div class="ly-sec">📝 แบบสอบถาม (ตัวเลือก 1 ข้อต่อบรรทัด)</div><div id="lySurvey"></div>'
+      + '<button type="button" class="btn btn-outline btn-block" onclick="LY.addQ()">➕ เพิ่มคำถาม</button>'
+      + '<button type="button" class="btn btn-block" style="margin-top:12px" id="lyCfgSave" onclick="LY.saveSettings()">💾 บันทึกการตั้งค่า</button>'
+      + '<div class="ly-sec">📊 สรุปผลแบบสอบถาม</div>' + summaryHtml();
+    setHtml('lySettingsCard', x);
+    renderSurvey();
+  }
+function lyLiveStatus(st){
+    if (!st) return '';
+    var fmt = function(d){ return d ? new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : ''; };
+    var t = st.liveReason === 'open' ? '🟢 ตอนนี้เปิดรับใบเสร็จอยู่' + (st.liveUntil ? ' ถึง ' + fmt(st.liveUntil) : '')
+      : st.liveReason === 'not_started' ? '🟡 ยังไม่ถึงวันเริ่ม (เริ่ม ' + fmt(st.liveFrom) + ')'
+      : st.liveReason === 'ended' ? '🔴 หมดเขตแล้ว (' + fmt(st.liveUntil) + ') ปุ่มในหน้าสมาชิกซ่อนอยู่'
+      : '⚪ ปิดรับอยู่ ปุ่มในหน้าสมาชิกซ่อนอยู่';
+    return t;
+  }
+  function summaryHtml(){
+    var sum = settings.surveySummary || {}, qs = settings.settings.survey || [];
+    var ids = Object.keys(sum);
+    if (!ids.length) return '<div class="hint">ยังไม่มีคำตอบ</div>';
+    return ids.map(function(id){
+      var q = qs.filter(function(z){ return z.id === id; })[0];
+      var rows = sum[id] || [], max = Math.max.apply(null, rows.map(function(r){ return r.count; }).concat([1]));
+      return '<div class="ly-bars"><b>' + h(q ? q.q : id) + '</b>' + rows.map(function(r){
+        return '<div class="r"><span class="l">' + h(r.answer) + '</span><span class="t"><i style="width:' + Math.round(r.count / max * 100) + '%"></i></span><span>' + r.count + '</span></div>';
+      }).join('') + '</div>';
+    }).join('');
+  }
+  function readSurvey(){
+    document.querySelectorAll('#lySurvey .ly-q').forEach(function(q, i){
+      survey[i].q = q.querySelector('[data-f=q]').value;
+      survey[i].type = q.querySelector('[data-f=type]').value;
+      survey[i].required = q.querySelector('[data-f=req]').checked;
+      survey[i].options = q.querySelector('[data-f=opt]').value.split('\n').map(function(t){ return t.trim(); }).filter(Boolean);
+    });
+  }
+  function renderSurvey(){
+    setHtml('lySurvey', survey.map(function(q, i){
+      return '<div class="ly-q"><div class="ly-q-hd"><span>ข้อ ' + (i + 1) + '</span>'
+        + '<button type="button" class="btn-on" onclick="LY.moveQ(' + i + ',-1)"' + (i === 0 ? ' disabled' : '') + '>↑</button>'
+        + '<button type="button" class="btn-on" onclick="LY.moveQ(' + i + ',1)"' + (i === survey.length - 1 ? ' disabled' : '') + '>↓</button>'
+        + '<button type="button" class="btn-del" onclick="LY.delQ(' + i + ')">ลบ</button></div>'
+        + '<input class="fc" data-f="q" placeholder="คำถาม" value="' + h(q.q) + '" style="margin-bottom:6px">'
+        + '<div class="ly-two" style="margin-bottom:6px"><select class="fc" data-f="type"><option value="single"' + (q.type === 'single' ? ' selected' : '') + '>เลือกได้ข้อเดียว</option>'
+        + '<option value="multi"' + (q.type === 'multi' ? ' selected' : '') + '>เลือกได้หลายข้อ</option></select>'
+        + '<label class="chk-row" style="margin:0"><input type="checkbox" data-f="req"' + (q.required ? ' checked' : '') + '> ต้องตอบ</label></div>'
+        + '<textarea class="fc" data-f="opt" rows="' + Math.max(3, (q.options || []).length) + '" style="height:auto;padding:8px 12px">' + h((q.options || []).join('\n')) + '</textarea></div>';
+    }).join(''));
+  }
+  function addQ(){ readSurvey(); if (survey.length >= 10) return; survey.push({ id: 'q' + Date.now().toString(36), q: '', type: 'single', required: true, options: [] }); renderSurvey(); }
+  function delQ(i){ readSurvey(); survey.splice(i, 1); renderSurvey(); }
+  function moveQ(i, d){ readSurvey(); var t = survey[i]; survey[i] = survey[i + d]; survey[i + d] = t; renderSurvey(); }
+  function saveSettings(){
+    readSurvey();
+    var v = function(id){ return el(id).value.trim(); };
+    var payload = {
+      admin_group_id: v('lyGroup'), live: el('lyLive').checked, live_from: v('lyFrom'), live_until: v('lyUntil'),
+      auto_approve: el('lyAuto').checked,
+      count_spend: el('lySpend').checked, notify_customer_reject: el('lyNotifyRej').checked,
+      baht_per_point: Number(v('lyBpp')), max_per_day: Number(v('lyMaxDay')), max_receipt_age_days: Number(v('lyMaxAge')),
+      sender: { name: v('lySndName'), phone: v('lySndPhone'), address: v('lySndAddr') },
+      product_keywords: v('lyKeywords').split('\n').map(function(t){ return t.trim(); }).filter(Boolean),
+      survey: survey.map(function(q){ return { id: q.id, q: String(q.q || '').trim(), type: q.type, required: !!q.required, options: q.options }; })
+    };
+    var b = el('lyCfgSave'); b.disabled = true; b.textContent = '⏳ กำลังบันทึก...';
+    api({ action: 'settingsSave', t: tok.cfg, settings: JSON.stringify(payload) }).then(function(r){
+      b.disabled = false; b.textContent = '💾 บันทึกการตั้งค่า';
+      if (!r.success) { var e = el('lyCfgErr'); e.textContent = r.error || 'บันทึกไม่สำเร็จ'; e.classList.add('show'); return; }
+      settings = r; survey = JSON.parse(JSON.stringify(r.settings.survey || []));
+      renderSettings();
+      var ok = el('lyCfgOk'); ok.textContent = '✅ บันทึกแล้ว'; ok.classList.add('show');
+    }).catch(function(e){ b.disabled = false; b.textContent = '💾 บันทึกการตั้งค่า'; var x = el('lyCfgErr'); x.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + e.message; x.classList.add('show'); });
+  }
+
+  // ==================== ใบจัดส่งพรีเมียม ====================
+  function loadShipments(){
+    setHtml('lyShipList', '<div class="empty">กำลังโหลด...</div>');
+    ensureLinks().then(function(){ return api({ action: 'labels', all: '1', t: tok.sl }); }).then(function(r){
+      if (!r.success) throw new Error(r.error || 'โหลดไม่สำเร็จ');
+      shipments = r.shipments || []; sender = r.sender || {};
+      var open = shipments.filter(function(s){ return s.status === 'pending' || s.status === 'printed'; }).length;
+      el('tabPremiumShipBtn').innerHTML = '🏷️ ใบจัดส่งพรีเมียม' + (open ? ' (' + open + ')' : '');
+      renderShipments();
+    }).catch(function(e){ fail('lyShipList', e); });
+  }
+  function renderShipments(){
+    var f = el('lyShipFilter').value;
+    var list = shipments.filter(function(s){ return f === 'all' || s.status === 'pending' || s.status === 'printed'; });
+    if (!list.length) { setHtml('lyShipList', '<div class="empty">🎉 ไม่มีรายการ</div>'); return; }
+    setHtml('lyShipList', list.map(function(s){
+      var addr = [s.address, s.province].filter(Boolean).join(' ');
+      var x = '<div class="coupon-item"><div class="top-row"><label style="display:flex;gap:8px;align-items:center;font-weight:700">'
+        + '<input type="checkbox" class="ly-pick" value="' + s.id + '"' + (s.status === 'pending' ? ' checked' : '') + '> ' + h(s.ref) + ' · ' + h(s.rewardName) + ' ×' + h(s.qty)
+        + '</label><span class="ly-st ' + h(s.status) + '">' + h(STATUS[s.status] || s.status) + '</span></div>'
+        + '<div class="detail">👤 ' + h(s.recipientName || '-') + ' · 📞 ' + h(phone(s.recipientPhone)) + ' · ' + h(s.memberCode || '')
+        + '<br>📍 ' + (addr ? h(addr) : '<b style="color:#c62828">ลูกค้ายังไม่มีที่อยู่จัดส่ง — ติดต่อลูกค้า</b>')
+        + '<br>แลกเมื่อ ' + dt(s.createdAt, true) + (s.pointsUsed ? ' · ใช้ ' + s.pointsUsed + ' คะแนน' : '') + '</div>';
+      if (s.status === 'shipped') {
+        x += '<div class="detail">✅ จัดส่งแล้ว ' + dt(s.shippedAt, true) + (s.carrier ? ' · ' + h(s.carrier) : '') + (s.trackingNo ? ' · ' + h(s.trackingNo) : '') + '</div>';
+      } else if (s.status !== 'cancelled') {
+        x += '<div class="ly-ship-form"><select class="fc" id="lyCar-' + s.id + '"><option value="">— ขนส่ง —</option>'
+          + CARRIERS.map(function(c){ return '<option' + (c === s.carrier ? ' selected' : '') + '>' + h(c) + '</option>'; }).join('') + '</select>'
+          + '<input class="fc" id="lyTrk-' + s.id + '" placeholder="เลขพัสดุ" value="' + h(s.trackingNo || '') + '">'
+          + '<button class="btn full" onclick="LY.ship(\'' + s.id + '\')">🚚 จัดส่งแล้ว + แจ้งลูกค้าทาง LINE</button>'
+          + '<button class="btn-del full" style="padding:8px" onclick="LY.cancelShip(\'' + s.id + '\')">ยกเลิกรายการนี้</button></div>';
+      }
+      return x + '</div>';
+    }).join(''));
+  }
+  function updateShip(id, extra){
+    return api(Object.assign({ action: 'shipUpdate', id: id, t: tok.sl }, extra)).then(function(r){
+      if (!r.success) { alertMsg(r.error || 'บันทึกไม่สำเร็จ'); return null; }
+      shipments = shipments.map(function(s){ return s.id === id ? r.shipment : s; });
+      renderShipments();
+      return r.shipment;
+    }).catch(function(e){ alertMsg('เชื่อมต่อไม่สำเร็จ: ' + e.message); });
+  }
+  function ship(id){
+    var tracking = el('lyTrk-' + id).value.trim(), carrier = el('lyCar-' + id).value;
+    confirmMsg('บันทึกว่าจัดส่งแล้ว' + (tracking ? ' (เลขพัสดุ ' + tracking + ')' : ' (ยังไม่มีเลขพัสดุ)') + ' และส่ง LINE แจ้งลูกค้า?', function(){
+      updateShip(id, { status: 'shipped', tracking: tracking, carrier: carrier });
+    });
+  }
+  function cancelShip(id){ confirmMsg('ยกเลิกรายการจัดส่งนี้? (ไม่คืนคะแนนให้ลูกค้าอัตโนมัติ)', function(){ updateShip(id, { status: 'cancelled' }); }); }
+  function labelHtml(s){
+    var addr = String(s.address || '').trim();
+    return '<div class="ly-label"><div class="top"><span>🎁 ของพรีเมียมสมาชิก<br>' + dt(s.createdAt, true) + '</span><b>' + h(s.ref) + '</b></div>'
+      + '<div class="box"><div class="cap">ผู้ส่ง FROM</div><b>' + h(sender.name || 'เอมโอชา (Em-O-Cha)') + '</b>' + (sender.phone ? ' โทร ' + h(phone(sender.phone)) : '')
+      + (sender.address ? '<div>' + h(sender.address) + '</div>' : '') + '</div>'
+      + '<div class="box" style="flex:1"><div class="cap">ผู้รับ TO</div><div class="name">' + h(s.recipientName || '-') + '</div>'
+      + '<div class="phone">โทร ' + h(phone(s.recipientPhone)) + '</div>'
+      + (addr ? '<div class="addr">' + h(addr) + '</div><div class="prov">' + h(s.province || '') + '</div>' : '<div style="color:#c00;font-weight:700">⚠️ ไม่มีที่อยู่ ติดต่อลูกค้า</div>') + '</div>'
+      + '<div class="box"><div class="cap">รายการ</div><b>' + h(s.rewardName) + ' × ' + h(s.qty) + '</b><div>รหัสสมาชิก ' + h(s.memberCode || '-') + '</div></div>'
+      + '<div class="foot">ขอบคุณที่เป็นสมาชิกเอมโอชา 💚</div></div>';
+  }
+  function printSelected(){
+    var ids = Array.prototype.map.call(document.querySelectorAll('.ly-pick:checked'), function(x){ return x.value; });
+    var picked = shipments.filter(function(s){ return ids.indexOf(s.id) !== -1; });
+    if (!picked.length) return alertMsg('กรุณาติ๊กเลือกรายการที่จะพิมพ์');
+    setHtml('lyPrintArea', picked.map(labelHtml).join(''));
+    document.body.classList.add('ly-printing');
+    setTimeout(function(){
+      window.print();
+      document.body.classList.remove('ly-printing');
+      var toMark = picked.filter(function(s){ return s.status === 'pending'; });
+      if (toMark.length) confirmMsg('พิมพ์เรียบร้อยไหม? กดยืนยันเพื่อเปลี่ยน ' + toMark.length + ' รายการเป็น "พิมพ์แล้ว"', function(){
+        toMark.reduce(function(p, s){ return p.then(function(){ return updateShip(s.id, { status: 'printed' }); }); }, Promise.resolve());
+      });
+    }, 100);
+  }
+  function zoom(src){ el('lyZoomImg').src = src; el('lyZoom').classList.remove('sh'); }
+
+  window.LY = {
+    loadList: loadList, open: open, setFilter: function(v){ filter = v; loadList(); }, setDecision: setDecision,
+    bump: function(n){ var x = el('lyPoints'); x.value = Math.max(1, (parseInt(x.value, 10) || 0) + n); },
+    reason: function(i){ el('lyNote').value = REASONS[i]; }, submitDecision: submitDecision,
+    toggleSettings: toggleSettings, addQ: addQ, delQ: delQ, moveQ: moveQ, saveSettings: saveSettings,
+    loadShipments: loadShipments, renderShipments: renderShipments, ship: ship, cancelShip: cancelShip,
+    printSelected: printSelected, zoom: zoom
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
+})();
+</script>
