@@ -19,17 +19,29 @@
 //   (ชื่อ/เบอร์/ที่อยู่จากชีต Members) แล้วแจ้งกลุ่มแอดมินพร้อมปุ่มพิมพ์ใบจัดส่ง (shippingLabel.html)
 //   แอดมินใส่เลขพัสดุแล้วกด "จัดส่งแล้ว" ในหน้าใบจัดส่ง -> ไฟล์นี้ส่ง Flex แจ้งลูกค้าพร้อมเลขพัสดุ
 //
-// ใช้จาก Members.gs: ADMIN_GROUP_ID, LINE_CHANNEL_ACCESS_TOKEN (หรือ sendLineMessages_), getMemberRowByUid_,
-// ensureMembersSheet_, ensurePointsLogSheet_, addPointsAndCheckRewards_, logPointsTransaction_
-// ใช้จากไฟล์ Supabase*.gs: mirrorConfig_, signupRpc_, signupKeyValid_, mirrorAfterBackgroundWrite_
+// กลุ่ม LINE ที่รับแจ้งเตือน: ใส่ Group ID ที่หน้าตั้งค่า (loyaltySettings.html) — ยังว่าง = ยังไม่ส่งเข้ากลุ่ม
+//   (งานแจ้งกลุ่มค้างไว้ในคิว ใส่ Group ID แล้วส่งตามให้ครบ) ส่วนการให้คะแนน/แจ้งลูกค้าทำงานตามปกติ
+// LINE Channel Access Token: อ่านจาก Script Properties ชื่อ LINE_CHANNEL_ACCESS_TOKEN
+//   (ชื่ออื่นตั้งได้ที่ LOYALTY_TOKEN_PROPS_ ด้านล่าง)
 //
-// ทดสอบ: รัน loyaltyTestFlex() จาก editor — ส่งตัวอย่าง Flex ทุกแบบเข้ากลุ่มแอดมิน (ไม่แตะคะแนน)
+// หน้าแอดมินเดิม (doGet page=admin): แทรกปุ่ม "🧾 ใบเสร็จ 7-Eleven & ของพรีเมียม" มุมขวาล่าง ไม่ต้องแก้ admin.html
+//   กดแล้วใช้ตั๋วแอดมินที่ได้หลังกรอก PIN (จาก SupabaseAdmin.gs) หรือถาม PIN -> เปิดหน้าตรวจใบเสร็จ /
+//   ใบจัดส่ง / ตั้งค่า (บาทต่อคะแนน, อนุมัติอัตโนมัติ, Group ID, ผู้ส่ง, แบบสอบถาม ฯลฯ)
+//
+// ใช้จาก Members.gs: getMemberRowByUid_, ensureMembersSheet_, ensurePointsLogSheet_, addPointsAndCheckRewards_,
+// logPointsTransaction_, checkAdminPin_ (และ sendLineMessages_ ถ้าไม่มี token ใน Script Properties)
+// ใช้จากไฟล์ Supabase*.gs: mirrorConfig_, signupRpc_, signupKeyValid_, mirrorAfterBackgroundWrite_,
+// adminInternalKey_, adminHex_
+//
+// ทดสอบ: ใส่ Group ID แล้วรัน loyaltyTestFlex() จาก editor — ส่งตัวอย่าง Flex ทุกแบบเข้ากลุ่ม (ไม่แตะคะแนน)
 
 var LOYALTY_BACKUP_EVERY_SEC_ = 60;
 var LOYALTY_BACKUP_CACHE_KEY_ = 'loyalty_work_backup';
 var LOYALTY_POINTS_TABS_ = ['members/Members', 'members/Points_Log', 'members/Member_Privileges'];
 var LOYALTY_LOG_OVERRIDE_ = null;   // { uid, desc } ระหว่างเขียนคะแนนจากใบเสร็จ (เปลี่ยนคำอธิบายใน Points_Log)
 var LOYALTY_LOG_CAPTURE_ = null;    // [] ระหว่าง redeemReward รัน (เก็บรายการแต้มที่ถูกตัด)
+var LOYALTY_TOKEN_PROPS_ = ['LINE_CHANNEL_ACCESS_TOKEN', 'CHANNEL_ACCESS_TOKEN', 'LINE_ACCESS_TOKEN'];
+var LOYALTY_GROUP_ = '';            // Group ID ของรอบทำงานนี้ (จากค่าตั้งใน Supabase)
 
 // ==========================================================================================
 // ส่วนที่ 1: คิวงานจาก Supabase
@@ -54,6 +66,7 @@ function loyaltyWorkPending_() {
   var cfg = mirrorConfig_();
   if (!cfg) return { success: false, error: 'ยังไม่ได้ตั้ง SUPABASE_URL / SUPABASE_SECRET_KEY' };
   var work = signupRpc_(cfg, 'loyalty_work_claim', { p_limit: 10 }) || {};
+  LOYALTY_GROUP_ = String(work.adminGroupId || '');
   var receipts = work.receipts || [], shipments = work.shipments || [];
   var results = [], pointsWritten = false;
   receipts.forEach(function (r) {
@@ -96,7 +109,7 @@ function loyaltyProcessReceipt_(cfg, r) {
   var needs = r.needs || {};
   var wrote = false;
   if (needs.admin) {
-    loyaltyPush_(ADMIN_GROUP_ID, [loyaltyAdminReceiptFlex_(r)], r.id + ':admin', loyaltyAdminReceiptText_(r));
+    loyaltyPush_(LOYALTY_GROUP_, [loyaltyAdminReceiptFlex_(r)], r.id + ':admin', loyaltyAdminReceiptText_(r));
     loyaltyUpdate_(cfg, 'receipt', r.id, { admin_notified: true });
   }
   var pointsDone = r.status !== 'approved' || !needs.points;
@@ -107,7 +120,7 @@ function loyaltyProcessReceipt_(cfg, r) {
     wrote = true;
   }
   if (needs.decision && pointsDone) {
-    loyaltyPush_(ADMIN_GROUP_ID, [{ type: 'text', text: loyaltyDecisionText_(r) }], r.id + ':decision:' + r.status);
+    loyaltyPush_(LOYALTY_GROUP_, [{ type: 'text', text: loyaltyDecisionText_(r) }], r.id + ':decision:' + r.status);
     loyaltyUpdate_(cfg, 'receipt', r.id, { decision_notified: true });
   }
   if (needs.customer && pointsDone) {
@@ -125,7 +138,7 @@ function loyaltyProcessReceipt_(cfg, r) {
 function loyaltyProcessShipment_(cfg, s) {
   var needs = s.needs || {};
   if (needs.admin) {
-    loyaltyPush_(ADMIN_GROUP_ID, [loyaltyAdminShipmentFlex_(s)], s.id + ':admin', loyaltyAdminShipmentText_(s));
+    loyaltyPush_(LOYALTY_GROUP_, [loyaltyAdminShipmentFlex_(s)], s.id + ':admin', loyaltyAdminShipmentText_(s));
     loyaltyUpdate_(cfg, 'shipment', s.id, { admin_notified: true });
   }
   if (needs.customer) {
@@ -212,10 +225,9 @@ function loyaltyAfterRedeem_(params, out, captured) {
   };
   var cfg = mirrorConfig_();
   if (!cfg) {
-    loyaltyPush_(ADMIN_GROUP_ID, [{ type: 'text', text: loyaltyAdminShipmentText_({
+    loyaltyAlertAdmin_('ยังไม่ได้ตั้งค่า Supabase จึงบันทึกใบจัดส่งไม่ได้\n' + loyaltyAdminShipmentText_({
       rewardName: row.reward_name, qty: row.qty, pointsUsed: row.points_used, recipientName: row.recipient_name,
-      recipientPhone: row.recipient_phone, address: row.address, province: row.province, memberCode: row.member_code
-    }) }]);
+      recipientPhone: row.recipient_phone, address: row.address, province: row.province, memberCode: row.member_code }));
     return;
   }
   var s;
@@ -227,9 +239,11 @@ function loyaltyAfterRedeem_(params, out, captured) {
       recipientPhone: row.recipient_phone, address: row.address, province: row.province }));
     return;
   }
-  // แจ้งทันที (ไม่สำเร็จ = คิวส่งให้ในรอบถัดไป)
+  // แจ้งกลุ่มทันที (ยังไม่มี Group ID / ส่งไม่สำเร็จ = คิวส่งให้ภายหลัง)
+  LOYALTY_GROUP_ = String(s.adminGroupId || '');
+  if (!LOYALTY_GROUP_) return;
   try {
-    loyaltyPush_(ADMIN_GROUP_ID, [loyaltyAdminShipmentFlex_(s)], s.id + ':admin', loyaltyAdminShipmentText_(s));
+    loyaltyPush_(LOYALTY_GROUP_, [loyaltyAdminShipmentFlex_(s)], s.id + ':admin', loyaltyAdminShipmentText_(s));
     loyaltyUpdate_(cfg, 'shipment', s.id, { admin_notified: true });
   } catch (e3) {
     Logger.log('loyalty premium notify: ' + e3);
@@ -248,9 +262,18 @@ function loyaltyPhone_(v) {
 // ==========================================================================================
 // ส่งด้วย Messaging API โดยตรงเพื่อรู้ผล (Flex ผิดรูปแบบ -> ส่งข้อความธรรมดาแทน) และใส่ X-Line-Retry-Key
 // กันส่งซ้ำเมื่อรอบก่อนส่งสำเร็จแต่รายงานผลไม่ทัน
+function loyaltyLineToken_() {
+  var props = PropertiesService.getScriptProperties();
+  for (var i = 0; i < LOYALTY_TOKEN_PROPS_.length; i++) {
+    var t = String(props.getProperty(LOYALTY_TOKEN_PROPS_[i]) || '').trim();
+    if (t) return t;
+  }
+  return (typeof LINE_CHANNEL_ACCESS_TOKEN !== 'undefined' && LINE_CHANNEL_ACCESS_TOKEN) ? String(LINE_CHANNEL_ACCESS_TOKEN) : '';
+}
+
 function loyaltyPush_(to, messages, retrySeed, fallbackText) {
-  if (!to) throw new Error('ไม่มีผู้รับ');
-  var token = (typeof LINE_CHANNEL_ACCESS_TOKEN !== 'undefined') ? LINE_CHANNEL_ACCESS_TOKEN : '';
+  if (!to) throw new Error('ไม่มีผู้รับ (ยังไม่ได้ใส่ Group ID?)');
+  var token = loyaltyLineToken_();
   if (!token) {
     sendLineMessages_(to, messages);
     return;
@@ -283,9 +306,12 @@ function loyaltyUuid_(seed) {
   return h.substring(0, 8) + '-' + h.substring(8, 12) + '-4' + h.substring(13, 16) + '-a' + h.substring(17, 20) + '-' + h.substring(20, 32);
 }
 
+// แจ้งปัญหาเข้ากลุ่มของระบบนี้ (ยังไม่มี Group ID = จดไว้ใน Debug_Log อย่างเดียว)
 function loyaltyAlertAdmin_(text) {
   Logger.log('loyaltyAlertAdmin_: ' + text);
-  try { sendLineMessages_(ADMIN_GROUP_ID, [{ type: 'text', text: '⚠️ ' + text }]); } catch (e) {}
+  if (LOYALTY_GROUP_) {
+    try { loyaltyPush_(LOYALTY_GROUP_, [{ type: 'text', text: '⚠️ ' + String(text).substring(0, 4900) }]); } catch (e) {}
+  }
   try { logErrorToSheet_('loyalty', text); } catch (e2) {}
 }
 
@@ -558,6 +584,93 @@ function loyaltyCustomerShippedFlex_(s) {
   return { type: 'flex', altText: '📦 ของพรีเมียม "' + s.rewardName + '" จัดส่งแล้ว', contents: bubble };
 }
 
+
+// ==========================================================================================
+// ส่วนที่ 5.5: เมนูในหน้าแอดมินเดิม (แทรกตอน doGet page=admin ไม่ต้องแก้ admin.html)
+// ==========================================================================================
+// หน้าแอดมินเรียกผ่าน google.script.run: auth = ตั๋วแอดมิน (จาก adminSupabaseToken หลังกรอก PIN) หรือ PIN
+// คืนลิงก์ (มีโทเคน) ไปหน้าตรวจใบเสร็จ / ใบจัดส่ง / ตั้งค่า + จำนวนที่ค้าง
+function loyaltyAdminLinks(auth) {
+  if (!loyaltyAdminAuthOk_(auth)) return { success: false, error: 'PIN ไม่ถูกต้อง' };
+  var cfg = mirrorConfig_();
+  if (!cfg) return { success: false, error: 'ยังไม่ได้ตั้งค่า Supabase' };
+  var r = signupRpc_(cfg, 'loyalty_admin_links', {}) || {};
+  r.success = true;
+  return r;
+}
+
+function loyaltyAdminAuthOk_(auth) {
+  auth = String(auth || '');
+  var m = /^(\d{13,})\.([0-9a-f]{64})$/.exec(auth);
+  if (m) {
+    if (Number(m[1]) < Date.now() || typeof adminInternalKey_ !== 'function') return false;
+    var cfg = mirrorConfig_();
+    if (!cfg) return false;
+    var sig = Utilities.computeHmacSha256Signature('admin-read:' + m[1], adminInternalKey_(cfg), Utilities.Charset.UTF_8);
+    return adminHex_(sig) === m[2];
+  }
+  return !!auth && checkAdminPin_(auth) === true;
+}
+
+// สคริปต์ฝั่งหน้าแอดมิน (แปลงเป็นข้อความด้วย toString แล้วแทรกท้ายหน้า) — ห้ามอ้างตัวแปรฝั่งเซิร์ฟเวอร์
+function loyaltyAdminClient_() {
+  var pinSaved = '';
+  function ticket() {
+    try {
+      var s = JSON.parse(sessionStorage.getItem('adminSupabase') || 'null');
+      if (s && s.token && Number(String(s.token).split('.')[0]) > Date.now() + 60000) return s.token;
+    } catch (e) {}
+    return '';
+  }
+  function el(tag, css, html) { var x = document.createElement(tag); if (css) x.style.cssText = css; if (html != null) x.innerHTML = html; return x; }
+  var btn = el('button', 'position:fixed;right:16px;bottom:16px;z-index:9999;border:none;border-radius:999px;padding:12px 18px;' +
+    'font:700 14px Sarabun,sans-serif;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(238,39,55,.35);' +
+    'background:linear-gradient(135deg,#f58220,#ee2737 60%,#b3123a)', '🧾 ใบเสร็จ 7-Eleven & ของพรีเมียม');
+  btn.type = 'button';
+  function badge(n) { return n ? ' <span style="background:#ee2737;color:#fff;border-radius:999px;padding:1px 8px;font-size:12px">' + n + '</span>' : ''; }
+  function item(href, icon, title, sub, n) {
+    return '<a href="' + href + '" target="_blank" rel="noopener" style="display:flex;gap:12px;align-items:center;padding:14px;border:1.5px solid #eee;' +
+      'border-radius:14px;margin-bottom:10px;text-decoration:none;color:#1b2e1c"><span style="font-size:26px">' + icon + '</span>' +
+      '<span style="flex:1"><b style="font-size:15px">' + title + '</b>' + badge(n) + '<br><span style="font-size:12px;color:#757575">' + sub + '</span></span>' +
+      '<span style="color:#bbb;font-size:20px">›</span></a>';
+  }
+  function show(r) {
+    var ov = el('div', 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:flex-end;justify-content:center');
+    var sheet = el('div', 'background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:440px;padding:20px;font-family:Sarabun,sans-serif',
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><b style="font-size:16px">🧾 ใบเสร็จ 7-Eleven & ของพรีเมียม</b>' +
+      '<button type="button" data-x style="border:none;background:#f0f0f0;border-radius:50%;width:32px;height:32px;cursor:pointer">✕</button></div>' +
+      item(r.receipts, '🧾', 'ตรวจ / อนุมัติใบเสร็จ', 'ดูรูปใบเสร็จ ผลตรวจ AI แล้วอนุมัติให้คะแนน', r.pendingReceipts) +
+      item(r.shipments, '🎁', 'ใบจัดส่งของพรีเมียม', 'พิมพ์ใบจัดส่ง ใส่เลขพัสดุ แจ้งลูกค้า', r.pendingShipments) +
+      item(r.settings, '⚙️', 'ตั้งค่า', 'Group ID, คะแนนต่อบาท, อนุมัติอัตโนมัติ, ผู้ส่ง, แบบสอบถาม, สรุปผล', 0));
+    ov.appendChild(sheet);
+    ov.addEventListener('click', function (e) { if (e.target === ov || (e.target.hasAttribute && e.target.hasAttribute('data-x'))) ov.remove(); });
+    document.body.appendChild(ov);
+  }
+  btn.addEventListener('click', function () {
+    var auth = ticket() || pinSaved;
+    if (!auth) { auth = window.prompt('กรอก PIN แอดมิน'); if (!auth) return; }
+    var label = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '⏳ กำลังโหลด...';
+    google.script.run.withSuccessHandler(function (r) {
+      btn.disabled = false; btn.innerHTML = label;
+      if (!r || !r.success) { pinSaved = ''; window.alert((r && r.error) || 'เปิดไม่สำเร็จ'); return; }
+      if (!ticket()) pinSaved = auth;
+      show(r);
+    }).withFailureHandler(function (e) {
+      btn.disabled = false; btn.innerHTML = label;
+      window.alert('เปิดไม่สำเร็จ: ' + (e && e.message ? e.message : e));
+    }).loyaltyAdminLinks(auth);
+  });
+  function mount() { document.body.appendChild(btn); }
+  if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
+}
+
+function loyaltyInjectAdminMenu_(html) {
+  var tag = '<script>(' + loyaltyAdminClient_.toString() + ')();</script>';
+  var i = html.search(/<\/body>/i);
+  return i === -1 ? html + tag : html.substring(0, i) + tag + html.substring(i);
+}
+
 // ==========================================================================================
 // ส่วนที่ 6: ตัวเชื่อม (ห่อฟังก์ชันเดิม ติดตั้งทุกครั้งที่โหลดไฟล์)
 // ==========================================================================================
@@ -587,7 +700,20 @@ function loyaltyInstallHooks_() {
       return out;
     };
   }
-  wrap('doGet', withRedeemHook);
+  wrap('doGet', function (orig) {
+    var hooked = withRedeemHook(orig);
+    return function (e) {
+      var out = hooked.apply(this, arguments);
+      try {
+        if (e && e.parameter && e.parameter.page === 'admin' && out && typeof out.getContent === 'function') {
+          out.setContent(loyaltyInjectAdminMenu_(out.getContent()));
+        }
+      } catch (x) {
+        Logger.log('loyalty admin menu: ' + x);
+      }
+      return out;
+    };
+  });
 
   wrap('doPost', function (orig) {
     var hooked = withRedeemHook(orig);
@@ -648,8 +774,11 @@ function loyaltyTestFlex() {
   var approved = JSON.parse(JSON.stringify(r)); approved.status = 'approved';
   var msgs = [loyaltyAdminReceiptFlex_(r), loyaltyCustomerApprovedFlex_(approved), loyaltyCustomerRejectedFlex_(r),
               loyaltyAdminShipmentFlex_(s), loyaltyCustomerShippedFlex_(s)];
+  var cfg = mirrorConfig_();
+  var group = cfg ? String(((signupRpc_(cfg, 'loyalty_settings_get', {}) || {}).settings || {}).admin_group_id || '') : '';
+  if (!group) throw new Error('ยังไม่ได้ใส่ Group ID ที่หน้าตั้งค่า (loyaltySettings.html)');
   msgs.forEach(function (m, i) {
-    loyaltyPush_(ADMIN_GROUP_ID, [m], '', 'ทดสอบ Flex แบบที่ ' + (i + 1) + ' ถูกปฏิเสธ — ดู Execution log');
+    loyaltyPush_(group, [m], '', 'ทดสอบ Flex แบบที่ ' + (i + 1) + ' ถูกปฏิเสธ — ดู Execution log');
   });
   Logger.log('ส่งตัวอย่าง ' + msgs.length + ' แบบเข้ากลุ่มแอดมินแล้ว');
 }

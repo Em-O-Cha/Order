@@ -13,6 +13,8 @@
 //   action=decide      id, t, decision (approve|reject), points, note, reviewer
 //   action=labels      id หรือ all=1, t -> ข้อมูลใบจัดส่งของพรีเมียม
 //   action=shipUpdate  id, t (ของใบนั้น หรือของ all=1 + id), status, tracking, carrier
+//   action=settingsGet  t (ของหน้าตั้งค่า)              -> ค่าตั้ง + ลิงก์ + สถิติ + สรุปแบบสอบถาม
+//   action=settingsSave t, settings (JSON เฉพาะช่องที่แก้) -> ตรวจค่าในฐานข้อมูลก่อนบันทึก
 //
 // deploy ด้วย verify_jwt = false (หน้าเว็บไม่มี JWT ของ Supabase) — ต้องตั้ง secret ANTHROPIC_API_KEY
 // ให้ AI ตรวจใบเสร็จ (ไม่ได้ตั้ง = รับใบเสร็จได้ตามปกติ แต่ขึ้นว่า "AI ยังไม่ได้ตรวจ" ให้แอดมินตรวจเอง)
@@ -266,6 +268,22 @@ async function shipUpdate(p: P) {
   return json({ success: true, shipment: r.shipment });
 }
 
+async function settingsGet(p: P) {
+  if (!await tokenOk("cfg", "-", String(p.t || ""))) return fail("ลิงก์ไม่ถูกต้องหรือหมดอายุ");
+  return json({ success: true, ...(await rpc("loyalty_settings_get", {})) });
+}
+
+async function settingsSave(p: P) {
+  if (!await tokenOk("cfg", "-", String(p.t || ""))) return fail("ลิงก์ไม่ถูกต้องหรือหมดอายุ");
+  let settings: unknown;
+  try { settings = JSON.parse(String(p.settings || "")); } catch { return fail("ข้อมูลไม่ถูกต้อง"); }
+  const r = await rpc("loyalty_settings_save", { p: settings });
+  if (!r.ok) return fail(r.error);
+  // ใส่ Group ID ใหม่ -> ส่งแจ้งเตือนที่ค้างเข้ากลุ่มเลย
+  background(kickAppsScript());
+  return json({ success: true, ...r });
+}
+
 // ---------------------------------------------------------------------------
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -280,6 +298,8 @@ Deno.serve(async (req) => {
       case "decide": return await decide(p);
       case "labels": return await labels(p);
       case "shipUpdate": return await shipUpdate(p);
+      case "settingsGet": return await settingsGet(p);
+      case "settingsSave": return await settingsSave(p);
       default: return fail("ไม่รู้จักคำสั่ง");
     }
   } catch (e) {

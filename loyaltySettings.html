@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>ตั้งค่าสะสมคะแนน 7-Eleven</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
+:root{ --gm:#2e7d32; --g6:#757575; --g8:#424242; --td:#1b2e1c; --bg:#f3f4f6; }
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--td);min-height:100vh;padding:16px 16px 96px;}
+.wrap{max-width:620px;margin:0 auto;}
+.top{border-radius:16px;padding:18px;color:#fff;margin-bottom:14px;background:linear-gradient(135deg,#f58220,#ee2737 60%,#b3123a);}
+.top h1{font-size:19px;font-weight:700;}
+.top p{font-size:13px;opacity:.92;margin-top:4px;}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;}
+.stats div{background:rgba(255,255,255,.18);border-radius:10px;padding:8px;text-align:center;font-size:11px;}
+.stats b{display:block;font-size:17px;}
+.links{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.links a{background:#fff;border-radius:12px;padding:12px;text-decoration:none;color:var(--td);font-weight:600;font-size:14px;box-shadow:0 2px 10px rgba(0,0,0,.05);}
+.links a span{float:right;background:#ee2737;color:#fff;border-radius:999px;padding:0 8px;font-size:12px;}
+.card{background:#fff;border-radius:16px;box-shadow:0 2px 14px rgba(0,0,0,.06);padding:16px;margin-bottom:14px;}
+.card h2{font-size:15px;font-weight:700;margin-bottom:4px;}
+.card .desc{font-size:12px;color:var(--g6);margin-bottom:12px;}
+.fg{margin-bottom:12px;}
+.fg label{display:block;font-size:13px;font-weight:600;color:var(--g8);margin-bottom:5px;}
+.fc{height:42px;padding:0 12px;border:1.5px solid #e3e3e3;border-radius:10px;font-size:15px;font-family:inherit;width:100%;background:#fff;}
+textarea.fc{height:auto;padding:10px 12px;resize:vertical;line-height:1.5;}
+.fc:focus{outline:none;border-color:#ee2737;}
+.hint{font-size:12px;color:var(--g6);margin-top:4px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #f3f3f3;}
+.sw:last-child{border-bottom:none;}
+.sw b{font-size:14px;font-weight:600;}
+.sw small{display:block;font-size:12px;color:var(--g6);font-weight:400;}
+.tg{position:relative;width:48px;height:28px;flex-shrink:0;}
+.tg input{opacity:0;width:0;height:0;}
+.tg span{position:absolute;inset:0;background:#d0d5dd;border-radius:999px;transition:.2s;cursor:pointer;}
+.tg span::after{content:'';position:absolute;width:22px;height:22px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2);}
+.tg input:checked + span{background:#00a86b;}
+.tg input:checked + span::after{transform:translateX(20px);}
+.q{border:1.5px solid #eee;border-radius:12px;padding:12px;margin-bottom:10px;}
+.q-hd{display:flex;gap:6px;align-items:center;margin-bottom:8px;}
+.q-hd b{flex:1;font-size:13px;color:var(--g6);}
+.q-hd button,.add{border:1.5px solid #ddd;background:#fff;border-radius:8px;height:32px;min-width:32px;font-family:inherit;cursor:pointer;font-size:13px;padding:0 8px;}
+.q-hd button.del{color:#c92a2a;border-color:#ffc9c9;}
+.add{width:100%;height:40px;font-weight:600;color:#ee2737;border-style:dashed;border-color:#f3b27a;}
+.sum-q{margin-bottom:14px;}
+.sum-q b{font-size:13px;}
+.bar{display:flex;align-items:center;gap:8px;font-size:12px;margin-top:4px;}
+.bar .l{width:44%;flex-shrink:0;color:var(--g8);}
+.bar .t{flex:1;background:#f1f3f5;border-radius:999px;height:12px;overflow:hidden;}
+.bar .t i{display:block;height:100%;background:linear-gradient(90deg,#f58220,#ee2737);border-radius:999px;}
+.bar .n{width:28px;text-align:right;color:var(--g6);}
+.save{position:fixed;left:0;right:0;bottom:0;padding:12px 16px;background:rgba(255,255,255,.96);box-shadow:0 -2px 12px rgba(0,0,0,.08);}
+.save div{max-width:620px;margin:0 auto;display:flex;gap:10px;align-items:center;}
+.save .msg{flex:1;font-size:13px;}
+.save .msg.err{color:#c62828;} .save .msg.ok{color:#087f5b;}
+.save button{height:46px;border:none;border-radius:12px;padding:0 26px;color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;background:linear-gradient(135deg,#00b894,#00796b);}
+.save button:disabled{opacity:.5;}
+.state{text-align:center;padding:48px 16px;color:var(--g6);}
+.state .ico{font-size:40px;margin-bottom:10px;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="state"><div class="ico">⏳</div>กำลังโหลด...</div></div>
+<div class="save" id="saveBar" style="display:none"><div><span class="msg" id="msg"></span><button id="saveBtn" onclick="save()">💾 บันทึก</button></div></div>
+
+<script>
+var API_URL = 'https://qotlepudmkuniyjvqmle.supabase.co/functions/v1/loyalty?forceFunctionRegion=ap-northeast-2';
+var TOKEN = new URLSearchParams(location.search).get('t') || '';
+var data = null, survey = [];
+
+function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function api(params){ return fetch(API_URL, { method: 'POST', body: new URLSearchParams(params).toString() }).then(function(r){ return r.json(); }); }
+function num(n){ return Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 }); }
+function toggle(id, title, sub, on){
+  return '<div class="sw"><span><b>' + title + '</b><small>' + sub + '</small></span><label class="tg"><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '><span></span></label></div>';
+}
+
+function load(){
+  if (!TOKEN) { document.getElementById('app').innerHTML = '<div class="state"><div class="ico">🔒</div>ลิงก์ไม่ครบ กรุณาเปิดจากหน้าแอดมิน</div>'; return; }
+  api({ action: 'settingsGet', t: TOKEN }).then(function(r){
+    if (!r.success) { document.getElementById('app').innerHTML = '<div class="state"><div class="ico">🔒</div>' + esc(r.error || 'โหลดไม่สำเร็จ') + '</div>'; return; }
+    data = r;
+    survey = JSON.parse(JSON.stringify(r.settings.survey || []));
+    render();
+  }).catch(function(e){ document.getElementById('app').innerHTML = '<div class="state"><div class="ico">⚠️</div>เชื่อมต่อไม่สำเร็จ: ' + esc(e.message) + '</div>'; });
+}
+
+function render(){
+  var s = data.settings, st = data.stats || {}, ln = data.links || {}, sender = s.sender || {};
+  var h = '<div class="top"><h1>⚙️ ตั้งค่าสะสมคะแนนใบเสร็จ 7-Eleven</h1><p>มีผลทันทีหลังกดบันทึก</p>'
+    + '<div class="stats"><div><b>' + num(st.total) + '</b>ใบเสร็จ</div><div><b>' + num(st.approved) + '</b>อนุมัติ</div>'
+    + '<div><b>' + num(st.pointsGiven) + '</b>คะแนนที่ให้</div><div><b>' + num(st.emochaAmount) + '</b>บาท (เอมโอชา)</div></div></div>'
+    + '<div class="links"><a href="' + esc(ln.receipts) + '" target="_blank">🧾 ตรวจใบเสร็จ' + (ln.pendingReceipts ? '<span>' + ln.pendingReceipts + '</span>' : '') + '</a>'
+    + '<a href="' + esc(ln.shipments) + '" target="_blank">🎁 ใบจัดส่งพรีเมียม' + (ln.pendingShipments ? '<span>' + ln.pendingShipments + '</span>' : '') + '</a></div>';
+
+  h += '<div class="card"><h2>💬 กลุ่ม LINE แจ้งเตือน</h2><div class="desc">กลุ่มที่รับแจ้งใบเสร็จใหม่ ผลอนุมัติ และการแลกของพรีเมียม — เว้นว่าง = ยังไม่ส่งเข้ากลุ่ม (งานแจ้งค้างไว้ ใส่ Group ID แล้วระบบส่งตามให้ครบ)</div>'
+    + '<div class="fg"><label>Group ID</label><input class="fc" id="admin_group_id" placeholder="Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value="' + esc(s.admin_group_id || '') + '" autocomplete="off" spellcheck="false">'
+    + '<div class="hint">ขึ้นต้นด้วย C ตามด้วยตัวอักษร/ตัวเลข 32 ตัว และต้องเชิญ LINE OA เข้ากลุ่มนั้นแล้ว</div></div></div>';
+
+  h += '<div class="card"><h2>⭐ การให้คะแนน</h2><div class="desc">ใช้กับใบเสร็จที่ส่งเข้ามาหลังบันทึก</div>'
+    + '<div class="grid2"><div class="fg"><label>ยอดสินค้าเอมโอชา (บาท) ต่อ 1 คะแนน</label><input class="fc" id="baht_per_point" type="number" min="1" step="1" value="' + esc(s.baht_per_point) + '"></div>'
+    + '<div class="fg"><label>ส่งได้กี่ใบต่อวันต่อคน</label><input class="fc" id="max_per_day" type="number" min="1" step="1" value="' + esc(s.max_per_day) + '"></div></div>'
+    + '<div class="fg"><label>อายุใบเสร็จไม่เกิน (วัน)</label><input class="fc" id="max_receipt_age_days" type="number" min="1" step="1" value="' + esc(s.max_receipt_age_days) + '">'
+    + '<div class="hint">เกินกำหนด = ติดธงให้แอดมินพิจารณา (ไม่ปฏิเสธเอง)</div></div>'
+    + toggle('live', 'เปิดรับใบเสร็จ', 'ปิด = หน้าสมาชิกแจ้งว่ายังไม่เปิดรับ', s.live)
+    + toggle('auto_approve', 'อนุมัติอัตโนมัติเมื่อ AI ตรวจผ่าน', 'ผ่านทุกข้อ = ให้คะแนนทันที (แอดมินยังเห็นในกลุ่ม) ใบที่น่าสงสัยยังรอแอดมินเสมอ', s.auto_approve)
+    + toggle('count_spend', 'นับยอดเข้ายอดซื้อสะสม', 'เปิด = ยอดสินค้าเอมโอชาในใบเสร็จมีผลกับระดับสมาชิก', s.count_spend)
+    + toggle('notify_customer_reject', 'แจ้งลูกค้าเมื่อไม่อนุมัติ', 'ส่ง LINE บอกเหตุผลให้ลูกค้า', s.notify_customer_reject)
+    + '</div>';
+
+  h += '<div class="card"><h2>📦 ผู้ส่งบนใบจัดส่งของพรีเมียม</h2><div class="desc">พิมพ์อยู่ส่วน "ผู้ส่ง" ของทุกใบ</div>'
+    + '<div class="grid2"><div class="fg"><label>ชื่อผู้ส่ง</label><input class="fc" id="sender_name" value="' + esc(sender.name) + '"></div>'
+    + '<div class="fg"><label>เบอร์โทร</label><input class="fc" id="sender_phone" type="tel" value="' + esc(sender.phone) + '"></div></div>'
+    + '<div class="fg"><label>ที่อยู่</label><textarea class="fc" id="sender_address" rows="2">' + esc(sender.address) + '</textarea></div></div>';
+
+  h += '<div class="card"><h2>🔎 คำที่ใช้หาสินค้าเอมโอชาในใบเสร็จ</h2><div class="desc">AI ใช้คำเหล่านี้หาบรรทัดสินค้าเอมโอชา (ชื่อบนใบเสร็จ 7-Eleven มักย่อ) — 1 คำต่อบรรทัด</div>'
+    + '<textarea class="fc" id="product_keywords" rows="5">' + esc((s.product_keywords || []).join('\n')) + '</textarea></div>';
+
+  h += '<div class="card"><h2>📝 แบบสอบถาม</h2><div class="desc">คำถามแบบติ๊กที่ลูกค้าตอบก่อนแนบใบเสร็จ (สูงสุด 10 ข้อ) — ตัวเลือก 1 ข้อต่อบรรทัด</div><div id="survey"></div>'
+    + '<button type="button" class="add" onclick="addQ()">➕ เพิ่มคำถาม</button></div>';
+
+  h += '<div class="card"><h2>📊 สรุปผลแบบสอบถาม</h2><div class="desc">นับจากใบเสร็จที่ไม่ถูกปฏิเสธ</div>' + summaryHtml() + '</div>';
+  document.getElementById('app').innerHTML = h;
+  document.getElementById('saveBar').style.display = '';
+  renderSurvey();
+}
+
+function summaryHtml(){
+  var sum = data.surveySummary || {}, qs = data.settings.survey || [];
+  var ids = Object.keys(sum);
+  if (!ids.length) return '<div class="hint">ยังไม่มีคำตอบ</div>';
+  return ids.map(function(id){
+    var q = qs.filter(function(x){ return x.id === id; })[0];
+    var rows = sum[id] || [], max = Math.max.apply(null, rows.map(function(r){ return r.count; }).concat([1]));
+    return '<div class="sum-q"><b>' + esc(q ? q.q : id) + '</b>' + rows.map(function(r){
+      return '<div class="bar"><span class="l">' + esc(r.answer) + '</span><span class="t"><i style="width:' + Math.round(r.count / max * 100) + '%"></i></span><span class="n">' + r.count + '</span></div>';
+    }).join('') + '</div>';
+  }).join('');
+}
+
+// ---- แบบสอบถาม ----
+function readSurvey(){
+  document.querySelectorAll('#survey .q').forEach(function(el, i){
+    survey[i].q = el.querySelector('[data-f=q]').value;
+    survey[i].type = el.querySelector('[data-f=type]').value;
+    survey[i].required = el.querySelector('[data-f=required]').checked;
+    survey[i].options = el.querySelector('[data-f=options]').value.split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+  });
+}
+function renderSurvey(){
+  document.getElementById('survey').innerHTML = survey.map(function(q, i){
+    return '<div class="q"><div class="q-hd"><b>ข้อ ' + (i + 1) + '</b>'
+      + '<button type="button" onclick="moveQ(' + i + ',-1)"' + (i === 0 ? ' disabled' : '') + '>↑</button>'
+      + '<button type="button" onclick="moveQ(' + i + ',1)"' + (i === survey.length - 1 ? ' disabled' : '') + '>↓</button>'
+      + '<button type="button" class="del" onclick="delQ(' + i + ')">ลบ</button></div>'
+      + '<div class="fg"><input class="fc" data-f="q" placeholder="คำถาม" value="' + esc(q.q) + '"></div>'
+      + '<div class="grid2"><div class="fg"><select class="fc" data-f="type"><option value="single"' + (q.type === 'single' ? ' selected' : '') + '>เลือกได้ข้อเดียว</option>'
+      + '<option value="multi"' + (q.type === 'multi' ? ' selected' : '') + '>เลือกได้หลายข้อ</option></select></div>'
+      + '<div class="sw" style="border:none;padding:4px 0"><b>ต้องตอบ</b><label class="tg"><input type="checkbox" data-f="required"' + (q.required ? ' checked' : '') + '><span></span></label></div></div>'
+      + '<textarea class="fc" data-f="options" rows="' + Math.max(3, (q.options || []).length) + '" placeholder="ตัวเลือก 1 ข้อต่อบรรทัด">' + esc((q.options || []).join('\n')) + '</textarea></div>';
+  }).join('');
+}
+function addQ(){
+  readSurvey();
+  if (survey.length >= 10) return showMsg('แบบสอบถามมีได้ไม่เกิน 10 ข้อ', false);
+  var id = 'q' + Date.now().toString(36);
+  survey.push({ id: id, q: '', type: 'single', required: true, options: [] });
+  renderSurvey();
+}
+function delQ(i){ readSurvey(); if (!confirm('ลบคำถาม "' + (survey[i].q || 'ข้อ ' + (i + 1)) + '"?')) return; survey.splice(i, 1); renderSurvey(); }
+function moveQ(i, d){ readSurvey(); var t = survey[i]; survey[i] = survey[i + d]; survey[i + d] = t; renderSurvey(); }
+
+// ---- บันทึก ----
+function showMsg(t, ok){ var el = document.getElementById('msg'); el.textContent = t; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+function intOf(id){ return Number(document.getElementById(id).value); }
+function save(){
+  readSurvey();
+  var v = function(id){ return document.getElementById(id).value.trim(); };
+  var settings = {
+    admin_group_id: v('admin_group_id'),
+    live: document.getElementById('live').checked,
+    auto_approve: document.getElementById('auto_approve').checked,
+    count_spend: document.getElementById('count_spend').checked,
+    notify_customer_reject: document.getElementById('notify_customer_reject').checked,
+    baht_per_point: intOf('baht_per_point'),
+    max_per_day: intOf('max_per_day'),
+    max_receipt_age_days: intOf('max_receipt_age_days'),
+    sender: { name: v('sender_name'), phone: v('sender_phone'), address: v('sender_address') },
+    product_keywords: v('product_keywords').split('\n').map(function(x){ return x.trim(); }).filter(Boolean),
+    survey: survey.map(function(q){ return { id: q.id, q: q.q.trim(), type: q.type, required: !!q.required, options: q.options }; })
+  };
+  if (settings.auto_approve && !data.settings.auto_approve && !confirm('เปิดอนุมัติอัตโนมัติ? ใบเสร็จที่ AI ตรวจผ่านทุกข้อจะได้คะแนนทันทีโดยไม่รอแอดมิน')) return;
+  var btn = document.getElementById('saveBtn');
+  btn.disabled = true; showMsg('กำลังบันทึก...', true);
+  api({ action: 'settingsSave', t: TOKEN, settings: JSON.stringify(settings) }).then(function(r){
+    btn.disabled = false;
+    if (!r.success) return showMsg(r.error || 'บันทึกไม่สำเร็จ', false);
+    data = r; survey = JSON.parse(JSON.stringify(r.settings.survey || []));
+    render();
+    showMsg('✅ บันทึกแล้ว', true);
+  }).catch(function(e){ btn.disabled = false; showMsg('เชื่อมต่อไม่สำเร็จ: ' + e.message, false); });
+}
+
+load();
+</script>
+</body>
+</html>
