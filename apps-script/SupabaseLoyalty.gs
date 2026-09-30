@@ -661,8 +661,41 @@ function loyaltyAdminClient_() {
       window.alert('เปิดไม่สำเร็จ: ' + (e && e.message ? e.message : e));
     }).loyaltyAdminLinks(auth);
   });
-  function mount() { document.body.appendChild(btn); }
-  if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
+  // หน้าแอดมินบางหน้าวาดเนื้อหาใหม่ทั้ง body หลังกรอก PIN -> ติดปุ่มไว้ที่ <html> และเช็กทุก 2 วินาทีว่ายังอยู่
+  btn.id = 'loyaltyAdminBtn';
+  function mount() { if (!document.getElementById('loyaltyAdminBtn')) (document.body || document.documentElement).appendChild(btn); }
+  mount();
+  document.addEventListener('DOMContentLoaded', mount);
+  setInterval(mount, 2000);
+}
+
+// ตรวจการติดตั้ง: รันจาก editor แล้วดู Execution log
+function loyaltyCheckSetup() {
+  var ok = function (label, pass, detail) { Logger.log((pass ? '✅ ' : '❌ ') + label + (detail ? ' — ' + detail : '')); };
+  ok('ติดตั้งตัวเชื่อมแล้ว', globalThis.__loyaltyHooksInstalled === true);
+  ok('LINE token ใน Script Properties', !!loyaltyLineToken_(), LOYALTY_TOKEN_PROPS_.join(' / '));
+  var cfg = mirrorConfig_();
+  ok('ตั้งค่า Supabase (SUPABASE_URL / SUPABASE_SECRET_KEY)', !!cfg);
+  if (cfg) {
+    try {
+      var st = signupRpc_(cfg, 'loyalty_settings_get', {}) || {};
+      var g = String((st.settings || {}).admin_group_id || '');
+      ok('อ่านค่าตั้งจาก Supabase', true, 'ใบเสร็จทั้งหมด ' + ((st.stats || {}).total || 0) + ' ใบ');
+      ok('Group ID แจ้งเตือน', !!g, g || 'ยังว่าง (ใส่ที่หน้าตั้งค่า)');
+      Logger.log('ลิงก์หน้าตั้งค่า: ' + ((st.links || {}).settings || '-'));
+    } catch (e) {
+      ok('อ่านค่าตั้งจาก Supabase', false, String(e));
+    }
+  }
+  try {
+    var out = doGet({ parameter: { page: 'admin' } });
+    var html = out && typeof out.getContent === 'function' ? out.getContent() : '';
+    ok('หน้าแอดมิน (doGet page=admin) มีปุ่มใบเสร็จ 7-Eleven', html.indexOf('loyaltyAdminLinks') !== -1,
+      html ? 'ขนาดหน้า ' + html.length + ' ตัวอักษร' : 'doGet page=admin ไม่ได้คืนหน้า HTML');
+  } catch (e2) {
+    ok('หน้าแอดมิน (doGet page=admin)', false, String(e2));
+  }
+  Logger.log('ถ้าทุกข้อผ่านแต่หน้าแอดมินยังไม่มีปุ่ม: Deploy > Manage deployments > แก้ Web App เป็น New version แล้วเปิดหน้าแอดมินใหม่');
 }
 
 function loyaltyInjectAdminMenu_(html) {
