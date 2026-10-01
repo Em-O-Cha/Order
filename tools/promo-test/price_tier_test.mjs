@@ -140,6 +140,44 @@ run('11) ของแถมให้ลูกค้าเลือกรส (เ
   check('ใบสั่งบอกหน่วยแต่ละรส', (o.physicalFreebieItems || [])[0] === 'MIX (แถม 3 ชิ้น: พริกผัดน้ำมันงา (กระปุก) ×1 / น้ำพริกน้ำย้อย (ซอง) ×2 — หยิบใส่ให้ลูกค้าด้วย)', (o.physicalFreebieItems || [])[0]);
 }
 {
+  console.log('\n15) ข้อความรายละเอียดบนตั๋วที่แอดมินพิมพ์เอง');
+  const { c, uid, bk } = fresh();
+  const H = 'ข้อความรายละเอียดบนตั๋ว(เว้นว่าง=ระบบสร้างให้)';
+  const cache = () => ['coupons_raw_v3', 'active_coupons_v2', 'active_coupons_v3'].forEach(k => c.CacheService.getScriptCache().remove(k));
+  const sp = spec('order');
+  // คูปองไม่กรอกข้อความ = ไม่สร้างคอลัมน์
+  c.createGlobalCoupon('x', 'NODETAIL', 'price', '', 0, 0, '', true, RESTR, '', sp, '', '', '', '', false, false, '');
+  const cgHead = () => bk.sheets.get('Coupons')._st.grid[0];
+  check('ไม่กรอก = ไม่สร้างคอลัมน์ใหม่', cgHead().indexOf(H) === -1);
+  c.createGlobalCoupon('x', 'DETAIL', 'price', '', 0, 0, '', true, RESTR, '', sp, '', '', '', '', false, false, 'เมนูเส้นราคาเริ่ม 125\nแถมน้ำพริก');
+  check('กรอก = สร้างคอลัมน์ต่อท้าย', cgHead().indexOf(H) >= 16, cgHead().indexOf(H));
+  cache();
+  let ac = c.getActiveCoupons().results;
+  check('หน้าร้านได้ข้อความ (ตัดขึ้นบรรทัดใหม่)', (ac.find(x => x.code === 'DETAIL') || {}).detailText === 'เมนูเส้นราคาเริ่ม 125 แถมน้ำพริก', JSON.stringify((ac.find(x => x.code === 'DETAIL') || {}).detailText));
+  check('คูปองที่ไม่กรอกไม่มี detailText', !('detailText' in (ac.find(x => x.code === 'NODETAIL') || {})) || (ac.find(x => x.code === 'NODETAIL') || {}).detailText === undefined);
+  const lg = c.listGlobalCoupons('x').results;
+  const row = lg.find(x => x.code === 'DETAIL');
+  check('หน้าแอดมินได้ข้อความไว้แก้ไข', row && row.detailText === 'เมนูเส้นราคาเริ่ม 125 แถมน้ำพริก');
+  c.updateGlobalCoupon('x', row.rowIndex, 'price', '', 0, 0, '', true, RESTR, '', sp, '', '', '', '', false);
+  cache(); check('หน้าแอดมินรุ่นเก่า (ไม่ส่งค่า) = ไม่แตะข้อความเดิม', (c.getActiveCoupons().results.find(x => x.code === 'DETAIL') || {}).detailText === 'เมนูเส้นราคาเริ่ม 125 แถมน้ำพริก');
+  c.updateGlobalCoupon('x', row.rowIndex, 'price', '', 0, 0, '', true, RESTR, '', sp, '', '', '', '', false, '');
+  cache(); check('ลบข้อความ = กลับไปใช้ข้อความที่ระบบสร้าง', (c.getActiveCoupons().results.find(x => x.code === 'DETAIL') || {}).detailText === undefined);
+  // สิทธิ์สมาชิก
+  c.addMemberPrivilege('x', uid, 'P1', 'price', '', 7, '', RESTR, sp, '', '', false, false, 'สิทธิ์เส้น 125');
+  let my = c.getMyPrivileges('t').results.find(x => x.name === 'P1');
+  check('สิทธิ์รายบุคคล: หน้าร้านได้ข้อความ', my && my.detailText === 'สิทธิ์เส้น 125', JSON.stringify(my && my.detailText));
+  const mp = c.getMemberPrivileges('x', uid).results.find(x => x.name === 'P1');
+  check('สิทธิ์รายบุคคล: หน้าแอดมินได้ข้อความ', mp && mp.detailText === 'สิทธิ์เส้น 125');
+  c.updateMemberPrivilege('x', mp.rowIndex, 'P1', 'price', '', 7, '', RESTR, sp, '', '', false, 'แก้แล้ว');
+  my = c.getMyPrivileges('t').results.find(x => x.name === 'P1');
+  check('แก้ไขข้อความสิทธิ์', my && my.detailText === 'แก้แล้ว');
+  c.addPrivilegeToAllMembers('x', 'ALLP', 'price', '', 7, '', RESTR, sp, '', '', '', '', '', false, false, 'แจกทุกคน');
+  my = c.getMyPrivileges('t').results.find(x => x.name === 'ALLP');
+  check('แจกทุกคน: ได้ข้อความ', my && my.detailText === 'แจกทุกคน');
+  const bs = c.getShopBootstrap('t');
+  check('getShopBootstrap ส่งข้อความของสิทธิ์', (bs.privileges || []).some(x => x.name === 'ALLP' && x.detailText === 'แจกทุกคน'));
+}
+{
   const { c } = fresh();
   console.log('\n10) ข้อความโปร');
   const t = c.privilegeValueText_('price', 125, RESTR, spec('item'), '', '');

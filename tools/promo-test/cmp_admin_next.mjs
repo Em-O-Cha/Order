@@ -14,7 +14,7 @@ const calls = [
 ];
 const bodies = calls.map(([fn, args]) => ({ action: 'call', fn, args: JSON.stringify(args), token }));
 const L = await callEdge('admin-read', bodies, { internal: false }), N = await callEdge('admin-read-next', bodies, { internal: false });
-const strip = (o) => JSON.stringify(o?.result ?? o, (k, v) => (k === 'audienceCount' || k === 'audienceUsedCount' || k === 'stackable' ? undefined : v));
+const strip = (o) => JSON.stringify(o?.result ?? o, (k, v) => (k === 'audienceCount' || k === 'audienceUsedCount' || k === 'stackable' || k === 'detailText' ? undefined : v));
 calls.forEach(([fn], i) => {
   const a = strip(L[i].body), b = strip(N[i].body);
   console.log(a === b ? 'ตรง ' : 'ต่าง', fn, L[i].body?.fallback ? '(fallback ' + L[i].body.reason + ')' : '', N[i].body?.fallback ? '(next fallback ' + N[i].body.reason + ')' : '', a === b ? '' : '\n L ' + a.slice(0, 200) + '\n N ' + b.slice(0, 200));
