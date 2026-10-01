@@ -1404,7 +1404,7 @@ function renderMyPrivileges_(r){
         + '<div class="coupon-ticket-stub"><small>' + escHtml(theme.stub.label) + '</small><b>' + escHtml(theme.stub.value) + '</b></div>'
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(p.name || '') + '</div>'
-          + (p.type === 'price' && p.priceSpec ? priceSpecLinesHtml_(p) : '')
+          + (p.detailText ? '<div class="ct-sub" style="white-space:normal">' + escHtml(p.detailText) + '</div>' : (p.type === 'price' && p.priceSpec ? priceSpecLinesHtml_(p) : ''))
           + '<div class="ct-sub">' + ((p.expiry && p.expiry !== 'ไม่มีวันหมดอายุ') ? ('ใช้ได้ถึง ' + escHtml(p.expiry)) : 'ไม่มีวันหมดอายุ') + '</div>'
           + promoStackBadge_(p)
         + '</div>'
@@ -1485,6 +1485,12 @@ function renderAutoPromoBox_(coupons){
     var valueText = autoPromoValueText_(c);
     var minPurchaseText = c.minPurchase ? 'เมื่อช้อปครบ ' + c.minPurchase.toLocaleString('th-TH') + '.-' : '';
     var subText = c.code ? [valueText, minPurchaseText].filter(Boolean).join(' • ') : minPurchaseText;
+    // ⚡ เพิ่ม (1/10/69) — ข้อความรายละเอียดที่แอดมินพิมพ์เองในหน้าแอดมิน ใช้แทนข้อความที่ระบบสร้าง
+    var detailHtml = c.detailText
+      ? '<div class="ct-sub" style="white-space:normal">' + escHtml(c.detailText) + '</div>' + (minPurchaseText ? '<div class="ct-sub">' + escHtml(minPurchaseText) + '</div>' : '')
+      : (c.type === 'price' && c.priceSpec
+        ? priceSpecLinesHtml_(c) + (minPurchaseText ? '<div class="ct-sub">' + escHtml(minPurchaseText) + '</div>' : '')
+        : (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : ''));
     h += '<div class="coupon-ticket">'
       + '<div class="coupon-ticket-notch top"></div>'
       + '<div class="coupon-ticket-notch bottom"></div>'
@@ -1492,9 +1498,7 @@ function renderAutoPromoBox_(coupons){
         + '<div class="coupon-ticket-stub">' + stubMarkup_(stub.label, stub.value) + '</div>'
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(c.code || (c.type === 'price' && c.priceSpec ? 'ราคาพิเศษ' : valueText)) + '</div>'
-          + (c.type === 'price' && c.priceSpec
-            ? priceSpecLinesHtml_(c) + (minPurchaseText ? '<div class="ct-sub">' + escHtml(minPurchaseText) + '</div>' : '')
-            : (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : ''))
+          + detailHtml
           + (c.expiry ? '<div class="ct-exp">ใช้ได้ถึง ' + escHtml(c.expiry) + '</div>' : '')
           + promoStackBadge_(c)
         + '</div>'
