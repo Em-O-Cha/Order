@@ -10,6 +10,7 @@
    - `node excl_test.mjs <Members.gs>` กติกาใช้ร่วมกับโปรอื่นได้/ไม่ได้ (ปิดคูปอง/สิทธิ์เดิมในชีตจำลองก่อนทดสอบ)
    - `node ship_test.mjs <Members.gs>` ส่วนลดค่าส่งราคาพิเศษ
    - `node recheck_compare.mjs <เดิม/Members.gs> <ใหม่/Members.gs>` ตรวจยอดซ้ำออเดอร์ที่รอแนบสลิป ต้องได้ "same N of N"
+   - `node price_tier_test.mjs <Members.gs>` โปรขายราคาพิเศษแยกราคา/ของแถมตามขนาด (คูปอง/สิทธิ์/โค้ดพิมพ์เอง/แจกทุกคน) ต้องได้ "ผ่านทั้งหมด"
 3. สร้าง `gas_port.js` ใหม่: `node ../gas-port/extract.mjs <Members.gs> <out.js> <shop-read|shop-order|admin-read|member-signup>`
 4. Deploy เป็นตัวทดสอบ: `./deploy_next.sh shop-read-next <โฟลเดอร์ที่มี index.ts + gas_port.js>` (และ shop-order-next)
 5. เทียบกับตัวจริง (**ห้ามรันสคริปต์ที่ใช้ callEdge พร้อมกัน 2 ตัว** เพราะแต่ละตัวสร้าง/ลบ pg_net เอง):
@@ -23,5 +24,6 @@
 ## ข้อควรระวัง
 - repo เป็นสาธารณะ: ห้าม commit ความลับ/ค่าโทเคน/ข้อมูลลูกค้า
 - ชีต Coupons คอลัมน์ O หัวชื่อ "แจ้งเตือนแล้ว" แต่เก็บ % ส่วนลดของแถม (bogo) ห้ามใช้ทำอย่างอื่น
+- โปรขายราคาพิเศษ (price) แยกราคา/ของแถมตามสินค้า เก็บเป็น JSON ในคอลัมน์ L "สินค้าที่แถม" (ชีต Coupons และ Member_Privileges) `{"mode":"item|order","items":[{"p","price","gift","giftQty","unit"}]}` — ว่าง = ราคาเดียวตามช่องมูลค่าแบบเดิม
 - เวลาในเครื่องจำลองเป็น UTC: วันที่ที่พิมพ์ออกมาอาจช้ากว่าเวลาไทย 1 วัน (ระบบจริงใช้เวลาไทย)
 - หน้าร้าน (`index.html`) ขึ้น GitHub Pages จาก main: แก้บน branch แล้วเปิด PR
