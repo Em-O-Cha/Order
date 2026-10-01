@@ -1208,8 +1208,14 @@ function promoUnitPrice_(c, skuName){
   });
   return best !== null ? best : (Number(c.value) || 0);
 }
+// ของแถมหลายรายการ (ชื่อคั่นด้วย " หรือ ") = ลูกค้าเลือกได้ เช่น "2 ชิ้น เลือกได้: A / B"
+function giftLabel_(name, qty, unit){
+  var opts = String(name || '').split(' หรือ ').map(function(x){ return x.trim(); }).filter(Boolean);
+  if (opts.length > 1) return qty + ' ' + (unit || 'ชิ้น') + ' เลือกได้: ' + opts.join(' / ');
+  return name + ' ' + qty + ' ' + (unit || 'ชิ้น');
+}
 function priceSpecGiftText_(it, mode){
-  return it && it.gift ? ('แถม ' + it.gift + ' ' + it.giftQty + ' ' + (it.unit || 'ชิ้น') + (mode === 'order' ? ' ต่อออเดอร์' : ' ต่อชิ้นที่ซื้อ')) : '';
+  return it && it.gift ? ('แถม ' + giftLabel_(it.gift, it.giftQty, it.unit) + (mode === 'order' ? ' ต่อออเดอร์' : ' ต่อชิ้นที่ซื้อ')) : '';
 }
 // ข้อความโปรแบบแยกราคา เช่น "ก๋วยเตี๋ยวเรือ บรรจุ 4 ซอง 125.- แถม น้ำพริกน้ำย้อย 2 ซอง/ชิ้น • ..."
 function priceSpecText_(c){
@@ -1234,7 +1240,7 @@ function priceSpecMinPrice_(c){
 // บรรทัดของแถมในหน้าชำระเงิน (โปรขายราคาพิเศษบอกชื่อ+จำนวน / ซื้อครบแถมบอกจำนวน)
 function freebieLineHtml_(label, p){
   var text = (p.freeGifts && p.freeGifts.length)
-    ? p.freeGifts.map(function(g){ return g.name + ' ' + g.qty + ' ' + (g.unit || 'ชิ้น'); }).join(' + ')
+    ? p.freeGifts.map(function(g){ return giftLabel_(g.name, g.qty, g.unit); }).join(' + ')
     : (p.physicalFreeQty + ' ชิ้น');
   return '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(label) + ' — มีของแถม ' + escHtml(text) + ' (ทีมงานจะเตรียมให้)</span></div>';
 }

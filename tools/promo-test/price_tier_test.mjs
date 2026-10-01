@@ -94,6 +94,13 @@ run('9) ราคาแยก: ติ๊กทั้ง "ก๋วยเตี�
   const cpn = (bs.coupons || []).find(x => x.code === 'CAT');
   check('คูปองหน้าแรกมี priceSpec', cpn && cpn.priceSpec && cpn.priceSpec.mode === 'item');
 });
+run('11) ของแถมให้ลูกค้าเลือกรส (เลือกสินค้าแถมได้หลายรายการ)', (c) => cp(c, 'FLAVOR', '', true, JSON.stringify({ mode: 'order', items: [
+  { p: S4, price: 125, gift: 'น้ำพริกน้ำย้อย บรรจุ 6 ซอง หรือ น้ำพริกตะไคร้หอม บรรจุ 6 ซอง', giftQty: 2 },
+  { p: S12, price: 375, gift: 'น้ำพริกน้ำย้อย บรรจุ 6 ซอง หรือ น้ำพริกตะไคร้หอม บรรจุ 6 ซอง', giftQty: 6 }] }), false), cart, '', ({ o, disc }) => {
+  check('ส่วนลด 75', disc === 75, disc);
+  const note = (o.physicalFreebieItems || []).join(', ');
+  check('ใบสั่งบอกจำนวน + รสให้เลือก', note === 'FLAVOR (แถม 8 ชิ้น เลือกได้: น้ำพริกน้ำย้อย บรรจุ 6 ซอง / น้ำพริกตะไคร้หอม บรรจุ 6 ซอง — หยิบใส่ให้ลูกค้าด้วย)', note);
+});
 {
   const { c } = fresh();
   console.log('\n10) ข้อความโปร');
