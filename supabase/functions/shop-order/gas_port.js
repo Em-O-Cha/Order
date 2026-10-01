@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 145 รายการ (100 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 148 รายการ (101 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1018,7 +1018,7 @@ function getPrivilegeRowsForLineUid_(lineUid) {
   var rowNumbers = getKeyRowIndexCached_(sheet, 1, String(lineUid), 'privrows_', PRIVILEGE_ROWS_CACHE_TTL_, normalizeAsString_);
   if (!rowNumbers.length) return [];
   // อ่านกว้างพอให้ถึงคอลัมน์ "ใช้ร่วมกับคูปองได้" (ถ้ามี) ด้วย
-  return readRowsMerged_(sheet, rowNumbers, Math.max(15, privilegeStackableCol_()));
+  return readRowsMerged_(sheet, rowNumbers, Math.max(15, privilegeStackableCol_(), privilegeDetailCol_()));
 }
 
 var PRIVILEGE_STACKABLE_HEADER_ = 'ใช้ร่วมกับคูปอง/ส่วนลดอื่นได้(TRUE/FALSE)';
@@ -1033,6 +1033,21 @@ function privilegeStackableCol_(create) {
   var c = header.indexOf(PRIVILEGE_STACKABLE_HEADER_) + 1;
   if (!c && create) { c = width + 1; sheet.getRange(1, c).setValue(PRIVILEGE_STACKABLE_HEADER_); }
   privilegeStackableColCache_ = c;
+  return c;
+}
+
+var PROMO_DETAIL_HEADER_ = 'ข้อความรายละเอียดบนตั๋ว(เว้นว่าง=ระบบสร้างให้)';
+
+var privilegeDetailColCache_ = null;
+
+function privilegeDetailCol_(create) {
+  if (privilegeDetailColCache_ !== null && (privilegeDetailColCache_ > 0 || !create)) return privilegeDetailColCache_;
+  var sheet = ensurePrivilegesSheet_();
+  var width = Math.max(sheet.getLastColumn(), 15);
+  var header = sheet.getRange(1, 1, 1, width).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var c = header.indexOf(PROMO_DETAIL_HEADER_) + 1;
+  if (!c && create) { c = width + 1; sheet.getRange(1, c).setValue(PROMO_DETAIL_HEADER_); }
+  privilegeDetailColCache_ = c;
   return c;
 }
 
@@ -1514,7 +1529,8 @@ function getCouponsRawBundle_() {
     rows: lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [],
     a: header.indexOf(COUPON_AUDIENCE_HEADER_),
     u: header.indexOf(COUPON_USED_BY_HEADER_),
-    s: header.indexOf(COUPON_STACKABLE_HEADER_)
+    s: header.indexOf(COUPON_STACKABLE_HEADER_),
+    d: header.indexOf(PROMO_DETAIL_HEADER_) // ⚡ เพิ่ม (1/10/69) — ข้อความบนตั๋วที่แอดมินพิมพ์เอง
   };
   try {
     CacheService.getScriptCache().put(COUPONS_RAW_CACHE_KEY_, JSON.stringify(bundle), 15);
