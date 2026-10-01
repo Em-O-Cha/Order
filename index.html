@@ -1217,15 +1217,35 @@ function giftLabel_(name, qty, unit){
 function priceSpecGiftText_(it, mode){
   return it && it.gift ? ('แถม ' + giftLabel_(it.gift, it.giftQty, it.unit) + (mode === 'order' ? ' ต่อออเดอร์' : ' ต่อชิ้นที่ซื้อ')) : '';
 }
-// ข้อความโปรแบบแยกราคา เช่น "ก๋วยเตี๋ยวเรือ บรรจุ 4 ซอง 125.- แถม น้ำพริกน้ำย้อย 2 ซอง/ชิ้น • ..."
+// ข้อความโปรแบบแยกราคาบนตั๋ว (สั้น 2 บรรทัด — ราคาแต่ละขนาดดูที่การ์ดสินค้า)
+// เช่น "ราคาพิเศษเริ่ม 125.- แถม 2–5 ซอง ต่อออเดอร์ (เลือกรสได้)" • "เฉพาะ ก๋วยเตี๋ยวเรือ, ก๋วยเตี๋ยวแห้ง" (เกิน 2 สินค้า = บอกจำนวน)
 function priceSpecText_(c){
   if (!c.priceSpec || !c.priceSpec.items) return '';
-  return String(c.restriction || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean).map(function(k){
+  var keys = String(c.restriction || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  var prices = [], qtys = [], units = {}, gifts = {}, multi = false;
+  keys.forEach(function(k){
     var it = c.priceSpec.items.filter(function(x){ return x.p === k; })[0];
-    var price = it && it.price !== null && it.price !== undefined && it.price !== '' ? Number(it.price) : Number(c.value);
-    var gift = priceSpecGiftText_(it, c.priceSpec.mode);
-    return k + ' ' + price.toLocaleString('th-TH') + '.-' + (gift ? ' ' + gift : '');
-  }).join(' • ');
+    prices.push(it && it.price !== null && it.price !== undefined && it.price !== '' ? Number(it.price) : Number(c.value));
+    if (it && it.gift) {
+      qtys.push(Number(it.giftQty) || 0);
+      units[it.unit || 'ชิ้น'] = true;
+      gifts[it.gift] = true;
+      if (giftOptions_(it.gift).length > 1) multi = true;
+    }
+  });
+  if (!prices.length) return '';
+  var minP = Math.min.apply(null, prices), maxP = Math.max.apply(null, prices);
+  var line1 = (minP === maxP ? 'ราคาพิเศษ ' : 'ราคาพิเศษเริ่ม ') + minP.toLocaleString('th-TH') + '.-';
+  if (qtys.length) {
+    var lo = Math.min.apply(null, qtys), hi = Math.max.apply(null, qtys);
+    var unitKeys = Object.keys(units), giftKeys = Object.keys(gifts);
+    line1 += ' แถม ' + (lo === hi ? lo : lo + '–' + hi) + ' ' + (unitKeys.length === 1 ? unitKeys[0] : 'ชิ้น')
+      + (c.priceSpec.mode === 'order' ? ' ต่อออเดอร์' : ' ต่อชิ้นที่ซื้อ')
+      + (multi ? ' (เลือกรสได้)' : (giftKeys.length === 1 ? ' (' + giftKeys[0] + ')' : ''));
+  }
+  var names = [];
+  keys.forEach(function(k){ var n = k.replace(/\s*บรรจุ.*$/, ''); if (names.indexOf(n) === -1) names.push(n); });
+  return line1 + ' • เฉพาะ ' + (names.length <= 2 ? names.join(', ') : (names.length + ' สินค้า (ดูราคาแดงที่การ์ดสินค้า)'));
 }
 function priceSpecLinesHtml_(c){
   return priceSpecText_(c).split(' • ').filter(Boolean).map(function(t){
