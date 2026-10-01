@@ -1,0 +1,10 @@
+import crypto from 'node:crypto';
+import { sql } from './sql.mjs';
+import { callEdge } from './edge_call.mjs';
+const key = sql(`select value from mirror.secrets where name='internal_key'`)[0].value;
+const exp = String(Date.now() + 3600e3); const token = exp + '.' + crypto.createHmac('sha256', key).update('admin-read:' + exp).digest('hex');
+const calls = [['getShopProducts', []], ['listGlobalCoupons', []], ['searchMembers', ['']]].map(([fn, a]) => ({ action: 'call', fn, args: JSON.stringify(a), token }));
+const R = await callEdge('admin-read', calls, { internal: false });
+R.forEach((r, i) => console.log(calls[i].fn, r.status, JSON.stringify(r.body).slice(0, 160)));
+const [s] = await callEdge('shop-read', [{ action: 'getShopBootstrap', asUid: sql(`select data->>'LINE UID' u from mirror.rows where source='members' and tab='Members' order by row_num desc limit 1`)[0].u }]);
+console.log('bootstrap newest member', s.status, s.body.success, (s.body.categories || []).length, s.body.needsAppsScript ? s.body.reason : '');
