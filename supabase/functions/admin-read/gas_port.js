@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 99 รายการ (67 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 103 รายการ (69 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -846,6 +846,21 @@ function privilegeStackableCol_(create) {
   return c;
 }
 
+var PROMO_DETAIL_HEADER_ = 'ข้อความรายละเอียดบนตั๋ว(เว้นว่าง=ระบบสร้างให้)';
+
+var privilegeDetailColCache_ = null;
+
+function privilegeDetailCol_(create) {
+  if (privilegeDetailColCache_ !== null && (privilegeDetailColCache_ > 0 || !create)) return privilegeDetailColCache_;
+  var sheet = ensurePrivilegesSheet_();
+  var width = Math.max(sheet.getLastColumn(), 15);
+  var header = sheet.getRange(1, 1, 1, width).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var c = header.indexOf(PROMO_DETAIL_HEADER_) + 1;
+  if (!c && create) { c = width + 1; sheet.getRange(1, c).setValue(PROMO_DETAIL_HEADER_); }
+  privilegeDetailColCache_ = c;
+  return c;
+}
+
 var CANCELLED_ORDER_MARK_ = 'ยกเลิก';
 
 function getTierConfigForAdmin() {
@@ -995,6 +1010,8 @@ function getMemberPrivileges(pin, lineUid) {
     var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
     var stackCol_ = privilegeStackableCol_();
     var stackVals_ = stackCol_ ? sheet.getRange(2, stackCol_, lastRow - 1, 1).getValues() : [];
+    var detailCol_ = privilegeDetailCol_();
+    var detailVals_ = detailCol_ ? sheet.getRange(2, detailCol_, lastRow - 1, 1).getValues() : [];
     var now = new Date();
     var results = [];
     data.forEach(function (row, idx) {
@@ -1019,7 +1036,8 @@ function getMemberPrivileges(pin, lineUid) {
         active: active,
         isUpcoming: !!(startDateVal && new Date(startDateVal) > now),
         restriction: row[10] || '', freeProduct: row[11] || '', freeQty: row[12] || '',
-        stackable: stackRaw_ === true || String(stackRaw_).toUpperCase() === 'TRUE'
+        stackable: stackRaw_ === true || String(stackRaw_).toUpperCase() === 'TRUE',
+        detailText: detailVals_[idx] ? String(detailVals_[idx][0] || '') : ''
       });
     });
     results.sort(function (a, b) { return b.rowIndex - a.rowIndex; });
@@ -1038,6 +1056,7 @@ function listGlobalCoupons(pin) {
     var data = sheet.getRange(2, 1, lastRow - 1, 16).getValues();
     var audienceInfo_ = getCouponAudienceInfoByCode_();
     var stackableByCode_ = getCouponStackableByCode_();
+    var detailByCode_ = getCouponDetailTextByCode_(); // ⚡ เพิ่ม (1/10/69)
     var tierConfig = getTierConfig_();
     var now = new Date();
     var results = data.map(function (row, idx) {
@@ -1069,7 +1088,8 @@ function listGlobalCoupons(pin) {
         freeDiscountPercent: (row[14] === '' || row[14] === null || row[14] === undefined) ? 100 : row[14],
         stubText: row[15] || '',
         audienceCount: audienceCount_, audienceUsedCount: usedByCount_,
-        stackable: !!stackableByCode_[String(row[0]).trim().toUpperCase()]
+        stackable: !!stackableByCode_[String(row[0]).trim().toUpperCase()],
+        detailText: detailByCode_[String(row[0]).trim().toUpperCase()] || ''
       };
     });
     results.reverse();
@@ -1141,7 +1161,8 @@ function getCouponsRawBundle_() {
     rows: lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [],
     a: header.indexOf(COUPON_AUDIENCE_HEADER_),
     u: header.indexOf(COUPON_USED_BY_HEADER_),
-    s: header.indexOf(COUPON_STACKABLE_HEADER_)
+    s: header.indexOf(COUPON_STACKABLE_HEADER_),
+    d: header.indexOf(PROMO_DETAIL_HEADER_) // ⚡ เพิ่ม (1/10/69) — ข้อความบนตั๋วที่แอดมินพิมพ์เอง
   };
   try {
     CacheService.getScriptCache().put(COUPONS_RAW_CACHE_KEY_, JSON.stringify(bundle), 15);
@@ -1169,6 +1190,17 @@ function getCouponStackableByCode_() {
   if (!(bundle.s >= 0)) return out;
   bundle.rows.forEach(function (row) {
     if (couponRowStackable_(bundle, row)) out[String(row[0]).trim().toUpperCase()] = true;
+  });
+  return out;
+}
+
+function getCouponDetailTextByCode_() {
+  var bundle = getCouponsRawBundle_();
+  var out = {};
+  if (!(bundle.d >= 0)) return out;
+  bundle.rows.forEach(function (row) {
+    var t = String(row[bundle.d] || '').trim();
+    if (t) out[String(row[0]).trim().toUpperCase()] = t;
   });
   return out;
 }

@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 156 รายการ (109 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 161 รายการ (112 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1031,7 +1031,7 @@ function getPrivilegeRowsForLineUid_(lineUid) {
   var rowNumbers = getKeyRowIndexCached_(sheet, 1, String(lineUid), 'privrows_', PRIVILEGE_ROWS_CACHE_TTL_, normalizeAsString_);
   if (!rowNumbers.length) return [];
   // อ่านกว้างพอให้ถึงคอลัมน์ "ใช้ร่วมกับคูปองได้" (ถ้ามี) ด้วย
-  return readRowsMerged_(sheet, rowNumbers, Math.max(15, privilegeStackableCol_()));
+  return readRowsMerged_(sheet, rowNumbers, Math.max(15, privilegeStackableCol_(), privilegeDetailCol_()));
 }
 
 var PRIVILEGE_STACKABLE_HEADER_ = 'ใช้ร่วมกับคูปอง/ส่วนลดอื่นได้(TRUE/FALSE)';
@@ -1047,6 +1047,26 @@ function privilegeStackableCol_(create) {
   if (!c && create) { c = width + 1; sheet.getRange(1, c).setValue(PRIVILEGE_STACKABLE_HEADER_); }
   privilegeStackableColCache_ = c;
   return c;
+}
+
+var PROMO_DETAIL_HEADER_ = 'ข้อความรายละเอียดบนตั๋ว(เว้นว่าง=ระบบสร้างให้)';
+
+var privilegeDetailColCache_ = null;
+
+function privilegeDetailCol_(create) {
+  if (privilegeDetailColCache_ !== null && (privilegeDetailColCache_ > 0 || !create)) return privilegeDetailColCache_;
+  var sheet = ensurePrivilegesSheet_();
+  var width = Math.max(sheet.getLastColumn(), 15);
+  var header = sheet.getRange(1, 1, 1, width).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var c = header.indexOf(PROMO_DETAIL_HEADER_) + 1;
+  if (!c && create) { c = width + 1; sheet.getRange(1, c).setValue(PROMO_DETAIL_HEADER_); }
+  privilegeDetailColCache_ = c;
+  return c;
+}
+
+function privilegeDetailText_(row) {
+  var c = privilegeDetailCol_();
+  return c ? String(row[c - 1] || '').trim() : '';
 }
 
 function isStackablePrivilegeRow_(row) {
@@ -1131,6 +1151,7 @@ function getMyPrivilegesForLineUid_(lineUid) {
       reason: row[5] || '',
       restriction: row[2] === 'price' ? String(row[10] || '') : '', // ขายราคาพิเศษ: หน้าร้านใช้ขึ้นราคาแดงบนการ์ดสินค้า
       priceSpec: row[2] === 'price' ? (parsePriceSpec_(row[11]) || undefined) : undefined, // ⚡ เพิ่ม (1/10/69) — ราคา/ของแถมแยกตามสินค้า
+      detailText: privilegeDetailText_(row) || undefined, // ⚡ เพิ่ม (1/10/69) — ข้อความบนตั๋วที่แอดมินพิมพ์เอง
       stackable: isStackablePrivilegeRow_(row), // ⚡ เพิ่ม (29/9/69) — หน้าร้านขึ้นป้าย "ใช้ร่วมกับโปรอื่นได้/ไม่ได้" บนตั๋วสิทธิ์
       exclusive: isExclusivePromo_(String(row[2] || ''), row[10], isStackablePrivilegeRow_(row)),
       isUpcoming: isUpcoming,
@@ -1452,6 +1473,7 @@ function getActiveCoupons() {
     // ⚡ เพิ่ม (25/9/69) — โค้ดเฉพาะผู้รับ (จากยิงโปรตามกลุ่ม) ห้ามขึ้นในรายการคูปองหน้าร้าน คนอื่นจะเห็นโค้ด
     var audienceInfo_ = getCouponAudienceInfoByCode_();
     var stackableByCode_ = getCouponStackableByCode_();
+    var detailByCode_ = getCouponDetailTextByCode_(); // ⚡ เพิ่ม (1/10/69)
     var now = new Date();
     var results = [];
     data.forEach(function (row) {
@@ -1474,7 +1496,8 @@ function getActiveCoupons() {
         tierRestriction: row[13] || '', freeDiscountPercent: row[14] === '' || row[14] === null ? '' : row[14],
         stubText: row[15] || '', stackable: !!stackableByCode_[String(row[0]).trim().toUpperCase()],
         exclusive: isExclusivePromo_(String(row[1] || ''), row[9], !!stackableByCode_[String(row[0]).trim().toUpperCase()]),
-        priceSpec: row[1] === 'price' ? (parsePriceSpec_(row[11]) || undefined) : undefined // ⚡ เพิ่ม (1/10/69)
+        priceSpec: row[1] === 'price' ? (parsePriceSpec_(row[11]) || undefined) : undefined, // ⚡ เพิ่ม (1/10/69)
+        detailText: detailByCode_[String(row[0]).trim().toUpperCase()] || undefined
       });
     });
     var result = { success: true, results: results };
@@ -1828,7 +1851,8 @@ function getCouponsRawBundle_() {
     rows: lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [],
     a: header.indexOf(COUPON_AUDIENCE_HEADER_),
     u: header.indexOf(COUPON_USED_BY_HEADER_),
-    s: header.indexOf(COUPON_STACKABLE_HEADER_)
+    s: header.indexOf(COUPON_STACKABLE_HEADER_),
+    d: header.indexOf(PROMO_DETAIL_HEADER_) // ⚡ เพิ่ม (1/10/69) — ข้อความบนตั๋วที่แอดมินพิมพ์เอง
   };
   try {
     CacheService.getScriptCache().put(COUPONS_RAW_CACHE_KEY_, JSON.stringify(bundle), 15);
@@ -1856,6 +1880,17 @@ function getCouponStackableByCode_() {
   if (!(bundle.s >= 0)) return out;
   bundle.rows.forEach(function (row) {
     if (couponRowStackable_(bundle, row)) out[String(row[0]).trim().toUpperCase()] = true;
+  });
+  return out;
+}
+
+function getCouponDetailTextByCode_() {
+  var bundle = getCouponsRawBundle_();
+  var out = {};
+  if (!(bundle.d >= 0)) return out;
+  bundle.rows.forEach(function (row) {
+    var t = String(row[bundle.d] || '').trim();
+    if (t) out[String(row[0]).trim().toUpperCase()] = t;
   });
   return out;
 }
