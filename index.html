@@ -1209,7 +1209,7 @@ function promoUnitPrice_(c, skuName){
   return best !== null ? best : (Number(c.value) || 0);
 }
 function priceSpecGiftText_(it, mode){
-  return it && it.gift ? ('แถม ' + it.gift + ' ' + it.giftQty + ' ' + (it.unit || 'ชิ้น') + (mode === 'order' ? '/ออเดอร์' : '/ชิ้น')) : '';
+  return it && it.gift ? ('แถม ' + it.gift + ' ' + it.giftQty + ' ' + (it.unit || 'ชิ้น') + (mode === 'order' ? ' ต่อออเดอร์' : ' ต่อชิ้นที่ซื้อ')) : '';
 }
 // ข้อความโปรแบบแยกราคา เช่น "ก๋วยเตี๋ยวเรือ บรรจุ 4 ซอง 125.- แถม น้ำพริกน้ำย้อย 2 ซอง/ชิ้น • ..."
 function priceSpecText_(c){
