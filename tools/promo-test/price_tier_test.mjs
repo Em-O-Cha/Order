@@ -130,6 +130,16 @@ run('11) ของแถมให้ลูกค้าเลือกรส (เ
   check('ข้อความโปร', t === 'ราคาพิเศษ ' + S4 + ' 125 บาท แถม 2 ซอง เลือกได้: น้ำพริกน้ำย้อย / น้ำพริกตะไคร้หอม / น้ำพริกลงเรือกรอบ ต่อชิ้นที่ซื้อ', t);
 }
 {
+  console.log('\n14) ของแถมหน่วยปนกัน (ซอง / กระปุก / ถ้วย) ลูกค้าเลือกรส');
+  const GN = 'พริกผัดน้ำมันงา (กระปุก) หรือ เต้าหู้ทอดผัดพริกขิง (เจ) (ถ้วย) หรือ น้ำพริกน้ำย้อย (ซอง)';
+  const { c } = fresh();
+  cp(c, 'MIX', '', true, JSON.stringify({ mode: 'order', items: [{ p: S4, price: 125, gift: GN, giftQty: 3, unit: 'ชิ้น' }, { p: S12, price: 375 }] }), false);
+  ['coupons_raw_v3', 'active_coupons_v3'].forEach(k => c.CacheService.getScriptCache().remove(k));
+  const o = c.createShopOrder('t', JSON.stringify(cart), 'transfer', '', 'ที่อยู่', 'กรุงเทพมหานคร', '', '', '', 0,
+    JSON.stringify({ ['c:MIX|' + GN]: { 'พริกผัดน้ำมันงา (กระปุก)': 1, 'น้ำพริกน้ำย้อย (ซอง)': 2 } }));
+  check('ใบสั่งบอกหน่วยแต่ละรส', (o.physicalFreebieItems || [])[0] === 'MIX (แถม 3 ชิ้น: พริกผัดน้ำมันงา (กระปุก) ×1 / น้ำพริกน้ำย้อย (ซอง) ×2 — หยิบใส่ให้ลูกค้าด้วย)', (o.physicalFreebieItems || [])[0]);
+}
+{
   const { c } = fresh();
   console.log('\n10) ข้อความโปร');
   const t = c.privilegeValueText_('price', 125, RESTR, spec('item'), '', '');
