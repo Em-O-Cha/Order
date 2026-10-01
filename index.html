@@ -1320,7 +1320,7 @@ function promoGiftHint_(skuName){
     if (!best) return false;
     var opts = giftOptions_(best.gift);
     var unit = best.unit || 'ชิ้น';
-    hint = (c.priceSpec.mode === 'order' ? ('แถม ' + best.giftQty + ' ' + unit + 'ต่อออเดอร์') : ('ซื้อ 1 แถม ' + best.giftQty + ' ' + unit))
+    hint = (c.priceSpec.mode === 'order' ? ('แถม ' + best.giftQty + ' ' + unit + ' ต่อออเดอร์') : ('ซื้อ 1 แถม ' + best.giftQty + ' ' + unit))
       + (opts.length > 1 ? ' · เลือกรสได้ตอนชำระเงิน' : ' (' + opts[0] + ')');
     return true;
   });
