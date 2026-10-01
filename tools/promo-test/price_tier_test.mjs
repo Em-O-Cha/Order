@@ -102,6 +102,22 @@ run('11) ของแถมให้ลูกค้าเลือกรส (เ
   check('ใบสั่งบอกจำนวน + รสให้เลือก', note === 'FLAVOR (แถม 8 ชิ้น เลือกได้: น้ำพริกน้ำย้อย บรรจุ 6 ซอง / น้ำพริกตะไคร้หอม บรรจุ 6 ซอง — หยิบใส่ให้ลูกค้าด้วย)', note);
 });
 {
+  console.log('\n12) ลูกค้าเลือกรสของแถมเองที่หน้าชำระเงิน (giftChoices)');
+  const GN = 'น้ำพริกน้ำย้อย บรรจุ 6 ซอง หรือ น้ำพริกตะไคร้หอม บรรจุ 6 ซอง';
+  const mk = (c) => cp(c, 'PICK', '', true, JSON.stringify({ mode: 'order', items: [{ p: S4, price: 125, gift: GN, giftQty: 2 }, { p: S12, price: 375, gift: GN, giftQty: 6 }] }), false);
+  const order = (choices) => { const { c } = fresh(); mk(c); ['coupons_raw_v3', 'active_coupons_v3'].forEach(k => c.CacheService.getScriptCache().remove(k));
+    return c.createShopOrder('t', JSON.stringify(cart), 'transfer', '', 'ที่อยู่', 'กรุงเทพมหานคร', '', '', '', 0, choices); };
+  const key = 'c:PICK|' + GN;
+  let o = order(JSON.stringify({ [key]: { 'น้ำพริกน้ำย้อย บรรจุ 6 ซอง': 5, 'น้ำพริกตะไคร้หอม บรรจุ 6 ซอง': 3 } }));
+  check('เลือกครบ 8', (o.physicalFreebieItems || [])[0] === 'PICK (แถม 8 ชิ้น: น้ำพริกน้ำย้อย บรรจุ 6 ซอง ×5 / น้ำพริกตะไคร้หอม บรรจุ 6 ซอง ×3 — หยิบใส่ให้ลูกค้าด้วย)', (o.physicalFreebieItems || [])[0]);
+  o = order(JSON.stringify({ [key]: { 'น้ำพริกน้ำย้อย บรรจุ 6 ซอง': 3, 'รสปลอม': 9 } }));
+  check('เลือกไม่ครบ + รสที่ไม่มีในโปรไม่นับ', (o.physicalFreebieItems || [])[0] === 'PICK (แถม 8 ชิ้น: น้ำพริกน้ำย้อย บรรจุ 6 ซอง ×3 / ทีมงานเลือกให้ ×5 — หยิบใส่ให้ลูกค้าด้วย)', (o.physicalFreebieItems || [])[0]);
+  o = order(JSON.stringify({ [key]: { 'น้ำพริกน้ำย้อย บรรจุ 6 ซอง': 20, 'น้ำพริกตะไคร้หอม บรรจุ 6 ซอง': 20 } }));
+  check('เลือกเกินถูกตัดเหลือ 8', (o.physicalFreebieItems || [])[0] === 'PICK (แถม 8 ชิ้น: น้ำพริกน้ำย้อย บรรจุ 6 ซอง ×8 — หยิบใส่ให้ลูกค้าด้วย)', (o.physicalFreebieItems || [])[0]);
+  o = order('');
+  check('ไม่ส่งมา (หน้าร้านเก่า) = แบบเดิม', (o.physicalFreebieItems || [])[0] === 'PICK (แถม 8 ชิ้น เลือกได้: น้ำพริกน้ำย้อย บรรจุ 6 ซอง / น้ำพริกตะไคร้หอม บรรจุ 6 ซอง — หยิบใส่ให้ลูกค้าด้วย)', (o.physicalFreebieItems || [])[0]);
+}
+{
   const { c } = fresh();
   console.log('\n10) ข้อความโปร');
   const t = c.privilegeValueText_('price', 125, RESTR, spec('item'), '', '');

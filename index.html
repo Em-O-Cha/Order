@@ -1238,11 +1238,71 @@ function priceSpecMinPrice_(c){
   return Math.min.apply(null, prices);
 }
 // บรรทัดของแถมในหน้าชำระเงิน (โปรขายราคาพิเศษบอกชื่อ+จำนวน / ซื้อครบแถมบอกจำนวน)
+// ⚡ เพิ่ม (1/10/69) — ของแถมที่แอดมินตั้งไว้หลายรส: ลูกค้ากด + / − เลือกรสเอง (ใส่ให้ครบเฉลี่ยทุกรสไว้ก่อน)
+// ส่งไปกับคำสั่งซื้อ (giftChoices) ใบสั่งขึ้นรสที่เลือก / เลือกไม่ครบ = ทีมงานเลือกให้ส่วนที่เหลือ
+var giftChoices_ = {};     // คีย์ -> { qty, picks: { รส: จำนวน } }
+var giftPickerReg_ = [];   // กล่องเลือกรสที่แสดงอยู่ (ปุ่ม + / − อ้างด้วยเลขลำดับ) ล้างทุกครั้งที่ renderDiscountSummary
+function giftOptions_(name){ return String(name || '').split(' หรือ ').map(function(x){ return x.trim(); }).filter(Boolean); }
+function giftChoiceKey_(p, g){ return (p.code ? 'c:' + p.code : 'p:' + p.rowIndex) + '|' + g.name; } // ต้องตรงกับ Members.gs
+function giftPickState_(key, opts, qty){
+  var st = giftChoices_[key];
+  if (!st || st.qty !== qty || opts.some(function(o){ return !(o in st.picks); })) {
+    var picks = {}, base = Math.floor(qty / opts.length), rem = qty - base * opts.length;
+    opts.forEach(function(o, i){ picks[o] = base + (i < rem ? 1 : 0); });
+    st = giftChoices_[key] = { qty: qty, picks: picks };
+  }
+  return st;
+}
+function giftPick_(i, j, delta){
+  var r = giftPickerReg_[i];
+  if (!r) return;
+  var st = giftChoices_[r.key], o = r.opts[j];
+  var sum = r.opts.reduce(function(s, x){ return s + (st.picks[x] || 0); }, 0);
+  if (delta > 0 && sum >= r.qty) return;
+  if (delta < 0 && !(st.picks[o] > 0)) return;
+  st.picks[o] = (st.picks[o] || 0) + delta;
+  renderDiscountSummary();
+}
+function giftChoicesForOrder_(){
+  var out = {};
+  giftPickerReg_.forEach(function(r){ var st = giftChoices_[r.key]; if (st) out[r.key] = st.picks; });
+  return Object.keys(out).length ? JSON.stringify(out) : '';
+}
+function giftPickerHtml_(label, p, g){
+  var opts = giftOptions_(g.name);
+  var key = giftChoiceKey_(p, g);
+  var st = giftPickState_(key, opts, g.qty);
+  var idx = giftPickerReg_.length;
+  giftPickerReg_.push({ key: key, opts: opts, qty: g.qty });
+  var sum = opts.reduce(function(s, o){ return s + (st.picks[o] || 0); }, 0);
+  var btn = 'width:30px;height:30px;padding:0;border-radius:50%;border:1.5px solid var(--gm);background:#fff;color:var(--gm);font-size:17px;line-height:1;cursor:pointer';
+  var h = '<div style="margin:6px 0 4px;padding:10px 12px;border:1.5px dashed #f0a020;border-radius:10px;background:#fffaf0">'
+    + '<div style="font-weight:600;font-size:13.5px;margin-bottom:2px">🎁 เลือกรสของแถม (ได้ ' + g.qty + ' ' + escHtml(g.unit || 'ชิ้น') + ')</div>'
+    + '<div style="font-size:11.5px;color:var(--g6);margin-bottom:6px">จากโปร ' + escHtml(label) + ' · กด + / − เลือกรสที่ชอบ</div>';
+  opts.forEach(function(o, j){
+    var n = st.picks[o] || 0;
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #f3e6cc">'
+      + '<span style="font-size:13px;flex:1;min-width:0">' + escHtml(o) + '</span>'
+      + '<span style="display:flex;align-items:center;gap:10px;flex-shrink:0">'
+      + '<button type="button" aria-label="ลด ' + escHtml(o) + '" onclick="giftPick_(' + idx + ',' + j + ',-1)" style="' + btn + (n > 0 ? '' : ';opacity:.35') + '">−</button>'
+      + '<b style="min-width:16px;text-align:center">' + n + '</b>'
+      + '<button type="button" aria-label="เพิ่ม ' + escHtml(o) + '" onclick="giftPick_(' + idx + ',' + j + ',1)" style="' + btn + (sum < g.qty ? '' : ';opacity:.35') + '">+</button>'
+      + '</span></div>';
+  });
+  h += sum >= g.qty
+    ? '<div style="font-size:12.5px;color:#2e7d32;margin-top:6px;font-weight:600">✓ เลือกครบ ' + sum + '/' + g.qty + ' ชิ้นแล้ว</div>'
+    : '<div style="font-size:12.5px;color:#e65100;margin-top:6px;font-weight:600">เลือกแล้ว ' + sum + '/' + g.qty + ' ชิ้น · ที่เหลือทีมงานเลือกให้</div>';
+  return h + '</div>';
+}
 function freebieLineHtml_(label, p){
-  var text = (p.freeGifts && p.freeGifts.length)
-    ? p.freeGifts.map(function(g){ return giftLabel_(g.name, g.qty, g.unit); }).join(' + ')
-    : (p.physicalFreeQty + ' ชิ้น');
-  return '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(label) + ' — มีของแถม ' + escHtml(text) + ' (ทีมงานจะเตรียมให้)</span></div>';
+  var simple = [], pickers = '';
+  if (p.freeGifts && p.freeGifts.length) {
+    p.freeGifts.forEach(function(g){
+      if (p.type === 'price' && giftOptions_(g.name).length > 1) pickers += giftPickerHtml_(label, p, g);
+      else simple.push(giftLabel_(g.name, g.qty, g.unit));
+    });
+  } else simple.push(p.physicalFreeQty + ' ชิ้น');
+  return (simple.length ? '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(label) + ' — มีของแถม ' + escHtml(simple.join(' + ')) + ' (ทีมงานจะเตรียมให้)</span></div>' : '') + pickers;
 }
 function getBestPromoPrice_(skuName, price){
   var best = null;
@@ -2161,6 +2221,7 @@ function getFinalShippingCost(){
 
 function renderDiscountSummary(){
   var wrap = document.getElementById('discountSummary');
+  giftPickerReg_ = [];
   var subtotal = getCartTotal();
   var h = '';
 
@@ -2607,7 +2668,7 @@ function confirmSubmitOrder(){
   // จะข้ามให้เองถ้าไม่มีค่าหรือรหัสไม่ถูกต้อง ไม่ทำให้คำสั่งซื้อพังหรือ error)
   var purchaseReferrerCode = document.getElementById('purchaseReferrerInput').value.trim();
 
-  var orderPayload_ = { itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId, purchaseReferrerCode: purchaseReferrerCode, pointsToRedeem: pointsToRedeemInput_ };
+  var orderPayload_ = { itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId, purchaseReferrerCode: purchaseReferrerCode, pointsToRedeem: pointsToRedeemInput_, giftChoices: giftChoicesForOrder_() };
 
   getFreshIdToken().then(function(idToken){
     function viaAppsScript(){

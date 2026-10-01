@@ -60,7 +60,7 @@ const MAX_ATTEMPTS = 5;
 // พารามิเตอร์ของ createShopOrder ที่เก็บไว้ให้ Apps Script รันซ้ำ (ไม่เก็บโทเคน LINE)
 const ORDER_PARAMS = [
   "itemsB64", "paymentMethod", "couponCode", "shippingAddress", "province", "excludePrivilegeName",
-  "purchaseReferrerCode", "pointsToRedeem",
+  "purchaseReferrerCode", "pointsToRedeem", "giftChoices",
 ];
 
 type Result = Record<string, any>;
@@ -118,7 +118,7 @@ function runKind(kind: Kind, tabs: Map<string, Tab>, keys: string[], profile: Re
     // ลำดับ/ค่าเหมือน doGet/doPost ของ Members.gs (existingOrderId ว่างเสมอ: แก้ไขออเดอร์ใช้ทางเดิม)
     if (kind === "order") {
       result = gas.createShopOrder("supabase", gas.decodeItemsB64_(p.itemsB64), p.paymentMethod, p.couponCode,
-        p.shippingAddress, p.province, p.excludePrivilegeName, "", p.purchaseReferrerCode, p.pointsToRedeem);
+        p.shippingAddress, p.province, p.excludePrivilegeName, "", p.purchaseReferrerCode, p.pointsToRedeem, p.giftChoices);
     } else if (kind === "slip") {
       // รูปจริงไม่ต้องใช้ตอนตรวจเงื่อนไข (ตัวจริงอัปโหลดลง Drive ตอนเขียนชีต)
       result = gas.uploadShopSlip(p.orderId, "AA==", p.fileName, p.mimeType);

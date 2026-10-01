@@ -168,7 +168,7 @@ function orderRunOriginal_(row) {
     if (kind === 'cancel') return cancelShopOrder(token, row.order_id);
     // existingOrderId ว่างเสมอ: แก้ไขออเดอร์ใช้ทางเดิม
     return createShopOrder(token, decodeItemsB64_(req.itemsB64), req.paymentMethod, req.couponCode,
-      req.shippingAddress, req.province, req.excludePrivilegeName, '', req.purchaseReferrerCode, req.pointsToRedeem);
+      req.shippingAddress, req.province, req.excludePrivilegeName, '', req.purchaseReferrerCode, req.pointsToRedeem, req.giftChoices);
   } finally {
     ORDER_INJECT_ = null;
   }
