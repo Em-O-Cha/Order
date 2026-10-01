@@ -1304,6 +1304,28 @@ function freebieLineHtml_(label, p){
   } else simple.push(p.physicalFreeQty + ' ชิ้น');
   return (simple.length ? '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(label) + ' — มีของแถม ' + escHtml(simple.join(' + ')) + ' (ทีมงานจะเตรียมให้)</span></div>' : '') + pickers;
 }
+// ⚡ เพิ่ม (1/10/69) — ป้ายของแถมบนการ์ดสินค้า (โปรขายราคาพิเศษที่ตั้งของแถมไว้) เช่น "🎁 ซื้อ 1 แถม 2 ชิ้น · เลือกรสได้ตอนชำระเงิน"
+// จำนวนจริงคำนวณที่เซิร์ฟเวอร์ตอนชำระเงิน (อาจไม่ได้ถ้าโปรชนกับโปรอื่นที่ใช้ร่วมกันไม่ได้)
+function promoGiftHint_(skuName){
+  var hint = '';
+  activeAutoCoupons.concat(myPricePrivileges_).some(function(c){
+    if (c.type !== 'price' || !c.priceSpec || !c.restriction) return false;
+    var inPromo = c.restriction.split(',').map(function(s){ return s.trim(); }).filter(Boolean)
+      .some(function(kw){ return skuName.indexOf(kw) !== -1; });
+    if (!inPromo) return false;
+    var best = null;
+    (c.priceSpec.items || []).forEach(function(it){
+      if (it.gift && skuName.indexOf(it.p) !== -1 && (!best || it.p.length > best.p.length)) best = it;
+    });
+    if (!best) return false;
+    var opts = giftOptions_(best.gift);
+    var unit = best.unit || 'ชิ้น';
+    hint = (c.priceSpec.mode === 'order' ? ('แถม ' + best.giftQty + ' ' + unit + 'ต่อออเดอร์') : ('ซื้อ 1 แถม ' + best.giftQty + ' ' + unit))
+      + (opts.length > 1 ? ' · เลือกรสได้ตอนชำระเงิน' : ' (' + opts[0] + ')');
+    return true;
+  });
+  return hint;
+}
 function getBestPromoPrice_(skuName, price){
   var best = null;
   activeAutoCoupons.concat(myPricePrivileges_).forEach(function(c){
@@ -1569,8 +1591,11 @@ function renderCatalog(){
       var priceHtml = promoPrice !== null
         ? '<span style="font-size:18px;text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="font-size:18px;color:#c62828;font-weight:700">฿' + Math.round(promoPrice).toLocaleString('th-TH') + '</span>'
         : '฿' + v.price.toLocaleString('th-TH');
+      var giftHint = promoGiftHint_(v.skuName);
       h += '<div class="prod-item">'
-        + '<div style="flex:1"><div class="prod-name">' + escHtml(v.label) + '</div><div class="prod-price">' + priceHtml + '</div></div>'
+        + '<div style="flex:1"><div class="prod-name">' + escHtml(v.label) + '</div><div class="prod-price">' + priceHtml + '</div>'
+        + (giftHint ? '<div style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;background:#fff3e0;color:#e65100;font-size:11.5px;font-weight:600;line-height:1.5">🎁 ' + escHtml(giftHint) + '</div>' : '')
+        + '</div>'
         + '<div class="qty-ctl">'
         + '<button class="qty-btn" onclick="changeQty(' + idx + ',-1)">−</button>'
         + '<span class="qty-val" id="qty_' + idx + '">' + (cart[v.skuName] || 0) + '</span>'
