@@ -1198,6 +1198,134 @@ function loadProducts(){
 
 // ⚡ เพิ่ม (29/9/69) — สิทธิพิเศษของลูกค้าแบบ "ขายราคาพิเศษต่อชิ้น" (price) ก็ขึ้นราคาขีดฆ่า+ราคาแดงบนการ์ดสินค้าด้วย
 var myPricePrivileges_ = [];
+// ⚡ เพิ่ม (1/10/69) — โปรขายราคาพิเศษแยกราคาตามสินค้า (priceSpec จากเซิร์ฟเวอร์) คำที่ยาวกว่า (เจาะจงกว่า) มาก่อน
+// ไม่มีราคาแยก = ราคาเดียว c.value เหมือนเดิม
+function promoUnitPrice_(c, skuName){
+  var best = null, bestLen = -1;
+  ((c.priceSpec && c.priceSpec.items) || []).forEach(function(it){
+    if (it.price === null || it.price === undefined || it.price === '') return;
+    if (skuName.indexOf(it.p) !== -1 && it.p.length > bestLen) { best = Number(it.price); bestLen = it.p.length; }
+  });
+  return best !== null ? best : (Number(c.value) || 0);
+}
+// ของแถมหลายรายการ (ชื่อคั่นด้วย " หรือ ") = ลูกค้าเลือกได้ เช่น "2 ชิ้น เลือกได้: A / B"
+function giftLabel_(name, qty, unit){
+  var opts = String(name || '').split(' หรือ ').map(function(x){ return x.trim(); }).filter(Boolean);
+  if (opts.length > 1) return qty + ' ' + (unit || 'ชิ้น') + ' เลือกได้: ' + opts.join(' / ');
+  return name + ' ' + qty + ' ' + (unit || 'ชิ้น');
+}
+function priceSpecGiftText_(it, mode){
+  return it && it.gift ? ('แถม ' + giftLabel_(it.gift, it.giftQty, it.unit) + (mode === 'order' ? ' ต่อออเดอร์' : ' ต่อชิ้นที่ซื้อ')) : '';
+}
+// ข้อความโปรแบบแยกราคา เช่น "ก๋วยเตี๋ยวเรือ บรรจุ 4 ซอง 125.- แถม น้ำพริกน้ำย้อย 2 ซอง/ชิ้น • ..."
+function priceSpecText_(c){
+  if (!c.priceSpec || !c.priceSpec.items) return '';
+  return String(c.restriction || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean).map(function(k){
+    var it = c.priceSpec.items.filter(function(x){ return x.p === k; })[0];
+    var price = it && it.price !== null && it.price !== undefined && it.price !== '' ? Number(it.price) : Number(c.value);
+    var gift = priceSpecGiftText_(it, c.priceSpec.mode);
+    return k + ' ' + price.toLocaleString('th-TH') + '.-' + (gift ? ' ' + gift : '');
+  }).join(' • ');
+}
+function priceSpecLinesHtml_(c){
+  return priceSpecText_(c).split(' • ').filter(Boolean).map(function(t){
+    return '<div class="ct-sub" style="white-space:normal">' + escHtml(t) + '</div>';
+  }).join('');
+}
+function priceSpecMinPrice_(c){
+  var prices = [Number(c.value) || 0];
+  ((c.priceSpec && c.priceSpec.items) || []).forEach(function(it){ if (it.price !== null && it.price !== undefined && it.price !== '') prices.push(Number(it.price)); });
+  return Math.min.apply(null, prices);
+}
+// บรรทัดของแถมในหน้าชำระเงิน (โปรขายราคาพิเศษบอกชื่อ+จำนวน / ซื้อครบแถมบอกจำนวน)
+// ⚡ เพิ่ม (1/10/69) — ของแถมที่แอดมินตั้งไว้หลายรส: ลูกค้ากด + / − เลือกรสเอง (ใส่ให้ครบเฉลี่ยทุกรสไว้ก่อน)
+// ส่งไปกับคำสั่งซื้อ (giftChoices) ใบสั่งขึ้นรสที่เลือก / เลือกไม่ครบ = ทีมงานเลือกให้ส่วนที่เหลือ
+var giftChoices_ = {};     // คีย์ -> { qty, picks: { รส: จำนวน } }
+var giftPickerReg_ = [];   // กล่องเลือกรสที่แสดงอยู่ (ปุ่ม + / − อ้างด้วยเลขลำดับ) ล้างทุกครั้งที่ renderDiscountSummary
+function giftOptions_(name){ return String(name || '').split(' หรือ ').map(function(x){ return x.trim(); }).filter(Boolean); }
+function giftChoiceKey_(p, g){ return (p.code ? 'c:' + p.code : 'p:' + p.rowIndex) + '|' + g.name; } // ต้องตรงกับ Members.gs
+function giftPickState_(key, opts, qty){
+  var st = giftChoices_[key];
+  if (!st || st.qty !== qty || opts.some(function(o){ return !(o in st.picks); })) {
+    var picks = {}, base = Math.floor(qty / opts.length), rem = qty - base * opts.length;
+    opts.forEach(function(o, i){ picks[o] = base + (i < rem ? 1 : 0); });
+    st = giftChoices_[key] = { qty: qty, picks: picks };
+  }
+  return st;
+}
+function giftPick_(i, j, delta){
+  var r = giftPickerReg_[i];
+  if (!r) return;
+  var st = giftChoices_[r.key], o = r.opts[j];
+  var sum = r.opts.reduce(function(s, x){ return s + (st.picks[x] || 0); }, 0);
+  if (delta > 0 && sum >= r.qty) return;
+  if (delta < 0 && !(st.picks[o] > 0)) return;
+  st.picks[o] = (st.picks[o] || 0) + delta;
+  renderDiscountSummary();
+}
+function giftChoicesForOrder_(){
+  var out = {};
+  giftPickerReg_.forEach(function(r){ var st = giftChoices_[r.key]; if (st) out[r.key] = st.picks; });
+  return Object.keys(out).length ? JSON.stringify(out) : '';
+}
+function giftPickerHtml_(label, p, g){
+  var opts = giftOptions_(g.name);
+  var key = giftChoiceKey_(p, g);
+  var st = giftPickState_(key, opts, g.qty);
+  var idx = giftPickerReg_.length;
+  giftPickerReg_.push({ key: key, opts: opts, qty: g.qty });
+  var sum = opts.reduce(function(s, o){ return s + (st.picks[o] || 0); }, 0);
+  var btn = 'width:30px;height:30px;padding:0;border-radius:50%;border:1.5px solid var(--gm);background:#fff;color:var(--gm);font-size:17px;line-height:1;cursor:pointer';
+  var h = '<div style="margin:6px 0 4px;padding:10px 12px;border:1.5px dashed #f0a020;border-radius:10px;background:#fffaf0">'
+    + '<div style="font-weight:600;font-size:13.5px;margin-bottom:2px">🎁 เลือกรสของแถม (ได้ ' + g.qty + ' ' + escHtml(g.unit || 'ชิ้น') + ')</div>'
+    + '<div style="font-size:11.5px;color:var(--g6);margin-bottom:6px">จากโปร ' + escHtml(label) + ' · กด + / − เลือกรสที่ชอบ</div>';
+  opts.forEach(function(o, j){
+    var n = st.picks[o] || 0;
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #f3e6cc">'
+      + '<span style="font-size:13px;flex:1;min-width:0">' + escHtml(o) + '</span>'
+      + '<span style="display:flex;align-items:center;gap:10px;flex-shrink:0">'
+      + '<button type="button" aria-label="ลด ' + escHtml(o) + '" onclick="giftPick_(' + idx + ',' + j + ',-1)" style="' + btn + (n > 0 ? '' : ';opacity:.35') + '">−</button>'
+      + '<b style="min-width:16px;text-align:center">' + n + '</b>'
+      + '<button type="button" aria-label="เพิ่ม ' + escHtml(o) + '" onclick="giftPick_(' + idx + ',' + j + ',1)" style="' + btn + (sum < g.qty ? '' : ';opacity:.35') + '">+</button>'
+      + '</span></div>';
+  });
+  h += sum >= g.qty
+    ? '<div style="font-size:12.5px;color:#2e7d32;margin-top:6px;font-weight:600">✓ เลือกครบ ' + sum + '/' + g.qty + ' ' + escHtml(g.unit || 'ชิ้น') + 'แล้ว</div>'
+    : '<div style="font-size:12.5px;color:#e65100;margin-top:6px;font-weight:600">เลือกแล้ว ' + sum + '/' + g.qty + ' ' + escHtml(g.unit || 'ชิ้น') + ' · ที่เหลือทีมงานเลือกให้</div>';
+  return h + '</div>';
+}
+function freebieLineHtml_(label, p){
+  var simple = [], pickers = '';
+  if (p.freeGifts && p.freeGifts.length) {
+    p.freeGifts.forEach(function(g){
+      if (p.type === 'price' && giftOptions_(g.name).length > 1) pickers += giftPickerHtml_(label, p, g);
+      else simple.push(giftLabel_(g.name, g.qty, g.unit));
+    });
+  } else simple.push(p.physicalFreeQty + ' ชิ้น');
+  return (simple.length ? '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(label) + ' — มีของแถม ' + escHtml(simple.join(' + ')) + ' (ทีมงานจะเตรียมให้)</span></div>' : '') + pickers;
+}
+// ⚡ เพิ่ม (1/10/69) — ป้ายของแถมบนการ์ดสินค้า (โปรขายราคาพิเศษที่ตั้งของแถมไว้) เช่น "🎁 ซื้อ 1 แถม 2 ชิ้น · เลือกรสได้ตอนชำระเงิน"
+// จำนวนจริงคำนวณที่เซิร์ฟเวอร์ตอนชำระเงิน (อาจไม่ได้ถ้าโปรชนกับโปรอื่นที่ใช้ร่วมกันไม่ได้)
+function promoGiftHint_(skuName){
+  var hint = '';
+  activeAutoCoupons.concat(myPricePrivileges_).some(function(c){
+    if (c.type !== 'price' || !c.priceSpec || !c.restriction) return false;
+    var inPromo = c.restriction.split(',').map(function(s){ return s.trim(); }).filter(Boolean)
+      .some(function(kw){ return skuName.indexOf(kw) !== -1; });
+    if (!inPromo) return false;
+    var best = null;
+    (c.priceSpec.items || []).forEach(function(it){
+      if (it.gift && skuName.indexOf(it.p) !== -1 && (!best || it.p.length > best.p.length)) best = it;
+    });
+    if (!best) return false;
+    var opts = giftOptions_(best.gift);
+    var unit = best.unit || 'ชิ้น';
+    hint = (c.priceSpec.mode === 'order' ? ('แถม ' + best.giftQty + ' ' + unit + ' ต่อออเดอร์') : ('ซื้อ 1 แถม ' + best.giftQty + ' ' + unit))
+      + (opts.length > 1 ? ' · เลือกรสได้ตอนชำระเงิน' : ' (' + opts[0] + ')');
+    return true;
+  });
+  return hint;
+}
 function getBestPromoPrice_(skuName, price){
   var best = null;
   activeAutoCoupons.concat(myPricePrivileges_).forEach(function(c){
@@ -1208,7 +1336,7 @@ function getBestPromoPrice_(skuName, price){
     if (!matches) return;
     // price = ขายราคาพิเศษต่อชิ้น (มูลค่าคือราคาขาย ไม่ใช่ส่วนลด) — ราคาปกติถูกกว่าอยู่แล้วไม่ขึ้นป้าย
     var discounted = c.type === 'percent' ? price * (1 - c.value / 100)
-      : (c.type === 'price' ? Math.min(price, Number(c.value) || 0) : Math.max(0, price - c.value));
+      : (c.type === 'price' ? Math.min(price, promoUnitPrice_(c, skuName)) : Math.max(0, price - c.value));
     if (discounted >= price) return;
     if (best === null || discounted < best) best = discounted;
   });
@@ -1256,6 +1384,7 @@ function renderMyPrivileges_(r){
         + '<div class="coupon-ticket-stub"><small>' + escHtml(theme.stub.label) + '</small><b>' + escHtml(theme.stub.value) + '</b></div>'
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(p.name || '') + '</div>'
+          + (p.type === 'price' && p.priceSpec ? priceSpecLinesHtml_(p) : '')
           + '<div class="ct-sub">' + ((p.expiry && p.expiry !== 'ไม่มีวันหมดอายุ') ? ('ใช้ได้ถึง ' + escHtml(p.expiry)) : 'ไม่มีวันหมดอายุ') + '</div>'
           + promoStackBadge_(p)
         + '</div>'
@@ -1281,6 +1410,7 @@ function stubMarkup_(label, value){
 // ด้านบน เพราะเป็นคนละความหมาย: สิทธิพิเศษของคุณ = ของเฉพาะตัวลูกค้าคนนั้น (สมัครสมาชิก/แนะนำเพื่อน/แลกแต้ม)
 // ส่วนกล่องนี้ = โปรร้านที่ลูกค้าทุกคนใช้ได้เหมือนกัน แสดงเป็นการ์ดคูปองแบบตั๋วฉีก (.coupon-ticket) ทีละใบ
 function autoPromoValueText_(c){
+  if (c.type === 'price' && c.priceSpec) return priceSpecText_(c);
   if (c.type === 'price') return 'ราคาพิเศษ ' + Number(c.value).toLocaleString('th-TH') + ' บาท/ชิ้น';
   if (c.type === 'percent') return 'ลด ' + c.value + '%';
   if (c.type === 'fixed') return 'ลด ' + c.value.toLocaleString('th-TH') + ' บาท';
@@ -1301,6 +1431,7 @@ function autoPromoStubText_(c){
   // เพราะบางโปร (เช่น bogo แบบ "ลด X%") สร้างข้อความอัตโนมัติที่คลุมเครือ (เช่น "ซื้อ 1 / ลด 50%" อ่านแล้ว
   // เข้าใจผิดว่าซื้อ 1 แถม 1) — รายละเอียดจริงโชว์อยู่ในหัวเรื่อง/บรรทัดย่อยของตัวคูปองอยู่แล้ว
   if (c.stubText) return { label: '', value: c.stubText };
+  if (c.type === 'price' && c.priceSpec) return { label: 'ราคาพิเศษเริ่ม', value: priceSpecMinPrice_(c).toLocaleString('th-TH') + '.-' };
   if (c.type === 'price') return { label: 'ราคาพิเศษ', value: Number(c.value).toLocaleString('th-TH') + '.-' };
   if (c.type === 'percent') return { label: 'ลดพิเศษ', value: c.value + '%' };
   if (c.type === 'fixed') return { label: 'ลดพิเศษ', value: c.value.toLocaleString('th-TH') + '.-' };
@@ -1340,8 +1471,10 @@ function renderAutoPromoBox_(coupons){
       + '<div class="coupon-ticket-inner">'
         + '<div class="coupon-ticket-stub">' + stubMarkup_(stub.label, stub.value) + '</div>'
         + '<div class="coupon-ticket-body">'
-          + '<div class="ct-title">' + escHtml(c.code || valueText) + '</div>'
-          + (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : '')
+          + '<div class="ct-title">' + escHtml(c.code || (c.type === 'price' && c.priceSpec ? 'ราคาพิเศษ' : valueText)) + '</div>'
+          + (c.type === 'price' && c.priceSpec
+            ? priceSpecLinesHtml_(c) + (minPurchaseText ? '<div class="ct-sub">' + escHtml(minPurchaseText) + '</div>' : '')
+            : (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : ''))
           + (c.expiry ? '<div class="ct-exp">ใช้ได้ถึง ' + escHtml(c.expiry) + '</div>' : '')
           + promoStackBadge_(c)
         + '</div>'
@@ -1458,8 +1591,11 @@ function renderCatalog(){
       var priceHtml = promoPrice !== null
         ? '<span style="font-size:18px;text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="font-size:18px;color:#c62828;font-weight:700">฿' + Math.round(promoPrice).toLocaleString('th-TH') + '</span>'
         : '฿' + v.price.toLocaleString('th-TH');
+      var giftHint = promoGiftHint_(v.skuName);
       h += '<div class="prod-item">'
-        + '<div style="flex:1"><div class="prod-name">' + escHtml(v.label) + '</div><div class="prod-price">' + priceHtml + '</div></div>'
+        + '<div style="flex:1"><div class="prod-name">' + escHtml(v.label) + '</div><div class="prod-price">' + priceHtml + '</div>'
+        + (giftHint ? '<div style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;background:#fff3e0;color:#e65100;font-size:11.5px;font-weight:600;line-height:1.5">🎁 ' + escHtml(giftHint) + '</div>' : '')
+        + '</div>'
         + '<div class="qty-ctl">'
         + '<button class="qty-btn" onclick="changeQty(' + idx + ',-1)">−</button>'
         + '<span class="qty-val" id="qty_' + idx + '">' + (cart[v.skuName] || 0) + '</span>'
@@ -2110,6 +2246,7 @@ function getFinalShippingCost(){
 
 function renderDiscountSummary(){
   var wrap = document.getElementById('discountSummary');
+  giftPickerReg_ = [];
   var subtotal = getCartTotal();
   var h = '';
 
@@ -2149,14 +2286,13 @@ function renderDiscountSummary(){
       ? ' <button type="button" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
       : '';
     if (p.discount <= 0) {
-      if (p.physicalFreeQty > 0) {
-        h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(p.name) + ' — มีของแถม ' + p.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
-      }
+      if (p.physicalFreeQty > 0) h += freebieLineHtml_(p.name, p);
       return;
     }
     var privBogoNote_ = p.type === 'bogo' ? '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
     h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">🎁 ' + escHtml(p.name) + privBogoNote_ + '</span>'
       + '<span style="display:flex;align-items:center;gap:8px;white-space:nowrap;flex-shrink:0"><span style="color:#c62828">-฿' + Math.round(p.discount).toLocaleString('th-TH') + '</span>' + removeBtnHtml + '</span></div>';
+    if (p.freeGifts && p.freeGifts.length) h += freebieLineHtml_(p.name, p);
   });
   // โปรลดค่าจัดส่งไม่แสดงเป็นบรรทัด "-฿" แยก (ดูเหมือนหักจากยอดสินค้าอีกรอบ ทั้งที่หักในค่าจัดส่งไปแล้ว)
   // ย้ายชื่อโปรไปต่อท้ายบรรทัดค่าจัดส่งแทน — ยอดคำนวณเหมือนเดิมทุกอย่าง
@@ -2167,8 +2303,9 @@ function renderDiscountSummary(){
   } else if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.discount > 0) {
     var manualCouponBogoNote_ = lastDiscountInfo.coupon.type === 'bogo' ? '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
     h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">🏷️ โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + manualCouponBogoNote_ + '</span><span style="color:#c62828;white-space:nowrap;flex-shrink:0">-฿' + Math.round(lastDiscountInfo.coupon.discount).toLocaleString('th-TH') + '</span></div>';
+    if (lastDiscountInfo.coupon.freeGifts && lastDiscountInfo.coupon.freeGifts.length) h += freebieLineHtml_('โค้ด ' + lastDiscountInfo.coupon.code, lastDiscountInfo.coupon);
   } else if (lastDiscountInfo && lastDiscountInfo.coupon && lastDiscountInfo.coupon.physicalFreeQty > 0) {
-    h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 โค้ด ' + escHtml(lastDiscountInfo.coupon.code) + ' — มีของแถม ' + lastDiscountInfo.coupon.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
+    h += freebieLineHtml_('โค้ด ' + lastDiscountInfo.coupon.code, lastDiscountInfo.coupon);
   }
   // ⚡ แก้ — เดิมบรรทัดนี้ไม่ได้เช็ค lastDiscountInfo ว่าง (ต่างจากทุกบรรทัดรอบๆ ที่เช็คไว้หมด) ถ้า
   // checkShopDiscounts ล้มเหลวตั้งแต่ครั้งแรก (lastDiscountInfo ยังเป็น null) ฟังก์ชันนี้จะพังกลางคัน
@@ -2177,13 +2314,12 @@ function renderDiscountSummary(){
   ((lastDiscountInfo && lastDiscountInfo.autoCoupons) || []).forEach(function(c){
     if (isShipPromo_(c) && c.discount > 0) { shipPromoNames_.push(c.code); return; }
     if (c.discount <= 0) {
-      if (c.physicalFreeQty > 0) {
-        h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>📦 ' + escHtml(c.code) + ' — มีของแถม ' + c.physicalFreeQty + ' ชิ้น (ทีมงานจะเตรียมให้)</span></div>';
-      }
+      if (c.physicalFreeQty > 0) h += freebieLineHtml_(c.code, c);
       return;
     }
     var couponBogoNote_ = c.type === 'bogo' ? '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
     h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">🎉 โปรโมชั่น ' + escHtml(c.code) + couponBogoNote_ + '</span><span style="color:#c62828;white-space:nowrap;flex-shrink:0">-฿' + Math.round(c.discount).toLocaleString('th-TH') + '</span></div>';
+    if (c.freeGifts && c.freeGifts.length) h += freebieLineHtml_(c.code, c);
   });
   if (lastDiscountInfo && lastDiscountInfo.repeatPromo) {
     var rp = lastDiscountInfo.repeatPromo;
@@ -2557,7 +2693,7 @@ function confirmSubmitOrder(){
   // จะข้ามให้เองถ้าไม่มีค่าหรือรหัสไม่ถูกต้อง ไม่ทำให้คำสั่งซื้อพังหรือ error)
   var purchaseReferrerCode = document.getElementById('purchaseReferrerInput').value.trim();
 
-  var orderPayload_ = { itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId, purchaseReferrerCode: purchaseReferrerCode, pointsToRedeem: pointsToRedeemInput_ };
+  var orderPayload_ = { itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId, purchaseReferrerCode: purchaseReferrerCode, pointsToRedeem: pointsToRedeemInput_, giftChoices: giftChoicesForOrder_() };
 
   getFreshIdToken().then(function(idToken){
     function viaAppsScript(){

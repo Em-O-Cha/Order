@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 137 รายการ (92 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 145 รายการ (100 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1074,7 +1074,7 @@ function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shipp
         discount: discount, givenBy: row[5],
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
         physicalFreeQty: calc.physicalFreeQty || 0, minPurchase: minPurchase, freeDiscountPercent: calc.freeDiscountPercent || 100,
-        stackable: isStackablePrivilegeRow_(row), restriction: String(row[10] || '')
+        stackable: isStackablePrivilegeRow_(row), restriction: String(row[10] || ''), freeGifts: calc.freeGifts
       });
     });
     return results;
@@ -1317,6 +1317,98 @@ function calcDiscountAmount_(type, value, eligibleInfo, hasRestriction) {
   return Math.min(value, eligibleInfo.subtotal);
 }
 
+function cleanPriceGiftText_(v) {
+  // หมายเหตุออเดอร์แยกรายการด้วย , และ | — ตัดตัวคั่นออกจากชื่อของแถม กันรายการแตก
+  return String(v === null || v === undefined ? '' : v).replace(/[,|\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function parsePriceSpec_(raw) {
+  var s = String(raw || '').trim();
+  if (s.charAt(0) !== '{') return null;
+  var o;
+  try { o = JSON.parse(s); } catch (e) { return null; }
+  if (!o || !Array.isArray(o.items)) return null;
+  var items = [];
+  o.items.forEach(function (it) {
+    if (!it) return;
+    var p = String(it.p || '').trim();
+    if (!p) return;
+    var price = (it.price === '' || it.price === null || it.price === undefined) ? NaN : parseFloat(it.price);
+    var gift = cleanPriceGiftText_(it.gift);
+    var giftQty = parseFloat(it.giftQty) || 0;
+    if (!gift || giftQty <= 0) { gift = ''; giftQty = 0; }
+    items.push({ p: p, price: (isNaN(price) || price < 0) ? null : price, gift: gift, giftQty: giftQty, unit: gift ? cleanPriceGiftText_(it.unit) : '' });
+  });
+  if (!items.length) return null;
+  return { mode: o.mode === 'order' ? 'order' : 'item', items: items };
+}
+
+function priceSpecMatch_(spec, itemName) {
+  var out = { price: null, gift: null };
+  if (!spec) return out;
+  var name = String(itemName || '').toLowerCase();
+  spec.items.filter(function (it) { return name.indexOf(it.p.toLowerCase()) !== -1; })
+    .sort(function (a, b) { return b.p.length - a.p.length; })
+    .forEach(function (it) {
+      if (out.price === null && it.price !== null) out.price = it.price;
+      if (!out.gift && it.gift) out.gift = it;
+    });
+  return out;
+}
+
+function priceGiftLabel_(name, qty, unit) {
+  var opts = String(name || '').split(' หรือ ').map(function (x) { return x.trim(); }).filter(Boolean);
+  var u = unit || 'ชิ้น';
+  if (opts.length > 1) return qty + ' ' + u + ' เลือกได้: ' + opts.join(' / ');
+  return name + ' ' + qty + ' ' + u;
+}
+
+function priceGiftsText_(gifts) {
+  return (gifts || []).map(function (g) {
+    if (!g.picks) return priceGiftLabel_(g.name, g.qty, g.unit);
+    // ลูกค้าเลือกรสเองแล้ว เช่น "4 ชิ้น: น้ำพริกน้ำย้อย บรรจุ 6 ซอง ×2 / น้ำพริกตะไคร้หอม บรรจุ 6 ซอง ×1 / ทีมงานเลือกให้ ×1"
+    var picked = 0;
+    var parts = g.picks.map(function (x) { picked += x.qty; return x.name + ' ×' + x.qty; });
+    if (g.qty - picked > 0) parts.push('ทีมงานเลือกให้ ×' + (g.qty - picked));
+    return g.qty + ' ' + (g.unit || 'ชิ้น') + ': ' + parts.join(' / ');
+  }).join(' + ');
+}
+
+function giftChoiceKey_(p, g) {
+  return (p.code ? 'c:' + p.code : 'p:' + p.rowIndex) + '|' + g.name;
+}
+
+function applyGiftChoices_(privileges, coupons, giftChoices) {
+  var choices = {};
+  try { choices = giftChoices ? (typeof giftChoices === 'string' ? JSON.parse(giftChoices) : giftChoices) : {}; } catch (e) { choices = {}; }
+  if (!choices || typeof choices !== 'object') return;
+  (privileges || []).concat(coupons || []).forEach(function (p) {
+    if (!p || p.type !== 'price' || !p.freeGifts) return;
+    p.freeGifts = p.freeGifts.map(function (g) {
+      var opts = String(g.name || '').split(' หรือ ').map(function (x) { return x.trim(); }).filter(Boolean);
+      var want = choices[giftChoiceKey_(p, g)];
+      if (opts.length < 2 || !want || typeof want !== 'object') return g;
+      var left = g.qty, picks = [];
+      opts.forEach(function (o) {
+        var q = Math.max(0, Math.floor(parseFloat(want[o]) || 0));
+        q = Math.min(q, left);
+        if (q > 0) { picks.push({ name: o, qty: q }); left -= q; }
+      });
+      var copy = {};
+      Object.keys(g).forEach(function (k) { copy[k] = g[k]; });
+      copy.picks = picks;
+      return copy;
+    });
+  });
+}
+
+function physicalFreebieNotePart_(label, p) {
+  if (!p) return '';
+  if (p.type === 'bogo' && p.physicalFreeQty > 0) return label + ' (แถม ' + p.physicalFreeQty + ' ชิ้น — หยิบใส่ให้ลูกค้าด้วย)';
+  if (p.type === 'price' && p.freeGifts && p.freeGifts.length) return label + ' (แถม ' + priceGiftsText_(p.freeGifts) + ' — หยิบใส่ให้ลูกค้าด้วย)';
+  return '';
+}
+
 function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
   var type = String(promo.type || '');
   var value = parseFloat(promo.value) || 0;
@@ -1374,13 +1466,31 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
   if (type === 'price') {
     if (!String(restriction || '').trim()) return result;
     var keywordsPrice = String(restriction).split(',').map(function (k) { return k.trim().toLowerCase(); }).filter(Boolean);
-    var priceDiscount = 0;
+    // ⚡ เพิ่ม (1/10/69) — ราคา/ของแถมแยกตามสินค้า (ไม่มี = ราคาเดียว value เหมือนเดิม)
+    var priceSpec = parsePriceSpec_(promo.freeProduct);
+    var priceDiscount = 0, gifts = [], giftIndex = {}, giftOrderDone = {};
     (items || []).forEach(function (it) {
       var name = String(it.name).toLowerCase();
       if (!keywordsPrice.some(function (k) { return name.indexOf(k) !== -1; })) return;
-      priceDiscount += Math.max(0, (parseFloat(it.price) || 0) - value) * (parseFloat(it.qty) || 0);
+      var m = priceSpecMatch_(priceSpec, it.name);
+      var unitPrice = m.price !== null ? m.price : value;
+      var qty = parseFloat(it.qty) || 0;
+      priceDiscount += Math.max(0, (parseFloat(it.price) || 0) - unitPrice) * qty;
+      if (!m.gift || qty <= 0) return;
+      // ต่อออเดอร์ = ของแถมของสินค้ารายการนั้นได้ครั้งเดียว ไม่ว่าจะซื้อกี่ชิ้น / ต่อชิ้น = คูณจำนวนที่ซื้อ
+      var giftQty = priceSpec.mode === 'order' ? (giftOrderDone[m.gift.p] ? 0 : m.gift.giftQty) : m.gift.giftQty * qty;
+      giftOrderDone[m.gift.p] = true;
+      if (giftQty <= 0) return;
+      var gKey = m.gift.gift + '|' + m.gift.unit;
+      if (giftIndex[gKey] === undefined) { giftIndex[gKey] = gifts.length; gifts.push({ name: m.gift.gift, qty: 0, unit: m.gift.unit }); }
+      gifts[giftIndex[gKey]].qty += giftQty;
     });
     result.productDiscount = priceDiscount;
+    if (gifts.length) {
+      result.freeGifts = gifts;
+      result.physicalFreeQty = gifts.reduce(function (s, g) { return s + g.qty; }, 0);
+      result.freeProductName = priceGiftsText_(gifts);
+    }
     return result;
   }
 
@@ -1546,7 +1656,7 @@ function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey
         discount: totalDiscount, restriction: meta.restriction,
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
         physicalFreeQty: calc.physicalFreeQty || 0, freeDiscountPercent: calc.freeDiscountPercent || 100,
-        stackable: couponRowStackable_(bundle_, row)
+        stackable: couponRowStackable_(bundle_, row), freeGifts: calc.freeGifts
       };
     }
 
@@ -1639,7 +1749,7 @@ function validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTi
         discount: calc.productDiscount + calc.shippingDiscount, restriction: restriction || '',
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
         physicalFreeQty: calc.physicalFreeQty || 0, freeDiscountPercent: calc.freeDiscountPercent || 100,
-        audience: audience_.length > 0, stackable: couponRowStackable_(bundle_, row),
+        audience: audience_.length > 0, stackable: couponRowStackable_(bundle_, row), freeGifts: calc.freeGifts,
         typedOnly: !(row[8] === true || String(row[8]).toUpperCase() === 'TRUE') // โค้ดที่ลูกค้าต้องพิมพ์เอง (ไม่ใช่คูปองอัตโนมัติ)
       };
     }
@@ -1702,7 +1812,7 @@ function applyPromoExclusivity_(privileges, coupons, items) {
   return { privileges: outPriv, coupons: outCp, dropped: dropped, exclusivePrivilegeUsed: exclusivePrivilegeUsed };
 }
 
-function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shippingAddress, province, excludePrivilegeName, existingOrderId, purchaseReferrerCode, pointsToRedeem) {
+function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shippingAddress, province, excludePrivilegeName, existingOrderId, purchaseReferrerCode, pointsToRedeem, giftChoices) {
   var profile;
   try {
     profile = verifyLineIdToken_(idToken);
@@ -1878,6 +1988,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
                         'AE' + startRow + ':AE' + (startRow + 99), 'AH' + startRow + ':AH' + (startRow + 99)])
          .setNumberFormat('dd/MM/yyyy HH:mm:ss');
 
+    applyGiftChoices_(appliedPrivileges, couponResults, giftChoices); // ⚡ เพิ่ม (1/10/69) — รสของแถมที่ลูกค้าเลือก
     var paymentLabel = isCodOrder
       ? COD_PAYMENT_LABEL_
       : (paymentMethod === 'promptpay' ? 'พร้อมเพย์ (LINE Shop)' : 'โอนเงินธนาคาร (LINE Shop)');
@@ -1887,12 +1998,14 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     appliedPrivileges.forEach(function (p) {
       if (p.discount > 0) discountNoteParts.push('สิทธิ์: ' + p.name + ' (-' + Math.round(p.discount) + ')');
       if (p.type === 'bogo' && p.freeQtyGranted > 0) freebieNoteParts.push(p.name + ' (ลดราคา ' + p.freeQtyGranted + ' ชิ้น)');
-      if (p.type === 'bogo' && p.physicalFreeQty > 0) physicalFreebieNoteParts.push(p.name + ' (แถม ' + p.physicalFreeQty + ' ชิ้น — หยิบใส่ให้ลูกค้าด้วย)');
+      var physicalNote_ = physicalFreebieNotePart_(p.name, p); // ⚡ แก้ (1/10/69) — รวมของแถมโปรขายราคาพิเศษ
+      if (physicalNote_) physicalFreebieNoteParts.push(physicalNote_);
     });
     couponResults.forEach(function (c) {
       if (c.discount > 0) discountNoteParts.push('คูปอง: ' + c.code + ' (-' + Math.round(c.discount) + ')');
       if (c.type === 'bogo' && c.freeQtyGranted > 0) freebieNoteParts.push(c.code + ' (ลดราคา ' + c.freeQtyGranted + ' ชิ้น)');
-      if (c.type === 'bogo' && c.physicalFreeQty > 0) physicalFreebieNoteParts.push(c.code + ' (แถม ' + c.physicalFreeQty + ' ชิ้น — หยิบใส่ให้ลูกค้าด้วย)');
+      var physicalNote_ = physicalFreebieNotePart_(c.code, c);
+      if (physicalNote_) physicalFreebieNoteParts.push(physicalNote_);
     });
     if (repeatConfig_) {
       if (repeatBonusDiscount_ > 0) discountNoteParts.push('ซื้อซ้ำเดือนนี้: ' + repeatConfig_.name + ' (-' + Math.round(repeatBonusDiscount_) + ')');

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 export function sql(query) {
   for (let i = 0; ; i++) {
     try { return sqlOnce(query); } catch (e) {
-      if (i >= 3 || !/upstream|not valid JSON|ECONN|timed out/i.test(String(e))) throw e;
+      if (i >= 3 || !/upstream|not valid JSON|ECONN|timed out|Recv failure|reset by peer/i.test(String(e))) throw e;
       execFileSync('sleep', [String(2 ** i)]);
     }
   }
