@@ -118,6 +118,18 @@ run('11) ของแถมให้ลูกค้าเลือกรส (เ
   check('ไม่ส่งมา (หน้าร้านเก่า) = แบบเดิม', (o.physicalFreebieItems || [])[0] === 'PICK (แถม 8 ชิ้น เลือกได้: น้ำพริกน้ำย้อย บรรจุ 6 ซอง / น้ำพริกตะไคร้หอม บรรจุ 6 ซอง — หยิบใส่ให้ลูกค้าด้วย)', (o.physicalFreebieItems || [])[0]);
 }
 {
+  console.log('\n13) แถมเป็นซอง ให้ลูกค้าเลือกรส (ฟอร์มแอดมินเวอร์ชัน 21: รส + หน่วย "ซอง")');
+  const GN = 'น้ำพริกน้ำย้อย หรือ น้ำพริกตะไคร้หอม หรือ น้ำพริกลงเรือกรอบ';
+  const { c } = fresh();
+  cp(c, 'SACHET', '', true, JSON.stringify({ mode: 'item', items: [{ p: S4, price: 125, gift: GN, giftQty: 2, unit: 'ซอง' }, { p: S12, price: 375, gift: GN, giftQty: 6, unit: 'ซอง' }] }), false);
+  ['coupons_raw_v3', 'active_coupons_v3'].forEach(k => c.CacheService.getScriptCache().remove(k));
+  const o = c.createShopOrder('t', JSON.stringify(cart), 'transfer', '', 'ที่อยู่', 'กรุงเทพมหานคร', '', '', '', 0,
+    JSON.stringify({ ['c:SACHET|' + GN]: { 'น้ำพริกน้ำย้อย': 6, 'น้ำพริกตะไคร้หอม': 4 } }));
+  check('ใบสั่ง: แถม 10 ซอง ตามรสที่เลือก', (o.physicalFreebieItems || [])[0] === 'SACHET (แถม 10 ซอง: น้ำพริกน้ำย้อย ×6 / น้ำพริกตะไคร้หอม ×4 — หยิบใส่ให้ลูกค้าด้วย)', (o.physicalFreebieItems || [])[0]);
+  const t = c.privilegeValueText_('price', 125, S4, JSON.stringify({ mode: 'item', items: [{ p: S4, price: 125, gift: GN, giftQty: 2, unit: 'ซอง' }] }), '', '');
+  check('ข้อความโปร', t === 'ราคาพิเศษ ' + S4 + ' 125 บาท แถม 2 ซอง เลือกได้: น้ำพริกน้ำย้อย / น้ำพริกตะไคร้หอม / น้ำพริกลงเรือกรอบ ต่อชิ้นที่ซื้อ', t);
+}
+{
   const { c } = fresh();
   console.log('\n10) ข้อความโปร');
   const t = c.privilegeValueText_('price', 125, RESTR, spec('item'), '', '');
