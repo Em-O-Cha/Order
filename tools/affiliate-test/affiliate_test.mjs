@@ -120,6 +120,23 @@ test('ไฟล์ .xlsx — รหัสถูกเก็บเป็นตั
   assert.ok(/^\d{18}$/.test(res.rows[0].orderId), res.rows[0].orderId);
 });
 
+test('ไฟล์ .csv จาก TikTok (UTF-8 ไม่มี BOM) — รหัสเต็ม, วันที่ dd/MM/yyyy, ชื่อมีจุลภาค/เครื่องหมายคำพูด', () => {
+  const csvCell = (v) => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+  const rows = FILE1.slice(0, 2).map((r) => r.slice());
+  rows[0][2] = 'น้ำพริก, "สูตรเด็ด" 20 กรัม';
+  for (const bom of ['', '﻿']) {
+    const text = bom + [HEAD, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+    const res = web.parseAffiliateOrderMatrix(web.affParseCsv(text), null, { fallbackDate: '2026-10-02' });
+    assert.equal(res.rows.length, 2);
+    assert.equal(res.rows[0].orderId, '580000000000000123');
+    assert.equal(res.rows[0].productName, 'น้ำพริก, "สูตรเด็ด" 20 กรัม');
+    assert.equal(res.rows[1].createdAt, '2026-10-01 09:00:00');   // 01/10/2026 = 1 ต.ค. ไม่ใช่ 10 ม.ค.
+    assert.equal(res.rows[0].stdRate, 10);
+    assert.equal(res.warn.lossyId, 0); assert.equal(res.warn.noDate, 0);
+    assert.deepEqual([...res.missing], []);
+  }
+});
+
 test('ไม่ใช่รายงานคำสั่งซื้อ → แจ้งหาหัวตารางไม่พบ', () => {
   assert.throws(() => web.parseAffiliateOrderMatrix([['รหัสสินค้า', 'ชื่อสินค้า', 'GMV จากแอฟฟิลิเอต'], ['1', 'x', '10']]), /ไม่พบหัวตาราง/);
 });
