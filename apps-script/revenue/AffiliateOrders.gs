@@ -163,20 +163,52 @@ function saveAffiliateOrderImport(data) {
   }
 }
 
+// แสดงในรูปแบบเดียวกับประวัติแบบเดิม (getAffiliateProductImportHistory): ช่วงวันที่ yyyy-MM-dd,
+// นำเข้าเมื่อแบบ toLocaleString('th-TH'), ชื่อสินค้า และจำนวนคำสั่งซื้อของแต่ละชุด
 function getAffiliateOrderImportHistory(limit) {
   try {
     var sh = ensureAffiliateOrderImportSheet_(), lastRow = sh.getLastRow();
     if (lastRow <= 1) return { success: true, results: [] };
     var n = Math.min(lastRow - 1, limit || 100);
     var data = sh.getRange(lastRow - n + 1, 1, n, AFF_ORDER_IMPORT_HEADERS_.length).getValues();
+    // ชื่อสินค้า/คำสั่งซื้อ/ครีเอเตอร์ ของแต่ละชุด จากแถวที่ชุดนั้นเพิ่มหรืออัปเดต
+    var byImport = {};
+    var t = ensureAffiliateOrderSheet_(), oLast = t.sheet.getLastRow(), col = t.col;
+    if (oLast > 1) t.sheet.getRange(2, 1, oLast - 1, t.width).getValues().forEach(function (r) {
+      [String(r[col.firstImportId]), String(r[col.lastImportId])].forEach(function (id, i, ids) {
+        if (!id || (i === 1 && id === ids[0])) return;
+        var b = byImport[id] || (byImport[id] = { products: [], orders: {}, creators: [] });
+        var name = String(r[col.productName] || '').trim(), creator = String(r[col.creator] || '').trim();
+        if (name && b.products.indexOf(name) < 0) b.products.push(name);
+        if (creator && b.creators.indexOf('@' + creator) < 0) b.creators.push('@' + creator);
+        if (String(r[col.commissionStatus]) !== 'ยกเลิก' && r[col.orderId]) b.orders[String(r[col.orderId])] = 1;
+      });
+    });
     var results = data.map(function (r) {
-      return { id: String(r[0]), importedAt: String(r[1]), fileName: String(r[2] || ''), periodStart: formatAffDateDisplay_(r[3]),
-        periodEnd: formatAffDateDisplay_(r[4]), rowCount: r[5], inserted: r[6], updated: r[7], creatorCount: r[8],
-        gmv: r[9], commission: r[10], warn: String(r[11] || '') };
+      var id = String(r[0]), b = byImport[id] || { products: [], orders: {}, creators: [] };
+      return { id: id, importedAt: affThaiDateTime_(r[1]), fileName: String(r[2] || ''), periodStart: affYmd_(r[3]),
+        periodEnd: affYmd_(r[4]), rowCount: r[5], inserted: r[6], updated: r[7], creatorCount: r[8],
+        gmv: r[9], commission: r[10], warn: String(r[11] || ''), productCount: b.products.length,
+        productNames: b.products.join(' • '), creators: b.creators.join(', '), orders: Object.keys(b.orders).length };
     });
     results.reverse();
     return { success: true, results: results };
   } catch (e) { return { success: false, error: e.toString() }; }
+}
+
+// ค่าในชีตอาจเป็นข้อความ 'yyyy-MM-dd ...' หรือถูก Sheets แปลงเป็น Date ไปแล้ว — คืน 'yyyy-MM-dd' เสมอ
+function affYmd_(v) {
+  if (!v) return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') return Utilities.formatDate(v, 'GMT+7', 'yyyy-MM-dd');
+  var s = String(v).trim(), m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : s.slice(0, 10);
+}
+
+// แบบเดียวกับ "บันทึกเมื่อ" ของข้อมูลแบบเดิม: new Date(...).toLocaleString('th-TH') เช่น 30/9/2569 10:23:48
+function affThaiDateTime_(v) {
+  if (!v) return '';
+  var d = Object.prototype.toString.call(v) === '[object Date]' ? v : new Date(String(v).trim().replace(' ', 'T') + '+07:00');
+  return isNaN(d.getTime()) ? String(v) : d.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
 }
 
 // ลบเฉพาะแถวที่ชุดนี้ "เพิ่มเข้ามาครั้งแรก" — แถวที่มีอยู่ก่อนแล้วและชุดนี้แค่อัปเดต จะคงไว้ (ค่าตามชุดนี้)

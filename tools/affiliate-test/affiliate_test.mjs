@@ -248,6 +248,17 @@ test('นำเข้าซ้ำ (ไฟล์ใหม่ทับช่วง
   const hist = ctx.getAffiliateOrderImportHistory(10);
   assert.equal(hist.results.length, 2);
   assert.equal(hist.results[1].periodStart, '2026-09-29');
+  // รูปแบบเดียวกับประวัติแบบเดิม: ชื่อสินค้า, จำนวนคำสั่งซื้อ (ไม่นับยกเลิก), นำเข้าเมื่อแบบ th-TH
+  assert.equal(hist.results[1].productNames, PRODUCT);
+  assert.equal(hist.results[1].orders, 4); // 123, 124, 126, 127 (125 ยกเลิก)
+  assert.match(hist.results[1].importedAt, /^\d{1,2}\/\d{1,2}\/25\d\d \d{1,2}:\d{2}:\d{2}$/);
+  // Sheets แปลงข้อความวันที่ในชีต log เป็น Date เอง (เจอจริงในระบบ) — ต้องแสดงเหมือนเดิม
+  const log = sheets.get('Affiliate_Order_Imports');
+  log.getRange(2, 2, 1, 1).setValues([[new Date('2026-10-02T11:03:01+07:00')]]);
+  log.getRange(2, 4, 1, 2).setValues([[new Date('2026-09-29T00:00:00+07:00'), new Date('2026-10-01T00:00:00+07:00')]]);
+  const h2 = ctx.getAffiliateOrderImportHistory(10).results[1];
+  assert.equal(h2.importedAt, '2/10/2569 11:03:01');
+  assert.equal(h2.periodStart, '2026-09-29'); assert.equal(h2.periodEnd, '2026-10-01');
 });
 
 test('Dashboard — รวมข้อมูลแบบเดิม + รายงานคำสั่งซื้อ (ไม่นับยกเลิก, ครีเอเตอร์ซ้ำรวมแถวเดียว)', () => {
