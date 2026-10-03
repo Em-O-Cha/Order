@@ -111,7 +111,7 @@ function runKind(kind: Kind, tabs: Map<string, Tab>, keys: string[], profile: Re
   const gas = createGas({
     ...env, notifyBuyerOrderConfirmation_: noop, notifyAdminNewOrder_: noop,
     checkAndGrantReferralOnFirstPurchase_: noop, checkAndGrantPurchaseReferral_: noop, sendLineMessages_: noop,
-    notifyAdminPendingSlipOrder_: noop, notifyAdminCancelledOrder_: noop,
+    notifyAdminCancelledOrder_: noop,
     DriveApp, scheduleSlipFinalize_: noop,
   });
   let result: Result;
