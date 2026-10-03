@@ -1132,8 +1132,26 @@ function refreshCartCountFrom_(r){
 // ให้เด้งเข้าหน้ารถเข็น (คำสั่งซื้อรอดำเนินการ) ให้เลย ไม่ต้องให้ลูกค้ากดปุ่มรถเข็นเองอีกที
 // อ่านค่าไว้ตั้งแต่ตอนโหลดสคริปต์ เพราะ query string ยังอยู่ครบหลัง liff redirect (cleanLiffRedirectUri
 // ลบเฉพาะ key ของ LINE เท่านั้น)
-var WANT_CART_ON_OPEN_ = /(^|[?&])view=cart(&|$)/.test(location.search);
+// ⚡ เพิ่ม (3/10/69) — ?slip=REVxxxx (ปุ่ม "แนบสลิป" ในข้อความ LINE ที่ส่งหาลูกค้าตอนสั่งซื้อ): เปิดหน้ารถเข็น
+// แล้วเด้งหน้าต่างแนบสลิปของออเดอร์นั้นให้เลย — เฉพาะออเดอร์ที่ยังรอแนบสลิปจริงเท่านั้น (แนบแล้ว/ยกเลิกแล้ว
+// แค่เห็นหน้ารถเข็นตามปกติ) อ่านจาก liff.state ด้วย เผื่อเปิดครั้งแรกผ่าน liff.line.me
+var WANT_SLIP_ORDER_ = (function(){
+  try {
+    var params = new URLSearchParams(location.search);
+    var v = params.get('slip');
+    if (!v && params.get('liff.state')) v = new URLSearchParams(String(params.get('liff.state')).split('?')[1] || '').get('slip');
+    return /^REV\d{4,}$/.test(v || '') ? v : '';
+  } catch (e) { return ''; }
+})();
+var WANT_CART_ON_OPEN_ = /(^|[?&])view=cart(&|$)/.test(location.search) || !!WANT_SLIP_ORDER_;
 var cartViewOpened_ = false;
+var wantSlipHandled_ = false;
+function openWantedSlipOrder_(results){
+  if (!WANT_SLIP_ORDER_ || wantSlipHandled_) return;
+  wantSlipHandled_ = true;
+  var pending = filterPendingOrders_(results).some(function(o){ return String(o.orderId) === WANT_SLIP_ORDER_; });
+  if (pending) continueToSlipUpload(WANT_SLIP_ORDER_);
+}
 function applyShopBootstrap_(r){
   if (r.purchaseReferralEnabled) {
     document.getElementById('purchaseReferrerField').classList.remove('sh');
@@ -1688,6 +1706,7 @@ function loadOrderHistory(){
       return;
     }
     renderOrderHistory(filterPendingOrders_(r.results), false);
+    openWantedSlipOrder_(r.results);
   }).catch(function(e){
     if (e && e.alreadyShown) return;
     if (paintedStale_) return;

@@ -49,6 +49,7 @@ const TARGETS = {
       'verifyLineIdToken_', 'logErrorToSheet_', 'ensureDebugLogSheet_', 'logSlowAction_',
       'logRegistrationQueueWait_', 'notifyBuyerOrderConfirmation_', 'notifyAdminNewOrder_',
       'checkAndGrantReferralOnFirstPurchase_', 'checkAndGrantPurchaseReferral_', 'sendLineMessages_',
+      'notifyBuyerPendingSlip_', 'notifyBuyerOrderCancelled_',
       // แนบสลิป: ตัวจริงอัปโหลดรูปลง Drive และตั้งเวลาส่งแจ้งเตือน/ให้แต้ม — ที่นี่แค่ตรวจเงื่อนไข/คำนวณการเขียนชีต
       'DriveApp', 'scheduleSlipFinalize_',
     ],
