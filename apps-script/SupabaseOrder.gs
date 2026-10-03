@@ -108,7 +108,46 @@ function orderWritePending_(opts) {
   if (wrote && !opts.tests) {
     try { mirrorSyncTabsNow_(MIRROR_ORDER_TABS_, true); } catch (e) { Logger.log('order mirror sync: ' + e); }
   }
+  // ⚡ เพิ่ม (3/10/69) — แนบสลิปที่ลงชีตแล้ว: ส่งแจ้งเตือน LINE (ลูกค้า + กลุ่มแอดมิน) และให้แต้มทันที
+  // เดิมรอ trigger ที่ uploadShopSlip ตั้งไว้ ซึ่ง Apps Script เริ่มทำงานจริงช้า 1-2 นาที — ทางนี้ลูกค้าได้คำตอบจาก
+  // Supabase ไปแล้ว ไม่มีใครรอ จึงส่งได้เลย (ทำหลังเขียนคิวเสร็จ คำสั่งซื้อถัดไปไม่ต้องรอการส่ง LINE)
+  if (!opts.tests) {
+    results.forEach(function (r) {
+      if (r && r.written && r.kind === 'slip' && r.orderId) {
+        try { orderFinalizeSlipNow_(r.orderId); } catch (e) { Logger.log('order slip finalize now: ' + e); }
+      }
+    });
+  }
   return { success: true, processed: results.length, results: results };
+}
+
+// ส่งแจ้งเตือนของสลิป 1 ออเดอร์ทันที: เอาออกจากคิวของ trigger ก่อน (ใต้ ScriptLock เดียวกับ trigger) จึงไม่ส่งซ้ำ
+// ไม่อยู่ในคิว (trigger รับไปแล้ว) / ล็อกไม่ได้ = ไม่ทำ ปล่อยให้ trigger ส่งตามเดิม
+function orderFinalizeSlipNow_(orderId) {
+  var id = String(orderId);
+  var props = PropertiesService.getScriptProperties();
+  var lock = LockService.getScriptLock();
+  var mine = false;
+  try {
+    if (!lock.tryLock(10000)) return false;
+    var pending = [];
+    try { pending = JSON.parse(props.getProperty(PENDING_SLIP_FINALIZE_PROP_) || '[]'); } catch (e) {}
+    var at = pending.indexOf(id);
+    if (at === -1) return false;
+    pending.splice(at, 1);
+    if (pending.length) props.setProperty(PENDING_SLIP_FINALIZE_PROP_, JSON.stringify(pending));
+    else props.deleteProperty(PENDING_SLIP_FINALIZE_PROP_);
+    mine = true;
+  } finally {
+    try { lock.releaseLock(); } catch (e2) {}
+  }
+  if (!mine) return false;
+  finalizeSlipNotifications_(id);
+  // ให้แต้ม/รางวัลแนะนำเพื่อนถูกเขียนตรงนี้ — ส่งสำเนาไป Supabase (เหมือนที่ trigger ทำ)
+  if (typeof mirrorAfterBackgroundWrite_ === 'function') {
+    try { mirrorAfterBackgroundWrite_(MIRROR_ORDER_TABS_.concat(['members/Referral_Log'])); } catch (e3) { Logger.log('slip finalize mirror: ' + e3); }
+  }
+  return true;
 }
 
 // รัน/เก็บผล 1 รายการในคิว (คำสั่งซื้อ / แนบสลิป / ยกเลิก) คืน { ok, written, stop, id, orderId, changed, error }
