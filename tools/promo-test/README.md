@@ -18,6 +18,7 @@
    - `node compare_next_nostack.mjs` ทุก action ของ shop-read
    - `node compare_order_next.mjs <Members.gs> [nobogo]` สั่งซื้อแบบ dry-run
    - `node cmp_admin_next.mjs` admin-read
+   - `node signup_compare_next.mjs` member-signup สมัครจำลอง (ไม่บันทึก) เทียบผลทั้งหมด ยกเว้นข้อความต้อนรับ
 6. ส่งไฟล์ให้ผู้ใช้วาง → Deploy → **Manage deployments → Edit → New version** (ห้าม New deployment; โปรเจกต์ Notice แค่บันทึก)
 7. ผู้ใช้บอก "เรียบร้อย" → ดาวน์โหลดมาตรวจอีกครั้ง → deploy ตัวจริง (`./deploy_next.sh shop-read supabase/functions/shop-read` ฯลฯ) → `node smoke_live.mjs <Members.gs>`, `node ms_smoke.mjs`, `node admin_live_check.mjs` → ลบ `-next` → commit `gas_port.js`
 

@@ -576,8 +576,9 @@ function buildWelcomeFlexMessage_(displayName, memberCode, signupBonusPoints, gr
 
   body.push({
     type: 'box', layout: 'vertical', margin: 'lg', spacing: 'xs', contents: [
-      buildOrderSummaryRow_('ชื่อสมาชิก', displayName || '-', { size: 'sm', valueColor: '#424242', bold: true }),
-      buildOrderSummaryRow_('รหัสสมาชิก', memberCode || '-', { size: 'sm', valueColor: '#424242' }),
+      // ⚡ แก้ (3/10/69) — ชื่อ/รหัสสมาชิกอยู่บรรทัดเดียว (ชื่อยาวให้ตัวอักษรย่อลงเอง ไม่ตกบรรทัด)
+      buildOrderSummaryRow_('ชื่อสมาชิก', displayName || '-', { size: 'sm', valueColor: '#424242', bold: true, oneLine: true }),
+      buildOrderSummaryRow_('รหัสสมาชิก', memberCode || '-', { size: 'sm', valueColor: '#424242', oneLine: true }),
       buildOrderSummaryRow_('แต้มต้อนรับ', (signupBonusPoints || 0) + ' แต้ม', { size: 'sm', valueColor: '#a50d0c', bold: true })
     ]
   });
