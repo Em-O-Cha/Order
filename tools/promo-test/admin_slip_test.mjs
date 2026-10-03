@@ -1,4 +1,4 @@
-// ทดสอบ: แอดมินแนบสลิปแทนลูกค้า (แท็บคีย์ออเดอร์มือ) / ลูกค้ายกเลิกเองแจ้งกลุ่มแอดมิน / ตอนสั่งซื้อไม่ส่งอะไรเข้ากลุ่ม
+// ทดสอบ: แอดมินแนบสลิปแทนลูกค้า (แท็บคีย์ออเดอร์มือ) / ตอนสั่งซื้อ+ยกเลิกเอง ส่ง LINE หาลูกค้าเท่านั้น (กลุ่มแอดมินได้เฉพาะตอนแนบสลิป)
 // node admin_slip_test.mjs <โฟลเดอร์ที่มีไฟล์ .gs ของ Members LINE>
 import { createGas, loadBookFromMirror, loadPropsFromMirror } from './gasmock.mjs';
 const MB = '15yYmENUcxz5VO1ajhkAgU-seeZ3cMCs43Jm4xlYKvFk';
@@ -35,7 +35,17 @@ const revRow = (c, id) => { const sh = c.ensureRevenueSheet_(); const r = c.find
   const o1 = c.createShopOrder('t', items, 'promptpay', '', 'ที่อยู่', 'กรุงเทพมหานคร', '', '', '', 0);
   const o2 = c.createShopOrder('t', items, 'promptpay', '', 'ที่อยู่', 'กรุงเทพมหานคร', '', '', '', 0);
   check('สั่งพร้อมเพย์ 2 ใบสำเร็จ', o1.success && o2.success && o1.orderId !== o2.orderId, o1.orderId + ' ' + o2.orderId);
-  check('ตอนสั่งซื้อไม่ส่งข้อความเข้ากลุ่ม/ลูกค้า', sent.length === 0, sent.length);
+  check('ตอนสั่งซื้อไม่ส่งเข้ากลุ่มแอดมิน', toGroup(c, sent).length === 0, toGroup(c, sent).length);
+  const pm = sent.filter(s => s.to === uid);
+  check('ตอนสั่งซื้อส่งหาลูกค้าใบละ 1 ข้อความ', pm.length === 2 && sent.length === 2, sent.length);
+  const b0 = pm[0] && pm[0].messages[0];
+  const btns = b0 ? b0.contents.footer.contents.map(x => x.action) : [];
+  check('ข้อความรอแนบสลิป: ปุ่มแนบสลิปพาไปออเดอร์นี้ + ปุ่มดู/ยกเลิก', b0 && /รอแนบสลิป/.test(b0.altText) && b0.altText.includes(o1.orderId)
+    && btns[0].uri === 'https://liff.line.me/2010892131-3XYQXNzq?slip=' + o1.orderId && btns[1].uri.endsWith('?view=cart'), JSON.stringify(btns));
+  const flat = JSON.stringify(b0);
+  check('ข้อความรอแนบสลิป: มีสินค้า ยอด ช่องทางชำระ', flat.includes('หมี่ชมพูน้ำพริกหนังแซลมอน บรรจุ 4 ซอง x2') && flat.includes(c.fmtOrderBaht_(o1.totalAmount)) && flat.includes('ช่องทางชำระเงิน: พร้อมเพย์'));
+  if (process.env.FLEX_OUT) (await import('fs')).writeFileSync(process.env.FLEX_OUT, JSON.stringify({ pending: b0 }, null, 1));
+  sent.length = 0;
   // 2) รายการรอแนบสลิป
   const bad = c.listPendingSlipOrders('ผิด');
   check('PIN ผิด -> ไม่ให้ดู', !bad.success);
@@ -53,6 +63,7 @@ const revRow = (c, id) => { const sh = c.ensureRevenueSheet_(); const r = c.find
   check('PIN ผิด -> แนบไม่ได้', !c.adminAttachSlip('ผิด', o1.orderId, 'AA==', 's.jpg', 'image/jpeg').success);
   check('ไม่ใช่รูป -> แนบไม่ได้', !c.adminAttachSlip('PIN', o1.orderId, 'AA==', 's.pdf', 'application/pdf').success);
   check('ไม่มีเลขออเดอร์นี้ -> แนบไม่ได้', !c.adminAttachSlip('PIN', 'REV0000000', 'AA==', 's.jpg', 'image/jpeg').success);
+  sent.length = 0;
   const pointsBefore = c.getMemberRowByUid_(uid, 6).values[5];
   const a = c.adminAttachSlip('PIN', o1.orderId, 'AA==', 's.jpg', 'image/jpeg');
   check('แนบสลิปสำเร็จ และส่งแจ้งเตือนทันที', a.success && a.notified === true, JSON.stringify(a));
@@ -77,8 +88,12 @@ const revRow = (c, id) => { const sh = c.ensureRevenueSheet_(); const r = c.find
   sent.length = 0;
   const x = c.cancelShopOrder('t', o2.orderId);
   const tx = toGroup(c, sent).map(text).join('\n');
-  console.log('---\n' + tx + '\n---');
-  check('ยกเลิกเอง -> แจ้งกลุ่ม', x.success && tx.includes('❌ ลูกค้ายกเลิกออเดอร์เอง') && tx.includes(o2.orderId) && tx.includes('ไม่ต้องจัดส่ง'));
+  const cm = sent.filter(s => s.to === uid);
+  const cflat = JSON.stringify(cm);
+  check('ยกเลิกเอง -> ไม่แจ้งกลุ่มแอดมิน', x.success && tx === '', tx);
+  check('ยกเลิกเอง -> ลูกค้าได้ข้อความยกเลิก ไม่มีปุ่ม', cm.length === 1 && /ยกเลิกคำสั่งซื้อ/.test(cm[0].messages[0].altText) && cflat.includes(o2.orderId)
+    && cflat.includes('หมี่ชมพูน้ำพริกหนังแซลมอน บรรจุ 4 ซอง x2') && !cm[0].messages[0].contents.footer && !cflat.includes('"uri"'), cm.length);
+  if (process.env.FLEX_OUT) { const fs = await import('fs'); const j = JSON.parse(fs.readFileSync(process.env.FLEX_OUT, 'utf8')); j.cancelled = cm[0].messages[0]; fs.writeFileSync(process.env.FLEX_OUT, JSON.stringify(j, null, 1)); }
   check('ใบที่ยกเลิกหายจากรายการ', c.listPendingSlipOrders('PIN').results.every(r => r.orderId !== o2.orderId));
   const a3 = c.adminAttachSlip('PIN', o2.orderId, 'AA==', 's.jpg', 'image/jpeg');
   check('ใบที่ยกเลิกแนบไม่ได้', !a3.success && /ยกเลิก/.test(a3.error), a3.error);
@@ -90,7 +105,7 @@ const revRow = (c, id) => { const sh = c.ensureRevenueSheet_(); const r = c.find
   const { c, sent } = fresh();
   c.evaluateCodEligibility_ = () => ({ allowed: true });
   const o = c.createShopOrder('t', items, 'cod', '', 'ที่อยู่', 'กรุงเทพมหานคร', '', '', '', 0);
-  check('COD: การ์ดเต็มยังส่งทันทีเหมือนเดิม', o.success && toGroup(c, sent).length >= 1);
+  check('COD: การ์ดเต็มยังส่งทันทีเหมือนเดิม ไม่มีข้อความรอแนบสลิป', o.success && toGroup(c, sent).length >= 1 && !JSON.stringify(sent).includes('รอแนบสลิป'));
   const a = c.adminAttachSlip('PIN', o.orderId, 'AA==', 's.jpg', 'image/jpeg');
   check('COD: แนบสลิปไม่ได้ ไม่อยู่ในรายการ', !a.success && c.listPendingSlipOrders('PIN').results.every(r => r.orderId !== o.orderId), a.error);
 }

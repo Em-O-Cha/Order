@@ -3,7 +3,7 @@
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
-          verifyLineIdToken_, logErrorToSheet_, ensureDebugLogSheet_, logSlowAction_, logRegistrationQueueWait_, notifyBuyerOrderConfirmation_, notifyAdminNewOrder_, checkAndGrantReferralOnFirstPurchase_, checkAndGrantPurchaseReferral_, sendLineMessages_, notifyAdminCancelledOrder_, DriveApp, scheduleSlipFinalize_ } = env;
+          verifyLineIdToken_, logErrorToSheet_, ensureDebugLogSheet_, logSlowAction_, logRegistrationQueueWait_, notifyBuyerOrderConfirmation_, notifyAdminNewOrder_, checkAndGrantReferralOnFirstPurchase_, checkAndGrantPurchaseReferral_, sendLineMessages_, notifyBuyerPendingSlip_, notifyBuyerOrderCancelled_, DriveApp, scheduleSlipFinalize_ } = env;
 
 var MEMBERS_SHEET_ID = '15yYmENUcxz5VO1ajhkAgU-seeZ3cMCs43Jm4xlYKvFk';
 
@@ -1165,6 +1165,9 @@ function cancelShopOrder(idToken, orderId) {
       numRows++;
     }
 
+    var cancelledItems_ = sheet.getRange(targetRow, 3, numRows, 3).getValues()
+      .filter(function (it) { return it[0]; })
+      .map(function (it) { return { name: String(it[0]), qty: parseFloat(it[1]) || 0, price: parseFloat(it[2]) || 0 }; });
     for (var r = 0; r < numRows; r++) {
       var rowNum = targetRow + r;
       sheet.getRange(rowNum, 3).setValue(CANCELLED_ORDER_MARK_); // ชื่อสินค้า (คอลัมน์ C) -> "ยกเลิก"
@@ -1183,18 +1186,18 @@ function cancelShopOrder(idToken, orderId) {
       sheet.getRange(targetRow, COD_STATUS_COL_).setValue('');
     }
 
-    var cancelledInfo_ = { name: String(mainRow[13] || ''), phone: rowPhone, amount: Number(mainRow[8]) || 0, payment: String(mainRow[9] || '') };
+    var cancelledInfo_ = { lineUid: profile.sub, amount: Number(mainRow[8]) || 0, items: cancelledItems_ };
   } catch (e) {
     return { success: false, error: e.toString() };
   } finally {
     lock.releaseLock();
   }
 
-  // ⚡ เพิ่ม (3/10/69) — แจ้งกลุ่มแอดมินว่าลูกค้ายกเลิกเอง จะได้ไม่ต้องจัดส่ง/ตามต่อ
+  // ⚡ เพิ่ม (3/10/69) — ส่ง LINE ยืนยันการยกเลิกให้ลูกค้า (ไม่แจ้งกลุ่มแอดมิน — กลุ่มได้ข้อความเฉพาะตอนแนบสลิป)
   try {
-    notifyAdminCancelledOrder_(orderId, cancelledInfo_);
+    notifyBuyerOrderCancelled_(cancelledInfo_.lineUid, orderId, cancelledInfo_.items, cancelledInfo_.amount);
   } catch (cancelNotifyErr) {
-    Logger.log('cancelShopOrder: แจ้งกลุ่มแอดมินไม่สำเร็จ: ' + cancelNotifyErr.toString());
+    Logger.log('cancelShopOrder: ส่งข้อความยกเลิกให้ลูกค้าไม่สำเร็จ: ' + cancelNotifyErr.toString());
   }
   return { success: true };
 }
@@ -2227,6 +2230,15 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       notifyAdminNewOrder_(immediateNotifyData_.revenueId, billInfoNow_.customerName, billInfoNow_.phone, billInfoNow_.items, immediateNotifyData_.paymentLabel, billInfoNow_.billTotal, billInfoNow_.address, billInfoNow_.province, billInfoNow_.freebieItems, billInfoNow_.slipImageUrl, billInfoNow_.physicalFreebieItems, billInfoNow_);
     } catch (immediateNotifyErr) {
       Logger.log('createShopOrder: แจ้งเตือนออเดอร์ที่ไม่ต้องแนบสลิปไม่สำเร็จ: ' + immediateNotifyErr.toString());
+    }
+  } else if (finalReturnPayload_ && finalReturnPayload_.success) {
+    // ⚡ เพิ่ม (3/10/69) — ออเดอร์โอน/พร้อมเพย์: ส่ง LINE หาลูกค้าทันที ให้แนบสลิป (ปุ่มพาไปหน้าแนบสลิปของ
+    // ออเดอร์นี้) หรือยกเลิก — กันลูกค้าโอนแล้วส่งสลิปในแชทแทนการแนบในระบบ (กลุ่มแอดมินได้การ์ดตอนแนบสลิปตามเดิม)
+    try {
+      notifyBuyerPendingSlip_(profile.sub, finalReturnPayload_.orderId, items, paymentLabel, finalReturnPayload_.subtotal,
+        finalReturnPayload_.discount, finalReturnPayload_.shippingCost, finalReturnPayload_.totalAmount, isEditingExistingOrder);
+    } catch (pendingNotifyErr) {
+      Logger.log('createShopOrder: ส่งข้อความรอแนบสลิปให้ลูกค้าไม่สำเร็จ: ' + pendingNotifyErr.toString());
     }
   }
 
