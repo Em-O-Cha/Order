@@ -11,6 +11,7 @@
    - `node ship_test.mjs <Members.gs>` ส่วนลดค่าส่งราคาพิเศษ
    - `node recheck_compare.mjs <เดิม/Members.gs> <ใหม่/Members.gs>` ตรวจยอดซ้ำออเดอร์ที่รอแนบสลิป ต้องได้ "same N of N"
    - `node slip_notify_test.mjs <โฟลเดอร์ .gs>` แนบสลิปผ่านคิว Supabase ส่งแจ้งเตือนทันที และ trigger ไม่ส่งซ้ำ
+   - `node pending_order_notify_test.mjs <Members.gs>` ออเดอร์โอน/พร้อมเพย์แจ้งกลุ่มแอดมินทันทีตอนสั่ง (ก่อนแนบสลิป), แก้ไขออเดอร์, ลูกค้ายกเลิกเอง, COD/สั่งไม่สำเร็จไม่ส่งข้อความนี้
    - `node price_tier_test.mjs <Members.gs>` โปรขายราคาพิเศษแยกราคา/ของแถมตามขนาด (คูปอง/สิทธิ์/โค้ดพิมพ์เอง/แจกทุกคน) ต้องได้ "ผ่านทั้งหมด"
 3. สร้าง `gas_port.js` ใหม่: `node ../gas-port/extract.mjs <Members.gs> <out.js> <shop-read|shop-order|admin-read|member-signup>`
 4. Deploy เป็นตัวทดสอบ: `./deploy_next.sh shop-read-next <โฟลเดอร์ที่มี index.ts + gas_port.js>` (และ shop-order-next)

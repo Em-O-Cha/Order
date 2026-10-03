@@ -3,7 +3,7 @@
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
-          verifyLineIdToken_, logErrorToSheet_, ensureDebugLogSheet_, logSlowAction_, logRegistrationQueueWait_, notifyBuyerOrderConfirmation_, notifyAdminNewOrder_, checkAndGrantReferralOnFirstPurchase_, checkAndGrantPurchaseReferral_, sendLineMessages_, DriveApp, scheduleSlipFinalize_ } = env;
+          verifyLineIdToken_, logErrorToSheet_, ensureDebugLogSheet_, logSlowAction_, logRegistrationQueueWait_, notifyBuyerOrderConfirmation_, notifyAdminNewOrder_, checkAndGrantReferralOnFirstPurchase_, checkAndGrantPurchaseReferral_, sendLineMessages_, notifyAdminPendingSlipOrder_, notifyAdminCancelledOrder_, DriveApp, scheduleSlipFinalize_ } = env;
 
 var MEMBERS_SHEET_ID = '15yYmENUcxz5VO1ajhkAgU-seeZ3cMCs43Jm4xlYKvFk';
 
@@ -1183,12 +1183,20 @@ function cancelShopOrder(idToken, orderId) {
       sheet.getRange(targetRow, COD_STATUS_COL_).setValue('');
     }
 
-    return { success: true };
+    var cancelledInfo_ = { name: String(mainRow[13] || ''), phone: rowPhone, amount: Number(mainRow[8]) || 0, payment: String(mainRow[9] || '') };
   } catch (e) {
     return { success: false, error: e.toString() };
   } finally {
     lock.releaseLock();
   }
+
+  // ⚡ เพิ่ม (3/10/69) — แจ้งกลุ่มแอดมินว่าลูกค้ายกเลิกเอง (คู่กับข้อความ "ออเดอร์ใหม่ รอแนบสลิป") ไม่ต้องตามต่อ
+  try {
+    notifyAdminCancelledOrder_(orderId, cancelledInfo_);
+  } catch (cancelNotifyErr) {
+    Logger.log('cancelShopOrder: แจ้งกลุ่มแอดมินไม่สำเร็จ: ' + cancelNotifyErr.toString());
+  }
+  return { success: true };
 }
 
 function ensureShippingConfigSheet_() {
@@ -2219,6 +2227,14 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       notifyAdminNewOrder_(immediateNotifyData_.revenueId, billInfoNow_.customerName, billInfoNow_.phone, billInfoNow_.items, immediateNotifyData_.paymentLabel, billInfoNow_.billTotal, billInfoNow_.address, billInfoNow_.province, billInfoNow_.freebieItems, billInfoNow_.slipImageUrl, billInfoNow_.physicalFreebieItems, billInfoNow_);
     } catch (immediateNotifyErr) {
       Logger.log('createShopOrder: แจ้งเตือนออเดอร์ที่ไม่ต้องแนบสลิปไม่สำเร็จ: ' + immediateNotifyErr.toString());
+    }
+  } else if (finalReturnPayload_ && finalReturnPayload_.success) {
+    // ⚡ เพิ่ม (3/10/69) — ออเดอร์โอน/พร้อมเพย์: แจ้งกลุ่มแอดมินทันทีที่กดสั่งซื้อ (ไม่ต้องรอสลิป) กันเคสลูกค้า
+    // โอนแล้วส่งสลิปในแชทแทนการแนบในระบบ แอดมินจะไม่รู้เลยว่ามีออเดอร์ — การ์ดเต็มยังส่งตามปกติหลังแนบสลิป
+    try {
+      notifyAdminPendingSlipOrder_(finalReturnPayload_.orderId, customerName, phone, items, paymentLabel, finalAmount, isEditingExistingOrder);
+    } catch (pendingNotifyErr) {
+      Logger.log('createShopOrder: แจ้งกลุ่มแอดมินออเดอร์รอแนบสลิปไม่สำเร็จ: ' + pendingNotifyErr.toString());
     }
   }
 
