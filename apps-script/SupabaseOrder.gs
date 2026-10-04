@@ -205,9 +205,9 @@ function orderRunOriginal_(row) {
   ORDER_INJECT_ = { token: token, profile: { sub: row.line_uid, name: req.profileName || '', picture: '' } };
   try {
     if (kind === 'cancel') return cancelShopOrder(token, row.order_id);
-    // existingOrderId ว่างเสมอ: แก้ไขออเดอร์ใช้ทางเดิม
+    // ⚡ แก้ (4/10/69) — แก้ไขออเดอร์ที่รอแนบสลิปผ่าน Supabase ได้แล้ว: ส่งเลขออเดอร์เดิมต่อให้ createShopOrder
     return createShopOrder(token, decodeItemsB64_(req.itemsB64), req.paymentMethod, req.couponCode,
-      req.shippingAddress, req.province, req.excludePrivilegeName, '', req.purchaseReferrerCode, req.pointsToRedeem, req.giftChoices);
+      req.shippingAddress, req.province, req.excludePrivilegeName, req.existingOrderId || '', req.purchaseReferrerCode, req.pointsToRedeem, req.giftChoices);
   } finally {
     ORDER_INJECT_ = null;
   }

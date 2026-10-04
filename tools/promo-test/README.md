@@ -13,6 +13,8 @@
    - `node slip_notify_test.mjs <โฟลเดอร์ .gs>` แนบสลิปผ่านคิว Supabase ส่งแจ้งเตือนทันที และ trigger ไม่ส่งซ้ำ
    - `node admin_slip_test.mjs <โฟลเดอร์ .gs>` สั่งซื้อโอน/พร้อมเพย์ส่ง LINE หาลูกค้า (ปุ่มแนบสลิป ?slip=) / ยกเลิกเองส่งหาลูกค้า ไม่แจ้งกลุ่ม / แอดมินแนบสลิปแทนลูกค้า (แท็บคีย์ออเดอร์มือ) แจ้งเตือน+ให้แต้มทันที
    - `node price_tier_test.mjs <Members.gs>` โปรขายราคาพิเศษแยกราคา/ของแถมตามขนาด (คูปอง/สิทธิ์/โค้ดพิมพ์เอง/แจกทุกคน) ต้องได้ "ผ่านทั้งหมด"
+   - `node edit_test.mjs <Members.gs>` แก้ไขออเดอร์ที่รอแนบสลิป (เลขเดิม) + คืนสิทธิ์/คูปองตอนแก้ไข/ยกเลิก (หมดอายุแล้วไม่คืน) + ตัวกัน (ของคนอื่น/แนบสลิปแล้ว/ยกเลิกแล้ว) + หัวข้อความ LINE ต้องได้ "ผ่านทั้งหมด"
+   - `node port_test.mjs <Members.gs> <dir>` เทียบผล Members.gs กับ gas_port.js ใหม่บนตัวจำลองของ Edge Function ในเครื่อง (ดูยอด/ดึงออเดอร์ไปแก้/แก้ไข/ยกเลิก) ไม่ต้อง deploy — วิธีเตรียม dir อยู่หัวไฟล์
 3. สร้าง `gas_port.js` ใหม่: `node ../gas-port/extract.mjs <Members.gs> <out.js> <shop-read|shop-order|admin-read|member-signup>`
 4. Deploy เป็นตัวทดสอบ: `./deploy_next.sh shop-read-next <โฟลเดอร์ที่มี index.ts + gas_port.js>` (และ shop-order-next)
 5. เทียบกับตัวจริง (**ห้ามรันสคริปต์ที่ใช้ callEdge พร้อมกัน 2 ตัว** เพราะแต่ละตัวสร้าง/ลบ pg_net เอง):

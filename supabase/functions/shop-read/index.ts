@@ -75,6 +75,12 @@ const ACTIONS: Record<string, { auth: boolean; tabs: string[]; run: (g: Gas, p: 
     tabs: T(M, MP, TC, CP, PP, SKU, REV, "members/Shipping_Config"),
     run: (g, p) => g.checkPendingOrderPromoStillValid(p.idToken, p.orderId),
   },
+  // ⚡ เพิ่ม (4/10/69) — ปุ่ม "แก้ไขรายการ" ในหน้ารถเข็น: รายการสินค้า/ค่าที่ใช้ตอนสั่งของออเดอร์ที่รอแนบสลิป
+  getPendingOrderForEdit: {
+    auth: true,
+    tabs: T(M, MP, CP, REV),
+    run: (g, p) => g.getPendingOrderForEdit(p.idToken, p.orderId),
+  },
 };
 
 const loadTabs = createTabLoader(TAB_KEYS);

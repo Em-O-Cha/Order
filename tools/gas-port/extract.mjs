@@ -22,7 +22,7 @@ const TARGETS = {
     ROOTS: [
       'getShopBootstrap', 'getPrivilegesPanelData', 'checkMemberStatus', 'getMyPrivileges',
       'getPointsHistory', 'getActiveCoupons', 'getReferralPublicStatus', 'getMyShippingAddress',
-      'getMyOrderHistory', 'checkShopDiscounts', 'checkPendingOrderPromoStillValid',
+      'getMyOrderHistory', 'checkShopDiscounts', 'checkPendingOrderPromoStillValid', 'getPendingOrderForEdit',
       'getTierConfig_', 'getSignupBonusPoints_', 'getSignupPrivilegeConfig_', 'getPointsRedeemConfig_',
       'decodeItemsB64_',
     ],
@@ -52,6 +52,9 @@ const TARGETS = {
       'notifyBuyerPendingSlip_', 'notifyBuyerOrderCancelled_',
       // แนบสลิป: ตัวจริงอัปโหลดรูปลง Drive และตั้งเวลาส่งแจ้งเตือน/ให้แต้ม — ที่นี่แค่ตรวจเงื่อนไข/คำนวณการเขียนชีต
       'DriveApp', 'scheduleSlipFinalize_',
+      // แก้ไขออเดอร์: ตัวจำลองลบแถวไม่ได้ — ทำนายยอดโดยถือว่าลบแถวเดิมแล้ว (ตัวจริงลบตอน Apps Script เขียนชีต)
+      // และออเดอร์ที่รอแนบสลิปไม่มีรายการแลกคะแนนใน Points_Log (ตัดคะแนนตอนแนบสลิป) จึงไม่มีอะไรให้คืน
+      'deleteExistingOrderRows_', 'reverseRedeemedPointsForOrder_',
     ],
   },
   'admin-read': {
