@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 161 รายการ (112 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 169 รายการ (120 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -187,7 +187,7 @@ function findHighestTierUpgradeRedeemed_(lineUid, tierConfig) {
 var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'price', 'ship_price'];
 
 function getSignupPrivilegeConfig_() {
-  var fallback = { enabled: false, name: '', type: 'percent', value: 0, expiryDays: 0, expiryDate: '', restriction: '', freeProduct: '', freeQty: 0, startDate: '', endDate: '' };
+  var fallback = { enabled: false, name: '', type: 'percent', value: 0, expiryDays: 0, expiryDate: '', restriction: '', freeProduct: '', freeQty: 0, freeDiscountPercent: '', startDate: '', endDate: '' };
   try {
     var raw = PropertiesService.getScriptProperties().getProperty('SIGNUP_PRIVILEGE_CONFIG');
     if (!raw) return fallback;
@@ -202,6 +202,8 @@ function getSignupPrivilegeConfig_() {
       restriction: String(cfg.restriction || ''),
       freeProduct: String(cfg.freeProduct || ''),
       freeQty: parseFloat(cfg.freeQty) || 0,
+      // ⚡ เพิ่ม (4/10/69) — ส่วนลดชิ้นถัดไป % ของ bogo (ว่าง = 100% แถมฟรี)
+      freeDiscountPercent: (cfg.freeDiscountPercent === undefined || cfg.freeDiscountPercent === null) ? '' : cfg.freeDiscountPercent,
       // ⚡ เพิ่ม (25/8/69) — ช่วงวันเริ่ม-สิ้นสุดของ "โปรนี้" (ตอนรับสมัครสมาชิกใหม่) เว้นว่างทั้งคู่ = ใช้ได้
       // ตลอดไม่มีกำหนด — คนละเรื่องกับ expiryDate ด้านบนที่คือวันหมดอายุของสิทธิ์ที่สมาชิกแต่ละคนได้รับไปแล้ว
       startDate: String(cfg.startDate || ''),
@@ -1124,6 +1126,24 @@ function getAppliedPrivileges_(lineUid, subtotal, excludeRowIndexes, items, pric
   return all.filter(function (p) { return !excludeSet[String(p.rowIndex)]; });
 }
 
+function autoPrivilegeTicketText_(row) {
+  return autoTicketTextFor_(row[2], row[3], row[10], row[12], row[14]);
+}
+
+function autoTicketTextFor_(type, value, restriction, freeQty, freeDiscountPercent) {
+  type = String(type || '');
+  var products = String(restriction || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  if (type === 'percent' && products.length) return 'ลด ' + (parseFloat(value) || 0) + '% เฉพาะ ' + products.join(', ');
+  if (type === 'bogo' && freeDiscountPercent !== '' && freeDiscountPercent !== null && freeDiscountPercent !== undefined) {
+    var pct = parseFloat(freeDiscountPercent);
+    var qty = parseFloat(freeQty) || 1;
+    if (!isNaN(pct) && pct < 100) {
+      return 'ซื้อ' + (products.length ? products.join(' หรือ ') + ' ' : '') + 'ครบ ' + (parseFloat(value) || 0) + ' ชิ้น ชิ้นถัดไปลด ' + pct + '%' + (qty > 1 ? ' (' + qty + ' ชิ้น)' : '');
+    }
+  }
+  return '';
+}
+
 function getMyPrivilegesForLineUid_(lineUid) {
   var rows = getPrivilegeRowsForLineUid_(lineUid);
   if (!rows.length) return [];
@@ -1151,7 +1171,7 @@ function getMyPrivilegesForLineUid_(lineUid) {
       reason: row[5] || '',
       restriction: row[2] === 'price' ? String(row[10] || '') : '', // ขายราคาพิเศษ: หน้าร้านใช้ขึ้นราคาแดงบนการ์ดสินค้า
       priceSpec: row[2] === 'price' ? (parsePriceSpec_(row[11]) || undefined) : undefined, // ⚡ เพิ่ม (1/10/69) — ราคา/ของแถมแยกตามสินค้า
-      detailText: privilegeDetailText_(row) || undefined, // ⚡ เพิ่ม (1/10/69) — ข้อความบนตั๋วที่แอดมินพิมพ์เอง
+      detailText: privilegeDetailText_(row) || autoPrivilegeTicketText_(row) || undefined, // ⚡ เพิ่ม (1/10/69) — ข้อความบนตั๋วที่แอดมินพิมพ์เอง (4/10/69: ว่าง = ข้อความอัตโนมัติของ ลด % เฉพาะสินค้า / ชิ้นถัดไปลด %)
       stackable: isStackablePrivilegeRow_(row), // ⚡ เพิ่ม (29/9/69) — หน้าร้านขึ้นป้าย "ใช้ร่วมกับโปรอื่นได้/ไม่ได้" บนตั๋วสิทธิ์
       exclusive: isExclusivePromo_(String(row[2] || ''), row[10], isStackablePrivilegeRow_(row)),
       isUpcoming: isUpcoming,
@@ -1943,7 +1963,7 @@ function withoutSameCoupon_(autoCoupons, manual) {
   return (autoCoupons || []).filter(function (c) { return String(c.rowIndex) !== String(manual.rowIndex); });
 }
 
-function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey, stackableOnly) {
+function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey, stackableOnly, countedCodes) {
   try {
     var bundle_ = getCouponsRawBundle_();
     var data = bundle_.rows;
@@ -1971,6 +1991,7 @@ function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey
       if (subtotal < minPurchase) return false;
       var maxUses = parseInt(row[4]) || 0;
       var usedCount = parseInt(row[5]) || 0;
+      if (codeInList_(row[0], countedCodes)) usedCount = Math.max(0, usedCount - 1);
       if (maxUses > 0 && usedCount >= maxUses) return false;
       return true;
     }
@@ -2184,6 +2205,16 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     var memberRow_ = memberFound_ ? memberFound_.values : null;
     var memberTierKey_ = memberRow_ ? resolveTierByStoredValue_(memberRow_[6], memberRow_[11] || 0, profile.sub).key : '';
 
+    // ⚡ เพิ่ม (4/10/69) — กำลังแก้ไขออเดอร์ที่รอแนบสลิป: สิทธิ์/คูปองที่ออเดอร์นี้จองไว้ยังใช้กับออเดอร์นี้ได้
+    // (ถ้ายังไม่หมดอายุ) และบอกหน้าเว็บว่าโปรเดิมตัวไหนหลุด/คืนให้ (ป๊อปอัปยอดชำระมีการเปลี่ยนแปลง)
+    existingOrderId = String(existingOrderId || '').trim();
+    var editTarget_ = null, reservedByEdit_ = null;
+    if (existingOrderId) {
+      editTarget_ = getEditableShopOrder_(profile.sub, memberRow_ ? memberRow_[3] : '', existingOrderId);
+      if (editTarget_.error) return { success: false, error: editTarget_.error, editBlocked: true };
+      reservedByEdit_ = promoReservedByOrder_(profile.sub, editTarget_.remark, editTarget_.bill.orderTime);
+    }
+
     var rawItems = [];
     try { rawItems = JSON.parse(itemsJson || '[]'); } catch (e) {}
     var priceMap = {}, weightMap = {};
@@ -2208,15 +2239,16 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     // getAllPrivilegesWithDiscount_ แยกกัน ซึ่งเดิมคำนวณส่วนลดของสิทธิพิเศษชุดเดียวกันซ้ำสองรอบ
     var excludeSet_ = {};
     excludeRowIndexes.forEach(function (n) { if (n !== '' && n !== null && n !== undefined) excludeSet_[String(n)] = true; });
-    var allPrivileges = getAllPrivilegesWithDiscount_(profile.sub, subtotal, items, priceMap, shippingCost);
+    var allPrivileges = getAllPrivilegesWithDiscount_(profile.sub, subtotal, items, priceMap, shippingCost, reservedByEdit_ ? reservedByEdit_.privilegeRows : null);
     var appliedPrivileges = allPrivileges.filter(function (p) { return !excludeSet_[String(p.rowIndex)]; });
     var coupon = null, couponError = null;
     if (couponCode) {
-      var manual = validateCoupon_(couponCode, subtotal, items, priceMap, shippingCost, memberTierKey_, profile.sub, { orderId: existingOrderId });
+      var manual = validateCoupon_(couponCode, subtotal, items, priceMap, shippingCost, memberTierKey_, profile.sub,
+        { orderId: existingOrderId, countedInOrder: !!reservedByEdit_ && codeInList_(couponCode, reservedByEdit_.couponCodes) });
       if (manual && manual.error) couponError = manual.error; else coupon = manual;
     }
 
-    var rawAutoCoupons = findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey_);
+    var rawAutoCoupons = findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey_, false, reservedByEdit_ ? reservedByEdit_.couponCodes : null);
     // ⚡ แก้ (25/9/69) — โค้ดที่ลูกค้าพิมพ์เอง "ลดเพิ่ม" จากคูปองอัตโนมัติทุกใบ (เดิมตัดคูปองอัตโนมัติที่ลดค่าสินค้าออก
     // เหลือแค่ลดค่าส่ง) — ตัดเฉพาะกรณีพิมพ์โค้ดของคูปองอัตโนมัติใบเดียวกันซ้ำ กันลดซ้ำ 2 รอบ (ใช้ร่วมกับ createShopOrder)
     var autoCoupons = coupon ? withoutSameCoupon_(rawAutoCoupons, coupon) : rawAutoCoupons;
@@ -2260,7 +2292,7 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     var repeatConfigPreview_ = getActiveRepeatBonusConfig_(items, subtotal);
     if (repeatConfigPreview_ && memberRow_) {
       var phoneForPromo_ = String(memberRow_[3] || '');
-      if (phoneForPromo_ && countPriorOrdersThisMonth_(phoneForPromo_, '') > 0) {
+      if (phoneForPromo_ && countPriorOrdersThisMonth_(phoneForPromo_, existingOrderId) > 0) {
         var repeatDiscountPreview_ = 0;
         // bonusPoints/multiplier ส่งกลับไปเสมอ (กติกายกเว้น "การให้คะแนนพิเศษ" ไว้)
         // ส่วนลดโปรซื้อซ้ำถูกตัดเมื่อใช้สิทธิ์สมาชิกที่ไม่ติ๊กใช้ร่วมได้ (กติกาเดิม — คะแนนโบนัส/ตัวคูณยังได้)
@@ -2285,12 +2317,18 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
 
     var memberPointsBalance_ = 0;
     if (memberRow_) {
-      var reservedPoints_ = getPendingPointsReservedForPhone_(memberRow_[3], '', true);
+      var reservedPoints_ = getPendingPointsReservedForPhone_(memberRow_[3], existingOrderId, true);
       memberPointsBalance_ = Math.max(0, (memberRow_[5] || 0) - reservedPoints_);
     }
     var pointsRedeemResult_ = calcPointsRedeemDiscount_(pointsToRedeem, memberPointsBalance_, payableBeforePoints_);
 
-    return { success: true, privileges: appliedPrivileges, privilegeDiscount: privilegeDiscount, allPrivileges: allPrivileges, privilegeLockNote: privilegeLock_.note, privilegeLocked: false, coupon: coupon, autoCoupons: autoCoupons, couponError: couponError, shippingCost: shippingCost, shippingDiscount: totalShippingDiscount, finalShippingCost: finalShippingCost, totalWeightG: totalWeightG, repeatPromo: repeatPromo,
+    var editChanges_ = null;
+    if (reservedByEdit_) {
+      var editDiff_ = diffReservedPromos_(reservedByEdit_, appliedPrivileges, coupon ? [coupon].concat(autoCoupons) : autoCoupons);
+      editChanges_ = { orderId: existingOrderId, oldAmount: editTarget_.bill.billTotal, lost: editDiff_.lost, returned: editDiff_.returned };
+    }
+
+    return { success: true, editChanges: editChanges_, privileges: appliedPrivileges, privilegeDiscount: privilegeDiscount, allPrivileges: allPrivileges, privilegeLockNote: privilegeLock_.note, privilegeLocked: false, coupon: coupon, autoCoupons: autoCoupons, couponError: couponError, shippingCost: shippingCost, shippingDiscount: totalShippingDiscount, finalShippingCost: finalShippingCost, totalWeightG: totalWeightG, repeatPromo: repeatPromo,
       memberPoints: memberPointsBalance_, pointsRedeemConfig: getPointsRedeemConfig_(), pointsRedeemDiscount: pointsRedeemResult_.discount, pointsUsed: pointsRedeemResult_.pointsUsed, pointsRedeemError: pointsRedeemResult_.error };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -2326,6 +2364,119 @@ function privilegeRowsUsedByOrder_(lineUid, remark, orderTime) {
     return out;
   } catch (e) {
     return [];
+  }
+}
+
+function getEditableShopOrder_(lineUid, phone, orderId) {
+  orderId = String(orderId || '').trim();
+  if (!orderId) return { error: 'ไม่พบเลขที่ออเดอร์' };
+  var sheet = SpreadsheetApp.openById(REVENUE_SHEET_ID_SHOP).getSheetByName(REVENUE_SHEET_NAME_SHOP);
+  var lastRow = sheet.getLastRow();
+  var targetRow = -1;
+  if (lastRow > 1) {
+    var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]) === orderId) { targetRow = i + 2; break; }
+    }
+  }
+  if (targetRow === -1) return { error: 'ไม่พบออเดอร์นี้ในระบบ' };
+  if (String(sheet.getRange(targetRow, 3).getValue()) === CANCELLED_ORDER_MARK_) return { error: 'คำสั่งซื้อนี้ถูกยกเลิกไปแล้ว' };
+  var bill = getBillDataForNotify_(sheet, targetRow);
+  var isOwner_ = bill.lineUid ? bill.lineUid === String(lineUid) : (!!phone && bill.phone === String(phone));
+  if (!isOwner_) return { error: 'ไม่มีสิทธิ์แก้ไขออเดอร์นี้' };
+  if (bill.slipImageUrl) return { error: 'ออเดอร์นี้แนบสลิปแล้ว แก้ไขรายการไม่ได้ กรุณาติดต่อทีมงาน' };
+  return { row: targetRow, orderId: orderId, bill: bill, remark: String(sheet.getRange(targetRow, 20).getValue() || '') };
+}
+
+function promoReservedByOrder_(lineUid, remark, orderTime) {
+  var codes = [];
+  var re = /คูปอง:\s*([^\(]+?)\s*\(-\d/g, m;
+  while ((m = re.exec(remark || '')) !== null) codes.push(m[1].trim());
+  return { privilegeRows: privilegeRowsUsedByOrder_(lineUid, remark, orderTime), couponCodes: codes };
+}
+
+function codeInList_(code, list) {
+  var c = String(code || '').trim().toUpperCase();
+  return !!c && (list || []).some(function (x) { return String(x).trim().toUpperCase() === c; });
+}
+
+function promoUntilText_(value) {
+  if (!value) return '';
+  var d = new Date(value);
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
+function diffReservedPromos_(reserved, appliedPrivileges, appliedCoupons) {
+  var out = { lost: [], returned: [], privilegeRows: [], couponRows: [] };
+  if (!reserved) return out;
+  var now = new Date();
+  var usedPriv_ = {};
+  (appliedPrivileges || []).forEach(function (p) { usedPriv_[String(p.rowIndex)] = true; });
+  if (reserved.privilegeRows.length) {
+    readRowsMerged_(ensurePrivilegesSheet_(), reserved.privilegeRows, 10).forEach(function (entry) {
+      if (usedPriv_[String(entry.rowIndex)]) return;
+      var row = entry.values;
+      var name = String(row[1] || '').trim();
+      if (isExpired_(row[4], now)) {
+        out.lost.push({ kind: 'privilege', name: name, reason: 'expired' });
+      } else {
+        out.returned.push({ kind: 'privilege', name: name, until: promoUntilText_(row[4]) });
+        out.privilegeRows.push(entry.rowIndex);
+      }
+    });
+  }
+  if (reserved.couponCodes.length) {
+    var usedCodes_ = (appliedCoupons || []).map(function (c) { return c.code; });
+    var bundle_ = getCouponsRawBundle_();
+    reserved.couponCodes.forEach(function (code) {
+      if (codeInList_(code, usedCodes_)) return;
+      var idx = -1;
+      for (var i = 0; i < bundle_.rows.length; i++) {
+        if (codeInList_(bundle_.rows[i][0], [code])) { idx = i; break; }
+      }
+      if (idx === -1) { out.lost.push({ kind: 'coupon', name: code, reason: 'inactive' }); return; }
+      var row = bundle_.rows[idx];
+      var expired_ = isExpired_(row[6], now);
+      var active_ = row[7] === true || String(row[7]).toUpperCase() === 'TRUE';
+      if (!expired_) out.couponRows.push(idx + 2); // ยังไม่หมดอายุ = คืนจำนวนครั้งที่ใช้
+      if (expired_ || !active_) out.lost.push({ kind: 'coupon', name: code, reason: expired_ ? 'expired' : 'inactive' });
+      else out.returned.push({ kind: 'coupon', name: code, until: promoUntilText_(row[6]) });
+    });
+  }
+  return out;
+}
+
+function getPendingOrderForEdit(idToken, orderId) {
+  try {
+    var profile = verifyLineIdToken_(idToken);
+    if (!profile) return { success: false, error: 'ยืนยันตัวตนกับ LINE ไม่สำเร็จ (' + lastLineVerifyError_ + ')' };
+    var memberFound_ = getMemberRowByUid_(profile.sub, 4);
+    var target = getEditableShopOrder_(profile.sub, memberFound_ ? memberFound_.values[3] : '', orderId);
+    if (target.error) return { success: false, error: target.error };
+    var bill = target.bill;
+    // โค้ดที่ลูกค้าพิมพ์เอง (คูปองอัตโนมัติระบบหาให้เองอยู่แล้ว)
+    var typedCode = '';
+    var bundle_ = getCouponsRawBundle_();
+    promoReservedByOrder_(profile.sub, target.remark, '').couponCodes.some(function (code) {
+      return bundle_.rows.some(function (row) {
+        if (!codeInList_(row[0], [code])) return false;
+        var autoApply = row[8] === true || String(row[8]).toUpperCase() === 'TRUE';
+        if (!autoApply) typedCode = String(row[0]).trim();
+        return true;
+      }) && !!typedCode;
+    });
+    var pending = parsePendingPointsReservation_(target.remark);
+    return {
+      success: true, orderId: target.orderId,
+      items: bill.items.map(function (it) { return { name: it.name, qty: it.qty }; }),
+      couponCode: typedCode,
+      paymentMethod: bill.paymentLabel.indexOf('พร้อมเพย์') !== -1 ? 'promptpay' : 'bank',
+      shippingAddress: bill.address, province: bill.province,
+      pointsToRedeem: pending.points || 0, purchaseReferrerCode: bill.purchaseReferrerCode || '',
+      totalAmount: bill.billTotal
+    };
+  } catch (e) {
+    return { success: false, error: e.toString() };
   }
 }
 
@@ -2514,5 +2665,5 @@ function getBillDataForNotify_(sheet, targetRow) {
   };
 }
 
-  return { getShopBootstrap, getPrivilegesPanelData, checkMemberStatus, getMyPrivileges, getPointsHistory, getActiveCoupons, getReferralPublicStatus, getMyShippingAddress, getMyOrderHistory, checkShopDiscounts, checkPendingOrderPromoStillValid, getTierConfig_, getSignupBonusPoints_, getSignupPrivilegeConfig_, getPointsRedeemConfig_, decodeItemsB64_ };
+  return { getShopBootstrap, getPrivilegesPanelData, checkMemberStatus, getMyPrivileges, getPointsHistory, getActiveCoupons, getReferralPublicStatus, getMyShippingAddress, getMyOrderHistory, checkShopDiscounts, checkPendingOrderPromoStillValid, getPendingOrderForEdit, getTierConfig_, getSignupBonusPoints_, getSignupPrivilegeConfig_, getPointsRedeemConfig_, decodeItemsB64_ };
 }

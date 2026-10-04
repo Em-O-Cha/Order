@@ -8,9 +8,11 @@
 // action=createShopOrder — พารามิเตอร์เดียวกับที่ส่งให้ Apps Script + clientKey (uuid สุ่มต่อการกดยืนยัน 1 ครั้ง)
 //   ตอบ { ...ผลที่ทำนาย (รูปเดียวกับ createShopOrder), orderId: '', pending: true, requestId }
 //   หรือ { success:false, needsAppsScript:true, reason } ให้หน้าเว็บสั่งซื้อทาง Apps Script เดิม เมื่อ
-//     - สวิตช์ orders.settings.live ยังปิด / แก้ไขออเดอร์เดิม (existingOrderId) / สำเนายังไม่ทัน
+//     - สวิตช์ orders.settings.live ยังปิด / สำเนายังไม่ทัน
 //     - ผลที่ทำนายไม่สำเร็จ (เช่น คูปองใช้ไม่ได้) — ให้ Apps Script ตัดสินและตอบข้อความเดิม
 //     - ตัวจำลองไม่รองรับสิ่งที่โค้ดทำ / เกิดข้อผิดพลาด
+//   แก้ไขออเดอร์ที่รอแนบสลิป (existingOrderId): ทำนายยอดแบบเดียวกัน (ถือว่าแถวเดิมถูกลบแล้ว) ตอบ editingOrderId
+//   กลับไปด้วย Apps Script แก้ชีตจริงตามหลัง (ลบแถวเดิม เขียนใหม่ด้วยเลขเดิม คืนสิทธิ์/คูปองที่ไม่ได้ใช้แล้ว)
 //   คำสั่งซื้อที่รับแล้วแต่ยังไม่ลงชีตถูกเล่นทับสำเนาก่อนคำนวณ (สิทธิ์ใบเดียว/แต้มก้อนเดียวใช้ซ้ำไม่ได้) และ
 //   order_insert บันทึกตามลำดับ (มีคำสั่งซื้ออื่นแทรก = คำนวณใหม่) แทน ScriptLock
 //   clientKey ซ้ำ = คำสั่งซื้อเดิม (กดซ้ำ/เน็ตหลุดแล้วส่งใหม่ ได้ออเดอร์เดียว)
@@ -52,15 +54,17 @@ const FULL_TABS = [
   "members/Rewards_Catalog", "members/Referral_Log", "members/Purchase_Referral_Log", "members/Redemption_Log",
   "members/Shipping_Config", "revenue/Revenue", "master/SKU", PROPS_KEY,
 ];
-// แท็บที่แนบสลิป/ยกเลิกใช้ (อ่านนอกรายการ = คำนวณใหม่ด้วยทุกแท็บ)
-const ACTION_TABS = ["members/Members", "members/Points_Log", "revenue/Revenue#slim", PROPS_KEY];
+// แท็บที่แนบสลิป/ยกเลิกใช้ (อ่านนอกรายการ = คำนวณใหม่ด้วยทุกแท็บ) — ยกเลิกคืนสิทธิ์/คูปองที่ออเดอร์จองไว้
+const ACTION_TABS = [
+  "members/Members", "members/Points_Log", "members/Member_Privileges", "members/Coupons", "revenue/Revenue#slim", PROPS_KEY,
+];
 const MAX_SLIP_BASE64 = 12 * 1024 * 1024;
 const NOT_LOADED = "gas_runtime: ไม่ได้โหลดแท็บ ";
 const MAX_ATTEMPTS = 5;
 // พารามิเตอร์ของ createShopOrder ที่เก็บไว้ให้ Apps Script รันซ้ำ (ไม่เก็บโทเคน LINE)
 const ORDER_PARAMS = [
   "itemsB64", "paymentMethod", "couponCode", "shippingAddress", "province", "excludePrivilegeName",
-  "purchaseReferrerCode", "pointsToRedeem", "giftChoices",
+  "purchaseReferrerCode", "pointsToRedeem", "giftChoices", "existingOrderId",
 ];
 
 type Result = Record<string, any>;
@@ -113,13 +117,17 @@ function runKind(kind: Kind, tabs: Map<string, Tab>, keys: string[], profile: Re
     checkAndGrantReferralOnFirstPurchase_: noop, checkAndGrantPurchaseReferral_: noop, sendLineMessages_: noop,
     notifyBuyerPendingSlip_: noop, notifyBuyerOrderCancelled_: noop,
     DriveApp, scheduleSlipFinalize_: noop,
+    // แก้ไขออเดอร์: ตัวจำลองลบแถวไม่ได้ ทำนายโดยถือว่าแถวเดิมถูกลบแล้ว (createShopOrder เช็คก่อนแล้วว่าออเดอร์มีจริง
+    // เป็นของลูกค้าคนนี้ และยังไม่แนบสลิป) / ออเดอร์ที่รอแนบสลิปยังไม่มีรายการแลกคะแนนให้คืน
+    deleteExistingOrderRows_: () => true, reverseRedeemedPointsForOrder_: () => 0,
   });
   let result: Result;
   try {
-    // ลำดับ/ค่าเหมือน doGet/doPost ของ Members.gs (existingOrderId ว่างเสมอ: แก้ไขออเดอร์ใช้ทางเดิม)
+    // ลำดับ/ค่าเหมือน doGet/doPost ของ Members.gs
     if (kind === "order") {
       result = gas.createShopOrder("supabase", gas.decodeItemsB64_(p.itemsB64), p.paymentMethod, p.couponCode,
-        p.shippingAddress, p.province, p.excludePrivilegeName, "", p.purchaseReferrerCode, p.pointsToRedeem, p.giftChoices);
+        p.shippingAddress, p.province, p.excludePrivilegeName, String(p.existingOrderId || "").trim(),
+        p.purchaseReferrerCode, p.pointsToRedeem, p.giftChoices);
     } else if (kind === "slip") {
       // รูปจริงไม่ต้องใช้ตอนตรวจเงื่อนไข (ตัวจริงอัปโหลดลง Drive ตอนเขียนชีต)
       result = gas.uploadShopSlip(p.orderId, "AA==", p.fileName, p.mimeType);
@@ -179,7 +187,8 @@ function accepted(requestId: string, predicted: Result, extra: Record<string, un
 }
 
 async function createOrder(p: P, profile: Record<string, unknown>, isTest: boolean, t0: number) {
-  if (String(p.existingOrderId || "").trim()) return fallback("แก้ไขออเดอร์เดิมใช้ทางเดิม");
+  const editingOrderId = String(p.existingOrderId || "").trim();
+  if (editingOrderId && !/^REV\d{4,}$/.test(editingOrderId)) return fallback("เลขออเดอร์ที่แก้ไขไม่ถูกต้อง");
   const clientKey = String(p.clientKey || "").trim();
   if (!/^[A-Za-z0-9-]{16,64}$/.test(clientKey)) return fallback("ไม่มี clientKey");
   const timings: Record<string, number> = {};
@@ -195,6 +204,8 @@ async function createOrder(p: P, profile: Record<string, unknown>, isTest: boole
     if (!run.result || run.result.success !== true) {
       return fallback("ให้ Apps Script ตัดสิน", { detail: String(run.result?.error || run.result?.thrown || "") });
     }
+    // แก้ไขออเดอร์: ต้องได้เลขเดิมกลับมา (ไม่ได้ = ตัวจำลองไม่เจอออเดอร์เดิม ให้ Apps Script ตัดสิน)
+    if (editingOrderId && String(run.result.orderId) !== editingOrderId) return fallback("ทำนายการแก้ไขไม่ตรงเลขเดิม");
 
     const request: Record<string, unknown> = { profileName: String(profile.name || "") };
     for (const k of ORDER_PARAMS) if (p[k] !== undefined) request[k] = p[k];
@@ -212,12 +223,14 @@ async function createOrder(p: P, profile: Record<string, unknown>, isTest: boole
         const kick = kickWriter(prep.appsScriptUrl);
         if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(kick);
       }
-      return accepted(ins.id, predicted, isTest ? { timings, ms: Date.now() - t0 } : {});
+      return accepted(ins.id, predicted, {
+        ...(editingOrderId ? { editingOrderId } : {}), ...(isTest ? { timings, ms: Date.now() - t0 } : {}),
+      });
     }
     if (ins.conflict === "duplicate") {
       const st = await rpc("order_status", { p_id: ins.id });
       if (!st || st.line_uid !== String(profile.sub)) return fallback("clientKey ซ้ำ");
-      return accepted(ins.id, st.predicted, { duplicate: true });
+      return accepted(ins.id, st.predicted, { duplicate: true, ...(editingOrderId ? { editingOrderId } : {}) });
     }
     // มีคำสั่งซื้ออื่นเข้ามาระหว่างคำนวณ: คำนวณใหม่โดยนับรวมคำสั่งซื้อนั้น
   }
