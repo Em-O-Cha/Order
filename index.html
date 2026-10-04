@@ -194,6 +194,15 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .stepper .step.done .step-label{color:var(--gm);}
 .stepper .step-line{flex:1 1 auto;height:2px;background:#eee;margin-top:12px;}
 .stepper .step-line.done{background:var(--gm);}
+/* ⚡ (4/10/69) แถบสีเขียวอ่อนให้เห็นชัด + ขั้นปัจจุบันวงใหญ่กว่าขั้นอื่น
+   (วงเล็ก 28px เว้นบน 6px / วงใหญ่ 40px — จุดกึ่งกลางอยู่ระดับเดียวกันที่ 20px ให้เส้นเชื่อมตรงกลางพอดี) */
+.stepper{background:var(--gp);border-top:1px solid var(--gb);border-bottom:1px solid var(--gb);padding:12px 12px 10px;}
+.stepper .step-dot{width:28px;height:28px;margin-top:6px;font-size:13px;background:#fff;border-color:#d6d6d6;color:#9e9e9e;}
+.stepper .step-label{margin-top:6px;font-size:11px;color:#8a8a8a;}
+.stepper .step-line{margin-top:19px;background:#d6d6d6;}
+.stepper .step.done .step-dot{background:#fff;}
+.stepper .step.active .step-dot{width:40px;height:40px;margin-top:0;font-size:18px;box-shadow:0 0 0 4px rgba(46,125,50,.2);}
+.stepper .step.active .step-label{margin-top:6px;font-size:13px;font-weight:700;}
 
 /* ==================== Address confirm popup ==================== */
 .mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:center;justify-content:center;padding:16px;}
