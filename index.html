@@ -249,6 +249,25 @@ button,.btn,.sbu,.shop-cta-btn{
 button.copy-account-btn{background:#fff !important;border:1px solid #d7d7d7 !important;box-shadow:none !important;}
 /* ปุ่มดำเนินการต่อและปุ่ม “ไม่ใช่” ในคำสั่งซื้อรอดำเนินการ ใช้สีเขียว */
 button.icon-btn-success{background:linear-gradient(135deg,var(--gd),var(--gm)) !important;border-color:var(--gm) !important;color:#fff !important;box-shadow:0 4px 12px rgba(46,125,50,.35) !important;}
+/* ⚡ เพิ่ม (4/10/69) — แก้ไขออเดอร์ที่รอแนบสลิป: ปุ่ม ✏️ บนการ์ดในหน้ารถเข็น (สีส้ม) + ชื่อปุ่มใต้ไอคอน,
+   ปุ่มรองหน้าสั่งซื้อสำเร็จเป็นปุ่มขาววางคู่กันแถวเดียว (ปุ่มแดงใหญ่มีปุ่มเดียวคือแนบสลิป), แถบ "กำลังแก้ไขออเดอร์" */
+button.icon-btn-edit{background:linear-gradient(135deg,#ef6c00,#ffa726) !important;border:1.5px solid #ef6c00 !important;color:#fff !important;box-shadow:0 4px 12px rgba(239,108,0,.35) !important;}
+.order-acts{display:flex;justify-content:space-between;align-items:flex-start;margin-top:12px;}
+.order-act{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:64px;font-size:11px;color:var(--g6);}
+.done-sub-row{display:flex;gap:8px;width:100%;}
+.done-sub-row .btn-sub{flex:1;min-width:0;height:42px;padding:0 8px;font-size:14px;white-space:nowrap;}
+.btn-sub{background:#fff !important;color:#a50d0c !important;border:1.5px solid #a50d0c !important;box-shadow:none !important;}
+#orderDoneState{padding-bottom:70px;} /* เว้นที่ให้แถบปุ่มด้านล่าง ไม่ให้บังข้อความใต้สรุปยอด */
+.editing-order-banner{background:#fff3e0;color:#7a4d12;border-radius:10px;padding:10px 12px;font-size:12.5px;
+  line-height:1.5;margin-bottom:14px;display:flex;align-items:center;gap:8px;text-align:left;}
+.editing-order-banner span{flex:1;}
+.editing-order-banner button{flex-shrink:0;background:#fff !important;border:1px solid #e0b37a !important;color:#7a4d12 !important;
+  box-shadow:none !important;border-radius:8px;padding:5px 10px;font-size:12px;font-family:'Kanit',sans-serif;cursor:pointer;}
+.edit-change{font-size:12.5px;line-height:1.55;border-radius:10px;padding:8px 10px;margin-bottom:8px;text-align:left;}
+.edit-change.lost{background:#ffebee;color:#b71c1c;}
+.edit-change.back{background:#e8f5e9;color:#1b5e20;}
+.mini-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(120px + env(safe-area-inset-bottom));z-index:400;
+  background:rgba(33,33,33,.92);color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;max-width:calc(100% - 32px);text-align:center;}
 button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
 </style>
 </head>
@@ -278,6 +297,10 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
       <p style="color:var(--g6);font-size:14px">กำลังเชื่อมต่อกับ LINE...</p>
     </div>
 
+    <div id="editingOrderBanner" class="editing-order-banner sh">
+      <span>✏️ กำลังแก้ไขออเดอร์ <b id="editingOrderIdText"></b><br>เพิ่ม/ลดสินค้า แล้วกดไปหน้าชำระเงิน</span>
+      <button type="button" onclick="cancelEditOrder_()">ไม่แก้แล้ว</button>
+    </div>
     <div id="catalogState" class="sh">
       <div class="history-link"><button type="button" onclick="showHistory()">🛒 รถเข็น<span class="cart-count sh" id="cartCount"></span></button></div>
       <div id="myPrivileges" class="sh" style="margin-bottom:16px"></div>
@@ -329,8 +352,8 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
     </div>
 
     <div id="orderDoneState" class="sh state">
-      <div class="ico">🎉</div>
-      <p style="font-weight:600">สั่งซื้อสำเร็จ!</p>
+      <div class="ico" id="orderDoneIcon">🎉</div>
+      <p style="font-weight:600" id="orderDoneTitle">สั่งซื้อสำเร็จ!</p>
       <div class="order-box" id="orderSummary"></div>
       <p style="font-size:12px;color:var(--g6);margin-top:10px" id="orderDoneHint">กดปุ่มด้านล่างเพื่อแนบสลิป — ทีมงานจะตรวจสอบและจัดส่งให้เร็วที่สุด</p>
       <div id="slipDoneNotice" class="sh" style="margin-top:14px;padding:12px 14px;background:#e8f5e9;border-radius:12px;font-size:13.5px;color:#1b5e20;text-align:center">
@@ -358,7 +381,10 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
   </div>
   <div class="cart-bar sh" id="orderDoneBar">
     <button class="btn btn-block" id="slipMainBtn" onclick="openSlipUploadPage()">📎 แนบสลิปการโอนเงิน</button>
-    <button class="btn btn-outline btn-block sh" id="backToPaymentBtn" onclick="openPaymentRecallModal_()">🔙 ดูเลขบัญชี/QR อีกครั้ง</button>
+    <div class="done-sub-row">
+      <button class="btn btn-sub sh" id="backToPaymentBtn" onclick="openPaymentRecallModal_()">💳 ดูเลขบัญชี/QR</button>
+      <button class="btn btn-sub sh" id="editOrderBtn" onclick="startEditOrder_(pendingSlipOrderId, 'orderDoneState', this)">✏️ แก้ไขรายการ</button>
+    </div>
   </div>
 </div>
 
@@ -451,6 +477,29 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
   </div>
 </div>
 
+<!-- ⚡ เพิ่ม (4/10/69) — แก้ไขออเดอร์แล้วโปร/สิทธิ์เดิมเปลี่ยน (หมดอายุ / ไม่ได้ใช้แล้วคืนให้) แจ้งก่อนบันทึก
+     หน้าตาเดียวกับป๊อปอัป "ยอดชำระมีการเปลี่ยนแปลง" ของออเดอร์ที่รอแนบสลิป -->
+<div class="mo" id="editChangesModal">
+  <div class="mo-card">
+    <div class="mo-hd">
+      <h2>⚠️ ยอดชำระมีการเปลี่ยนแปลง</h2>
+      <p style="font-size:12.5px;opacity:.9;margin-top:4px">เลขที่ออเดอร์: <b id="editChangesOrderId"></b> (เลขเดิม)</p>
+    </div>
+    <div class="mo-bd">
+      <div class="bank-box" style="margin-top:0;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12.5px;color:var(--g6)">ยอดที่ต้องชำระ</span>
+        <span>
+          <span style="font-size:13px;color:#9a9a9a;text-decoration:line-through;margin-right:8px" id="editChangesOldAmount"></span>
+          <span style="font-size:20px;font-weight:700;color:#e65100" id="editChangesNewAmount"></span>
+        </span>
+      </div>
+      <div id="editChangesList"></div>
+      <button type="button" class="btn btn-block" style="margin-top:6px" id="editChangesConfirmBtn" onclick="confirmEditChanges_()">ยืนยันยอดใหม่</button>
+      <button type="button" class="btn btn-sub btn-block" style="margin-top:10px" onclick="backToEditFromChanges_()">กลับไปแก้ไขต่อ</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 <script>
 // ⚡ แก้ (1/9/69) — เดิม <script src="...sdk.js"> เป็น tag ปกติ (ไม่มี defer/async) เป็น script แบบบล็อกการ
@@ -521,6 +570,14 @@ var pointsToRedeemInput_ = 0; // ⚡ เพิ่ม (19/8/69) จำนวน�
 var LIFF_LOGIN_GUARD = 'emocha.shop.login-attempted';
 var pendingSlipOrderId = '';
 var currentOrderId = '';
+// ⚡ เพิ่ม (4/10/69) — โหมดแก้ไขออเดอร์ที่รอแนบสลิป (เลขออเดอร์เดิม): currentOrderId = เลขที่กำลังแก้ ส่งเป็น
+// existingOrderId ทั้งตอนคำนวณยอด (checkShopDiscounts) และตอนบันทึก (createShopOrder)
+var editingOrderId_ = '';
+var editReturnState_ = '';   // "ไม่แก้แล้ว" กลับไปหน้าไหน (orderDoneState / historyState)
+var editSnapshot_ = null;    // ค่าก่อนเข้าโหมดแก้ไข ไว้คืนตอน "ไม่แก้แล้ว"
+var editOldAmount_ = 0;      // ยอดเดิมของออเดอร์ (ขีดฆ่าไว้ในหน้าแก้ไขสำเร็จ)
+var editChangesAckSig_ = ''; // ลูกค้ายืนยันป๊อปอัปโปรเปลี่ยนแล้วสำหรับตะกร้าชุดนี้
+var doneOldAmount_ = 0;      // หน้าสั่งซื้อสำเร็จ: ยอดเดิมที่ขีดฆ่า (เฉพาะแก้ไขออเดอร์)
 // ⚡ เพิ่ม — ยอดเงินที่ยืนยันสั่งซื้อไปแล้ว (ไม่ใช่ getFinalTotal() สด) ใช้โชว์ QR/เลขบัญชีซ้ำที่หน้า
 // "สั่งซื้อสำเร็จ" กันปัญหายอดเพี้ยนถ้าตะกร้าปัจจุบันเปลี่ยนไปหลังยืนยันสั่งซื้อแล้ว
 var lastOrderAmount_ = 0;
@@ -584,6 +641,140 @@ function openPaymentRecallModal_(){
 }
 function closePaymentRecallModal_(){
   document.getElementById('paymentRecallModal').classList.remove('show');
+}
+
+// ==================== ⚡ เพิ่ม (4/10/69) — แก้ไขออเดอร์ที่รอแนบสลิป (เลขออเดอร์เดิม) ====================
+// เข้าได้ 2 ทาง: ปุ่ม "แก้ไขรายการ" หน้าสั่งซื้อสำเร็จ และปุ่ม ✏️ บนการ์ดในหน้ารถเข็น — ดึงรายการ/คูปอง/วิธีชำระ/
+// ที่อยู่ของออเดอร์จากเซิร์ฟเวอร์ (getPendingOrderForEdit) ใส่ให้ แล้วพาไปหน้าเลือกสินค้า ลูกค้าเพิ่ม/ลดได้ตามปกติ
+// กดยืนยันแล้วระบบแก้ออเดอร์เดิม สิทธิ์/คูปองที่ออเดอร์นี้จองไว้ยังใช้ได้ (ถ้ายังไม่หมดอายุ) ที่ไม่ได้ใช้แล้วคืนให้ลูกค้า
+function updateEditOrderBtn_(){
+  var b = document.getElementById('editOrderBtn');
+  if (b) b.classList.toggle('sh', !pendingSlipOrderId);
+}
+function showMiniToast_(msg){
+  var t = document.createElement('div');
+  t.className = 'mini-toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 4500);
+}
+function confirmAddressBtnText_(){
+  return editingOrderId_ ? '✅ ยืนยันที่อยู่และแก้ไขออเดอร์' : '✅ ยืนยันที่อยู่และสั่งซื้อ';
+}
+function beginEditMode_(orderId, fromState, oldAmount, snapshot){
+  editingOrderId_ = orderId;
+  currentOrderId = orderId;
+  editReturnState_ = fromState;
+  editOldAmount_ = oldAmount;
+  editSnapshot_ = snapshot;
+  editChangesAckSig_ = '';
+  document.getElementById('editingOrderIdText').textContent = '#' + orderId;
+  document.getElementById('confirmOrderBtn').textContent = '✅ ยืนยันแก้ไขออเดอร์';
+  document.getElementById('confirmAddressBtn').textContent = confirmAddressBtnText_();
+}
+function endEditMode_(){
+  editingOrderId_ = '';
+  editSnapshot_ = null;
+  editChangesAckSig_ = '';
+  document.getElementById('editingOrderBanner').classList.add('sh');
+  document.getElementById('confirmOrderBtn').textContent = '✅ ยืนยันสั่งซื้อ';
+  document.getElementById('confirmAddressBtn').textContent = confirmAddressBtnText_();
+}
+function setCartFromItems_(items){
+  cart = {};
+  (items || []).forEach(function(it){
+    if (findVariant(it.name) && it.qty > 0) cart[it.name] = it.qty;
+  });
+  if (variantList.length) renderCatalog();
+  updateCartBar();
+}
+var editLoadInFlight_ = false;
+function startEditOrder_(orderId, fromState, btnEl){
+  if (!orderId || editLoadInFlight_) return;
+  editLoadInFlight_ = true;
+  var oldHtml = btnEl ? btnEl.innerHTML : '';
+  if (btnEl) { btnEl.disabled = true; if (fromState === 'orderDoneState') btnEl.textContent = '⏳ กำลังโหลด...'; }
+  function restoreBtn_(){ editLoadInFlight_ = false; if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = oldHtml; } }
+  getFreshIdToken().then(function(idToken){
+    return callApiFast_('getPendingOrderForEdit', { idToken: idToken, orderId: orderId });
+  }).then(function(d){
+    restoreBtn_();
+    if (!d || !d.success) { showMiniToast_('แก้ไขออเดอร์นี้ไม่ได้: ' + ((d && d.error) || 'ไม่ทราบสาเหตุ')); return; }
+    var snapshot = {
+      cart: JSON.parse(JSON.stringify(cart)), coupon: appliedCouponCode, payment: selectedPayment,
+      points: pointsToRedeemInput_, excluded: excludedPrivilegeRowIndexes.slice(),
+      address: savedAddress, province: savedProvince, addressLoaded: savedAddressLoaded,
+      referrer: document.getElementById('purchaseReferrerInput').value,
+      currentOrderId: currentOrderId, pendingSlipOrderId: pendingSlipOrderId
+    };
+    beginEditMode_(d.orderId, fromState, Number(d.totalAmount) || 0, snapshot);
+    appliedCouponCode = d.couponCode || '';
+    document.getElementById('couponInput').value = appliedCouponCode;
+    selectPayment(d.paymentMethod === 'promptpay' ? 'promptpay' : 'bank');
+    pointsToRedeemInput_ = Number(d.pointsToRedeem) || 0;
+    excludedPrivilegeRowIndexes = [];
+    savedAddress = d.shippingAddress || savedAddress;
+    savedProvince = d.province || savedProvince;
+    savedAddressLoaded = true;
+    document.getElementById('purchaseReferrerInput').value = d.purchaseReferrerCode || '';
+    setCartFromItems_(d.items);
+    showState('catalogState');
+  }).catch(function(e){
+    restoreBtn_();
+    if (e && e.alreadyShown) return;
+    showMiniToast_('โหลดออเดอร์ไม่สำเร็จ ลองใหม่อีกครั้ง');
+  });
+}
+// "ไม่แก้แล้ว": คืนค่าทุกอย่างเหมือนก่อนกดแก้ไข ออเดอร์บนระบบไม่ถูกแตะ
+function cancelEditOrder_(){
+  if (!editingOrderId_) return;
+  var snap = editSnapshot_ || {};
+  var back = editReturnState_ || 'historyState';
+  endEditMode_();
+  appliedCouponCode = snap.coupon || '';
+  document.getElementById('couponInput').value = '';
+  selectPayment(snap.payment || 'promptpay');
+  pointsToRedeemInput_ = snap.points || 0;
+  excludedPrivilegeRowIndexes = snap.excluded || [];
+  savedAddress = snap.address || ''; savedProvince = snap.province || ''; savedAddressLoaded = !!snap.addressLoaded;
+  document.getElementById('purchaseReferrerInput').value = snap.referrer || '';
+  currentOrderId = snap.currentOrderId || '';
+  pendingSlipOrderId = snap.pendingSlipOrderId || '';
+  cart = snap.cart || {};
+  if (variantList.length) renderCatalog();
+  updateCartBar();
+  clearInlineCheckoutError_();
+  showState(back);
+  if (back === 'orderDoneState' && pendingSlipOrderId) startSlipStatusPoll_(pendingSlipOrderId);
+  if (back === 'historyState') loadOrderHistory();
+}
+function openEditChangesModal_(ch){
+  var newAmount = Math.floor(getFinalTotal());
+  document.getElementById('editChangesOrderId').textContent = editingOrderId_;
+  document.getElementById('editChangesOldAmount').textContent = '฿' + Number(ch.oldAmount || editOldAmount_).toLocaleString('th-TH');
+  document.getElementById('editChangesNewAmount').textContent = '฿' + newAmount.toLocaleString('th-TH');
+  var label = function(x){ return (x.kind === 'coupon' ? 'คูปอง' : 'สิทธิ์') + ' "' + escHtml(x.name) + '"'; };
+  var untilText = function(x){
+    var d = x.until ? new Date(x.until) : null;
+    return (d && !isNaN(d.getTime())) ? ' ใช้ได้ถึง ' + d.toLocaleDateString('th-TH', { day: 'numeric', month: 'numeric', year: 'numeric' }) : '';
+  };
+  var html = (ch.lost || []).map(function(x){
+    return '<div class="edit-change lost">⌛ ' + label(x) + (x.reason === 'expired' ? ' หมดอายุแล้ว' : ' ถูกปิดใช้งานแล้ว') + ' ใช้กับออเดอร์นี้ไม่ได้</div>';
+  }).join('') + (ch.returned || []).map(function(x){
+    return '<div class="edit-change back">↩️ ' + label(x) + ' ไม่ได้ใช้กับรายการใหม่ — คืนให้แล้ว' + untilText(x) + '</div>';
+  }).join('');
+  document.getElementById('editChangesList').innerHTML = html;
+  document.getElementById('editChangesConfirmBtn').textContent = 'ยืนยันยอดใหม่ ฿' + newAmount.toLocaleString('th-TH');
+  document.getElementById('editChangesModal').classList.add('show');
+}
+function confirmEditChanges_(){
+  editChangesAckSig_ = cartSignature_();
+  document.getElementById('editChangesModal').classList.remove('show');
+  openAddressConfirmPopup();
+}
+function backToEditFromChanges_(){
+  document.getElementById('editChangesModal').classList.remove('show');
+  backToCatalog();
 }
 
 var shopWindowClosed_ = false;
@@ -654,6 +845,7 @@ function handleSlipAttachedElsewhere_(){
   document.getElementById('slipUploadModal').classList.remove('show');
   document.getElementById('orderDoneBar').classList.add('sh');
   pendingSlipOrderId = '';
+  updateEditOrderBtn_();
   var hintEl = document.getElementById('orderDoneHint');
   if (hintEl) hintEl.textContent = 'แนบสลิปเรียบร้อยแล้ว ขอบคุณค่ะ 🙏';
   var notice = document.getElementById('slipDoneNotice');
@@ -848,6 +1040,7 @@ function showState(id){
   document.getElementById('checkoutBar').classList.toggle('sh', id !== 'checkoutState');
   document.getElementById('orderDoneBar').classList.toggle('sh', id !== 'orderDoneState');
   if (id !== 'orderDoneState') stopSlipStatusPoll_(); // ออกจากหน้ารอแนบสลิปแล้ว ไม่ต้อง poll ถามสถานะต่อ
+  document.getElementById('editingOrderBanner').classList.toggle('sh', !(editingOrderId_ && (id === 'catalogState' || id === 'checkoutState')));
   setStepper(STEP_MAP_.hasOwnProperty(id) ? STEP_MAP_[id] : null);
   // ⚡ เพิ่ม (26/8/69) — เลื่อนจอกลับขึ้นบนสุดทุกครั้งที่เปลี่ยนหน้า โดยเฉพาะตอนไปหน้าชำระเงิน (checkoutState)
   // เพราะลูกค้าอาจเลื่อนดูสินค้าลงมาลึกมากแล้วก่อนกดปุ่ม "ไปหน้าชำระเงิน" ถ้าไม่เลื่อนกลับขึ้นบนก่อน จอจะ
@@ -1732,6 +1925,7 @@ function loadOrderHistory(){
 var ICON_TRASH_ = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
 var ICON_PAPERCLIP_ = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.2-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>';
 var ICON_CHECK_ = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+var ICON_EDIT_ = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>';
 var ICON_X_ = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
 
 function renderOrderHistory(list, isStale){
@@ -1750,9 +1944,10 @@ function renderOrderHistory(list, isStale){
       + '<div class="row"><span>วันที่</span><span>' + escHtml(o.date) + '</span></div>'
       + '<div class="row"><span>สินค้า</span><span>' + escHtml(o.firstItemName) + '</span></div>'
       + '<div class="row"><span>ยอดชำระ</span><span>฿' + Math.round(o.totalAmount).toLocaleString('th-TH') + '</span></div>'
-      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">'
-      +   '<button class="icon-btn icon-btn-danger" title="ยกเลิกคำสั่งซื้อนี้" aria-label="ยกเลิกคำสั่งซื้อนี้" onclick="askCancelOrder_(\'' + oid + '\')">' + ICON_TRASH_ + '</button>'
-      +   '<button class="icon-btn icon-btn-success" title="ดำเนินการต่อ — แนบสลิป" aria-label="ดำเนินการต่อ แนบสลิป" onclick="continueToSlipUpload(\'' + oid + '\', this)">' + ICON_PAPERCLIP_ + '</button>'
+      + '<div class="order-acts">'
+      +   '<div class="order-act"><button class="icon-btn icon-btn-danger" title="ยกเลิกคำสั่งซื้อนี้" aria-label="ยกเลิกคำสั่งซื้อนี้" onclick="askCancelOrder_(\'' + oid + '\')">' + ICON_TRASH_ + '</button><span>ยกเลิก</span></div>'
+      +   '<div class="order-act"><button class="icon-btn icon-btn-edit" title="แก้ไขรายการสินค้า" aria-label="แก้ไขรายการสินค้า" onclick="startEditOrder_(\'' + oid + '\', \'historyState\', this)">' + ICON_EDIT_ + '</button><span>แก้ไขรายการ</span></div>'
+      +   '<div class="order-act"><button class="icon-btn icon-btn-success" title="ดำเนินการต่อ — แนบสลิป" aria-label="ดำเนินการต่อ แนบสลิป" onclick="continueToSlipUpload(\'' + oid + '\', this)">' + ICON_PAPERCLIP_ + '</button><span>แนบสลิป</span></div>'
       + '</div>'
       + '<div class="err" id="cancelConfirm_' + oid + '" style="margin-top:8px;text-align:left">'
       +   'ยืนยันยกเลิกคำสั่งซื้อ #' + oid + ' ใช่ไหม? ข้อมูลจะถูกลบออกจากระบบถาวร แก้คืนไม่ได้'
@@ -1964,7 +2159,8 @@ function cartSignature_(){
     items: names.map(function(n){ return [n, cart[n]]; }),
     coupon: appliedCouponCode,
     excluded: excludedPrivilegeRowIndexes.slice().sort(),
-    points: pointsToRedeemInput_
+    points: pointsToRedeemInput_,
+    edit: currentOrderId || '' // แก้ไขออเดอร์เดิม (สิทธิ์/คูปองที่จองไว้นับให้) คนละคำถามกับสั่งใหม่
   });
 }
 // ต้องคัดลอกออกมาก่อนใช้เสมอ เพราะ recomputeAppliedPrivilegesClientSide_()/previewPointsRedeem_() แก้ค่าใน
@@ -2705,6 +2901,11 @@ function openAddressConfirmPopup(){
 
   var items = Object.keys(cart).map(function(name){ return { name: name, qty: cart[name] }; });
   if (!items.length) { showInlineCheckoutError_('ไม่มีสินค้าในตะกร้า'); return; }
+  // ⚡ เพิ่ม (4/10/69) — แก้ไขออเดอร์แล้วโปร/สิทธิ์เดิมเปลี่ยน: แจ้งก่อน (กดยืนยันแล้วค่อยไปยืนยันที่อยู่)
+  if (editingOrderId_ && editChangesAckSig_ !== cartSignature_()) {
+    var ch = lastDiscountInfo && lastDiscountInfo.editChanges;
+    if (ch && ((ch.lost || []).length || (ch.returned || []).length)) { openEditChangesModal_(ch); return; }
+  }
 
   document.getElementById('confirmAddressInput').value = savedAddress || '';
   document.getElementById('confirmProvinceSelect').value = savedProvince || '';
@@ -2758,15 +2959,19 @@ function confirmSubmitOrder(){
       return callApi('createShopOrder', p);
     }
     // ⚡ เพิ่ม (Supabase) — สั่งซื้อผ่าน Supabase ก่อน (ได้ยอดทันที) ถ้า Supabase ให้ถอยหรือเรียกไม่สำเร็จ สั่งทางเดิม
-    // แก้ไขออเดอร์เดิม (currentOrderId) ใช้ทางเดิมเสมอ
-    if (currentOrderId) return viaAppsScript();
+    // ⚡ แก้ (4/10/69) — แก้ไขออเดอร์เดิม (existingOrderId) ก็ผ่าน Supabase ได้แล้ว
     var sp = { idToken: idToken, clientKey: newOrderClientKey_() };
     Object.keys(orderPayload_).forEach(function(k){ sp[k] = orderPayload_[k]; });
     return createOrderViaSupabase_(sp).then(function(r){ return r || viaAppsScript(); });
   })
     .then(function(r){
       stopOrderProgress_();
-      btn.disabled = false; btn.textContent = '✅ ยืนยันที่อยู่และสั่งซื้อ';
+      btn.disabled = false; btn.textContent = confirmAddressBtnText_();
+      if (r && !r.success && r.editBlocked) {
+        closeAddressConfirmModal();
+        showInlineCheckoutError_('แก้ไขออเดอร์ไม่ได้: ' + r.error + ' — กด "ไม่แก้แล้ว" ด้านบนเพื่อกลับ');
+        return;
+      }
       if (!r || !r.success) {
         var dotCount = currentIdToken ? (currentIdToken.match(/\./g) || []).length : 0;
         var tokenInfo = 'idToken ยาว ' + (currentIdToken ? currentIdToken.length : 0) + ' ตัวอักษร, มี ' + dotCount + ' จุด (ต้องมี 2 จุดพอดีถึงจะถูกต้อง)';
@@ -2780,7 +2985,7 @@ function confirmSubmitOrder(){
     })
     .catch(function(e){
       stopOrderProgress_();
-      btn.disabled = false; btn.textContent = '✅ ยืนยันที่อยู่และสั่งซื้อ';
+      btn.disabled = false; btn.textContent = confirmAddressBtnText_();
       if (e && e.alreadyShown) { closeAddressConfirmModal(); return; }
       closeAddressConfirmModal();
       showInlineCheckoutError_('เรียก API ไม่สำเร็จ: ' + e.message);
@@ -2812,7 +3017,9 @@ function renderOrderSummary_(r, orderIdHtml, noticeHtml, shipCodes){
     summaryHtml += '<div class="row" style="font-size:12.5px;color:var(--g6)"><span>' + escHtml(label) + '</span><span style="color:#c62828">-฿' + amountMatch[1] + '</span></div>';
   });
   summaryHtml += '<div class="row" style="align-items:flex-start"><span>🚚 ค่าจัดส่ง' + (shipNotes_.length ? '<span style="display:block;font-size:11px;color:#c62828;line-height:1.35">🎉 ' + escHtml(shipNotes_.join(', ')) + '</span>' : '') + '</span><span>฿' + Math.round(r.shippingCost || 0).toLocaleString('th-TH') + '</span></div>';
-  summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span><b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
+  var oldAmountHtml_ = (doneOldAmount_ && doneOldAmount_ !== r.totalAmount)
+    ? '<span style="font-size:12px;color:#9a9a9a;text-decoration:line-through;font-weight:400;margin-right:6px">฿' + doneOldAmount_.toLocaleString('th-TH') + '</span>' : '';
+  summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span>' + oldAmountHtml_ + '<b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
     + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : (selectedPayment === 'cod' ? '💵 เก็บเงินปลายทาง' : 'โอนธนาคาร')) + '</span></div>';
   document.getElementById('orderSummary').innerHTML = summaryHtml;
 }
@@ -2827,6 +3034,7 @@ function setSlipButtonWaiting_(waiting){
 // ยอด 0 บาท / เก็บเงินปลายทาง: สั่งซื้อเสร็จเลย ไม่ต้องแนบสลิป
 function showOrderDoneNoSlip_(r, waitingForId){
   pendingSlipOrderId = '';
+  updateEditOrderBtn_();
   document.getElementById('orderDoneBar').classList.add('sh');
   document.getElementById('backToPaymentBtn').classList.add('sh');
   // ⚡ แก้ (19/9/69) — เส้นทางนี้ใช้ร่วมกัน 2 กรณีที่ไม่ต้องแนบสลิป: ยอด 0 บาท กับเก็บเงินปลายทาง
@@ -2864,7 +3072,17 @@ function shipPromoCodes_(){
 function showOrderResult_(r){
   var pending = !!r.pending;
   var shipCodes_ = shipPromoCodes_();
-  renderOrderSummary_(r, pending ? '⏳ กำลังออกเลขออเดอร์...' : escHtml(r.orderId), '', shipCodes_);
+  // ⚡ เพิ่ม (4/10/69) — แก้ไขออเดอร์: หัวข้อ "แก้ไขออเดอร์สำเร็จ!" เลขเดิมโชว์ได้ทันที ยอดเดิมขีดฆ่าไว้
+  var editedId_ = editingOrderId_;
+  var editOld_ = editOldAmount_;
+  var editRestore_ = editSnapshot_;
+  var editFrom_ = editReturnState_;
+  doneOldAmount_ = editedId_ ? editOld_ : 0;
+  document.getElementById('orderDoneIcon').textContent = editedId_ ? '✏️' : '🎉';
+  document.getElementById('orderDoneTitle').textContent = editedId_ ? 'แก้ไขออเดอร์สำเร็จ!' : 'สั่งซื้อสำเร็จ!';
+  endEditMode_();
+  var shownId_ = r.orderId || r.editingOrderId || '';
+  renderOrderSummary_(r, (pending && !shownId_) ? '⏳ กำลังออกเลขออเดอร์...' : escHtml(shownId_), '', shipCodes_);
 
   currentOrderId = r.orderId;
   lastOrderAmount_ = r.totalAmount;
@@ -2882,6 +3100,7 @@ function showOrderResult_(r){
     pendingSlipOrderId = r.orderId;
     document.getElementById('backToPaymentBtn').classList.remove('sh');
     setSlipButtonWaiting_(pending);
+    updateEditOrderBtn_();
     showState('orderDoneState');
     if (!pending) startSlipStatusPoll_(r.orderId);
   }
@@ -2909,6 +3128,7 @@ function showOrderResult_(r){
     }
     pendingSlipOrderId = orderId;
     setSlipButtonWaiting_(false);
+    updateEditOrderBtn_();
     if (!document.getElementById('orderDoneState').classList.contains('sh')) startSlipStatusPoll_(orderId);
   }, function(err){
     setSlipButtonWaiting_(false);
@@ -2916,6 +3136,13 @@ function showOrderResult_(r){
     currentOrderId = '';
     discountCacheBySig_ = {};
     orderHistoryCache_.invalidate();
+    // แก้ไขออเดอร์ไม่สำเร็จ: ออเดอร์เดิมยังอยู่เหมือนเดิม กลับเข้าโหมดแก้ไขให้ลองใหม่/กด "ไม่แก้แล้ว" ได้
+    if (editedId_) {
+      beginEditMode_(editedId_, editFrom_, editOld_, editRestore_);
+      showState('checkoutState');
+      showInlineCheckoutError_('แก้ไขออเดอร์ไม่สำเร็จ: ' + err + ' — ออเดอร์เดิมยังอยู่ ลองใหม่อีกครั้ง หรือกด "ไม่แก้แล้ว"');
+      return;
+    }
     showState('checkoutState');
     showInlineCheckoutError_('สั่งซื้อไม่สำเร็จ: ' + err + ' — กรุณาตรวจสอบตะกร้าแล้วกดสั่งซื้ออีกครั้ง');
   });
