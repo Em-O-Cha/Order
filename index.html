@@ -258,11 +258,27 @@ button.icon-btn-edit{background:linear-gradient(135deg,#ef6c00,#ffa726) !importa
 .done-sub-row .btn-sub{flex:1;min-width:0;height:42px;padding:0 8px;font-size:14px;white-space:nowrap;}
 .btn-sub{background:#fff !important;color:#a50d0c !important;border:1.5px solid #a50d0c !important;box-shadow:none !important;}
 #orderDoneState{padding-bottom:70px;} /* เว้นที่ให้แถบปุ่มด้านล่าง ไม่ให้บังข้อความใต้สรุปยอด */
-.editing-order-banner{background:#fff3e0;color:#7a4d12;border-radius:10px;padding:10px 12px;font-size:12.5px;
-  line-height:1.5;margin-bottom:14px;display:flex;align-items:center;gap:8px;text-align:left;}
-.editing-order-banner span{flex:1;}
-.editing-order-banner button{flex-shrink:0;background:#fff !important;border:1px solid #e0b37a !important;color:#7a4d12 !important;
-  box-shadow:none !important;border-radius:8px;padding:5px 10px;font-size:12px;font-family:'Kanit',sans-serif;cursor:pointer;}
+/* ⚡ แก้ (5/10/69) — แถบ "กำลังแก้ไขออเดอร์" เดิมเป็นสีส้มอ่อนกลืนกับการ์ดคูปอง: เปลี่ยนเป็นพื้นส้มเข้ม ตัวอักษรขาว
+   ตัวใหญ่ขึ้น มีกรอบเรืองแสงกระพริบเบาๆ และติดป้าย "แก้ไข #เลขออเดอร์" บนแถบรวมยอดด้านล่างด้วย
+   (แถบด้านบนจะเลื่อนหายไปตอนเลื่อนดูสินค้า แต่แถบด้านล่างอยู่บนจอตลอด) */
+.editing-order-banner{background:linear-gradient(135deg,#e65100,#fb8c00);color:#fff;border-radius:14px;padding:14px;
+  font-size:13.5px;line-height:1.5;margin-bottom:16px;display:flex;align-items:center;gap:12px;text-align:left;
+  border:2px solid #ffcc80;animation:editBannerGlow 1.8s ease-in-out infinite;}
+.editing-order-banner .edit-ico{flex-shrink:0;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.22);
+  display:flex;align-items:center;justify-content:center;font-size:22px;}
+.editing-order-banner .edit-txt{flex:1;min-width:0;}
+.editing-order-banner .edit-title{display:block;font-size:16px;font-weight:600;}
+.editing-order-banner .edit-title b{background:#fff;color:#e65100;border-radius:6px;padding:0 6px;white-space:nowrap;}
+.editing-order-banner .edit-hint{display:block;font-size:12.5px;opacity:.95;}
+.editing-order-banner button{flex-shrink:0;background:#fff !important;border:0 !important;color:#e65100 !important;
+  box-shadow:0 2px 6px rgba(0,0,0,.15) !important;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;
+  font-family:'Kanit',sans-serif;cursor:pointer;}
+@keyframes editBannerGlow{0%,100%{box-shadow:0 4px 14px rgba(230,81,0,.35)}50%{box-shadow:0 4px 22px rgba(230,81,0,.75),0 0 0 4px rgba(255,167,38,.3)}}
+@media (prefers-reduced-motion:reduce){.editing-order-banner{animation:none;box-shadow:0 4px 14px rgba(230,81,0,.4);}}
+.edit-bar-tag{display:none;position:absolute;top:-13px;left:18px;background:#e65100;color:#fff;font-size:12px;font-weight:600;
+  border-radius:999px;padding:2px 10px;box-shadow:0 2px 6px rgba(230,81,0,.4);white-space:nowrap;}
+body.editing-order #cartBar,body.editing-order #checkoutBar{border:2px solid #ef6c00;}
+body.editing-order .edit-bar-tag{display:block;}
 .edit-change{font-size:12.5px;line-height:1.55;border-radius:10px;padding:8px 10px;margin-bottom:8px;text-align:left;}
 .edit-change.lost{background:#ffebee;color:#b71c1c;}
 .edit-change.back{background:#e8f5e9;color:#1b5e20;}
@@ -298,7 +314,8 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
     </div>
 
     <div id="editingOrderBanner" class="editing-order-banner sh">
-      <span>✏️ กำลังแก้ไขออเดอร์ <b id="editingOrderIdText"></b><br>เพิ่ม/ลดสินค้า แล้วกดไปหน้าชำระเงิน</span>
+      <span class="edit-ico">✏️</span>
+      <span class="edit-txt"><span class="edit-title">กำลังแก้ไขออเดอร์ <b id="editingOrderIdText"></b></span><span class="edit-hint">เพิ่ม/ลดสินค้า แล้วกดไปหน้าชำระเงิน</span></span>
       <button type="button" onclick="cancelEditOrder_()">ไม่แก้แล้ว</button>
     </div>
     <div id="catalogState" class="sh">
@@ -372,10 +389,12 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
 
   </div>
   <div class="cart-bar sh" id="cartBar">
+    <span class="edit-bar-tag"></span>
     <div class="cart-total">รวม <span id="cartCount">0</span> ชิ้น<b id="cartTotal">฿0</b></div>
     <button class="btn btn-outline" onclick="goToCheckout()" id="checkoutBtn" disabled>ไปหน้าชำระเงิน</button>
   </div>
   <div class="cart-bar sh" id="checkoutBar">
+    <span class="edit-bar-tag"></span>
     <div class="cart-total">ยอดสุทธิ<b id="checkoutBarTotal">฿0</b></div>
     <button class="btn" onclick="openAddressConfirmPopup()" id="confirmOrderBtn">✅ ยืนยันสั่งซื้อ</button>
   </div>
@@ -669,6 +688,8 @@ function beginEditMode_(orderId, fromState, oldAmount, snapshot){
   editSnapshot_ = snapshot;
   editChangesAckSig_ = '';
   document.getElementById('editingOrderIdText').textContent = '#' + orderId;
+  document.querySelectorAll('.edit-bar-tag').forEach(function(t){ t.textContent = '✏️ แก้ไข #' + orderId; });
+  document.body.classList.add('editing-order');
   document.getElementById('confirmOrderBtn').textContent = '✅ ยืนยันแก้ไขออเดอร์';
   document.getElementById('confirmAddressBtn').textContent = confirmAddressBtnText_();
 }
@@ -677,6 +698,7 @@ function endEditMode_(){
   editSnapshot_ = null;
   editChangesAckSig_ = '';
   document.getElementById('editingOrderBanner').classList.add('sh');
+  document.body.classList.remove('editing-order');
   document.getElementById('confirmOrderBtn').textContent = '✅ ยืนยันสั่งซื้อ';
   document.getElementById('confirmAddressBtn').textContent = confirmAddressBtnText_();
 }
