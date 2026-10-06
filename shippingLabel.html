@@ -170,38 +170,80 @@ function setPaper(v){
 
 function doPrint(){
   var picked = Array.prototype.map.call(document.querySelectorAll('.pick:checked'), function(el){ return el.value; });
-  if (!picked.length) return alert('กรุณาเลือกรายการที่จะพิมพ์');
+  if (!picked.length) return askBox_('กรุณาเลือกรายการที่จะพิมพ์', { alertOnly: true });
   document.querySelectorAll('.item').forEach(function(el){ el.classList.toggle('skip', picked.indexOf(el.id.slice(3)) === -1); });
   window.print();
   // พิมพ์แล้ว -> ขยับสถานะรายการที่ยังรอพิมพ์
   var toMark = (data.shipments || []).filter(function(s){ return picked.indexOf(s.id) !== -1 && s.status === 'pending'; });
-  if (toMark.length && confirm('พิมพ์เรียบร้อยไหม? กด OK เพื่อเปลี่ยน ' + toMark.length + ' รายการเป็น "พิมพ์แล้ว"')) {
-    Promise.all(toMark.map(function(s){ return update(s.id, { status: 'printed' }); })).then(render);
-  }
+  if (toMark.length) askBox_('เปลี่ยน ' + toMark.length + ' รายการเป็น "พิมพ์แล้ว"', { title: 'พิมพ์เรียบร้อยไหม?', ok: 'พิมพ์แล้ว', cancel: 'ยังไม่ได้พิมพ์', icon: '🖨️' }).then(function(ok){
+    if (ok) Promise.all(toMark.map(function(s){ return update(s.id, { status: 'printed' }); })).then(render);
+  });
 }
 
 function update(id, extra){
   var params = Object.assign({ action: 'shipUpdate', id: id, t: TOKEN }, extra);
   return api(params).then(function(r){
-    if (!r.success) { alert(r.error || 'บันทึกไม่สำเร็จ'); return; }
+    if (!r.success) { askBox_(r.error || 'บันทึกไม่สำเร็จ', { alertOnly: true, icon: '⚠️' }); return; }
     data.shipments = data.shipments.map(function(s){ return s.id === id ? r.shipment : s; });
     return r.shipment;
-  }).catch(function(e){ alert('เชื่อมต่อไม่สำเร็จ: ' + e.message); });
+  }).catch(function(e){ askBox_('เชื่อมต่อไม่สำเร็จ: ' + e.message, { alertOnly: true, icon: '⚠️' }); });
 }
 
 function markShipped(id){
   var tracking = document.getElementById('trk-' + id).value.trim();
   var carrier = document.getElementById('car-' + id).value;
-  if (!tracking && !confirm('ยังไม่ได้ใส่เลขพัสดุ ต้องการบันทึกว่าจัดส่งแล้วใช่ไหม?')) return;
-  update(id, { status: 'shipped', tracking: tracking, carrier: carrier }).then(function(s){ if (s) render(); });
+  var go = function(){ update(id, { status: 'shipped', tracking: tracking, carrier: carrier }).then(function(s){ if (s) render(); }); };
+  if (tracking) return go();
+  askBox_('ยังไม่ได้ใส่เลขพัสดุ ต้องการบันทึกว่าจัดส่งแล้วใช่ไหม?', { title: 'ยังไม่มีเลขพัสดุ', ok: 'บันทึกว่าจัดส่งแล้ว', icon: '📦' }).then(function(ok){ if (ok) go(); });
 }
 function cancelShip(id){
-  if (!confirm('ยกเลิกรายการจัดส่งนี้? (ไม่คืนคะแนนให้ลูกค้าอัตโนมัติ)')) return;
-  update(id, { status: 'cancelled' }).then(function(s){ if (s) render(); });
+  askBox_('ไม่คืนคะแนนให้ลูกค้าอัตโนมัติ', { title: 'ยกเลิกรายการจัดส่งนี้?', ok: 'ยกเลิกรายการ', cancel: 'ไม่ยกเลิก', danger: true }).then(function(ok){
+    if (ok) update(id, { status: 'cancelled' }).then(function(s){ if (s) render(); });
+  });
 }
 
 if (TOKEN && (ALL || ID)) load();
 else state('🔒', 'ลิงก์ไม่ครบ กรุณาเปิดจากข้อความในกลุ่มแอดมิน');
+</script>
+
+<!-- ⚡ (6/10/69) ป๊อปอัปยืนยัน/แจ้งเตือนของหน้าเอง แทนกล่อง confirm/alert ของเบราว์เซอร์ ("em-o-cha.github.io บอกว่า") -->
+<style>
+.ask-ov{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;animation:askIn .15s ease;}
+.ask-card{background:#fff;border-radius:18px;max-width:360px;width:100%;padding:22px 20px 18px;box-shadow:0 18px 40px rgba(0,0,0,.25);text-align:center;font-family:inherit;}
+.ask-ic{font-size:34px;line-height:1;margin-bottom:10px;}
+.ask-t{font-size:16px;font-weight:700;color:#1b2e1c;margin-bottom:6px;}
+.ask-m{font-size:14px;color:#555;line-height:1.55;white-space:pre-line;word-break:break-word;}
+.ask-bs{display:flex;gap:10px;margin-top:18px;}
+.ask-bs button{flex:1;height:46px;border-radius:12px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;border:none;}
+.ask-no{background:#fff;color:#555;border:1.5px solid #ddd !important;}
+.ask-yes{color:#fff;background:linear-gradient(135deg,#00b894,#00796b);}
+.ask-yes.danger{background:linear-gradient(135deg,#cb2d3e,#ef473a);}
+@keyframes askIn{from{opacity:0}to{opacity:1}}
+</style>
+<script>
+// askBox_(ข้อความ, { title, ok, cancel, danger, icon, alertOnly }) -> Promise<true/false>
+function askBox_(message, o){
+  o = o || {};
+  return new Promise(function(resolve){
+    var ov = document.createElement('div');
+    ov.className = 'ask-ov';
+    var esc_ = function(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    ov.innerHTML = '<div class="ask-card" role="dialog" aria-modal="true">'
+      + '<div class="ask-ic">' + esc_(o.icon || (o.alertOnly ? 'ℹ️' : (o.danger ? '⚠️' : '✅'))) + '</div>'
+      + (o.title ? '<div class="ask-t">' + esc_(o.title) + '</div>' : '')
+      + '<div class="ask-m">' + esc_(message) + '</div>'
+      + '<div class="ask-bs">'
+      + (o.alertOnly ? '' : '<button type="button" class="ask-no">' + esc_(o.cancel || 'ยกเลิก') + '</button>')
+      + '<button type="button" class="ask-yes' + (o.danger ? ' danger' : '') + '">' + esc_(o.ok || (o.alertOnly ? 'ตกลง' : 'ยืนยัน')) + '</button>'
+      + '</div></div>';
+    var done = function(v){ if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(v); };
+    ov.querySelector('.ask-yes').onclick = function(){ done(true); };
+    var no = ov.querySelector('.ask-no'); if (no) no.onclick = function(){ done(false); };
+    ov.onclick = function(e){ if (e.target === ov && !o.alertOnly) done(false); };
+    document.body.appendChild(ov);
+    ov.querySelector('.ask-yes').focus();
+  });
+}
 </script>
 </body>
 </html>

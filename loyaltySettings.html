@@ -184,7 +184,7 @@ function addQ(){
   survey.push({ id: id, q: '', type: 'single', required: true, options: [] });
   renderSurvey();
 }
-function delQ(i){ readSurvey(); if (!confirm('ลบคำถาม "' + (survey[i].q || 'ข้อ ' + (i + 1)) + '"?')) return; survey.splice(i, 1); renderSurvey(); }
+function delQ(i){ readSurvey(); askBox_('ลบคำถาม "' + (survey[i].q || 'ข้อ ' + (i + 1)) + '"?', { title: 'ลบคำถาม', ok: 'ลบ', danger: true }).then(function(ok){ if (!ok) return; survey.splice(i, 1); renderSurvey(); }); }
 function moveQ(i, d){ readSurvey(); var t = survey[i]; survey[i] = survey[i + d]; survey[i + d] = t; renderSurvey(); }
 
 // ---- บันทึก ----
@@ -207,7 +207,11 @@ function save(){
     product_keywords: v('product_keywords').split('\n').map(function(x){ return x.trim(); }).filter(Boolean),
     survey: survey.map(function(q){ return { id: q.id, q: q.q.trim(), type: q.type, required: !!q.required, options: q.options }; })
   };
-  if (settings.auto_approve && !data.settings.auto_approve && !confirm('เปิดอนุมัติอัตโนมัติ? ใบเสร็จที่ AI ตรวจผ่านทุกข้อจะได้คะแนนทันทีโดยไม่รอแอดมิน')) return;
+  if (settings.auto_approve && !data.settings.auto_approve && !save._autoOk) {
+    askBox_('เปิดอนุมัติอัตโนมัติ? ใบเสร็จที่ AI ตรวจผ่านทุกข้อจะได้คะแนนทันทีโดยไม่รอแอดมิน', { title: 'เปิดอนุมัติอัตโนมัติ?', ok: 'เปิดใช้', icon: '🤖' })
+      .then(function(ok){ if (ok) { save._autoOk = true; try { save(); } finally { save._autoOk = false; } } });
+    return;
+  }
   var btn = document.getElementById('saveBtn');
   btn.disabled = true; showMsg('กำลังบันทึก...', true);
   api({ action: 'settingsSave', t: TOKEN, settings: JSON.stringify(settings) }).then(function(r){
@@ -220,6 +224,46 @@ function save(){
 }
 
 load();
+</script>
+
+<!-- ⚡ (6/10/69) ป๊อปอัปยืนยัน/แจ้งเตือนของหน้าเอง แทนกล่อง confirm/alert ของเบราว์เซอร์ ("em-o-cha.github.io บอกว่า") -->
+<style>
+.ask-ov{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;animation:askIn .15s ease;}
+.ask-card{background:#fff;border-radius:18px;max-width:360px;width:100%;padding:22px 20px 18px;box-shadow:0 18px 40px rgba(0,0,0,.25);text-align:center;font-family:inherit;}
+.ask-ic{font-size:34px;line-height:1;margin-bottom:10px;}
+.ask-t{font-size:16px;font-weight:700;color:#1b2e1c;margin-bottom:6px;}
+.ask-m{font-size:14px;color:#555;line-height:1.55;white-space:pre-line;word-break:break-word;}
+.ask-bs{display:flex;gap:10px;margin-top:18px;}
+.ask-bs button{flex:1;height:46px;border-radius:12px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;border:none;}
+.ask-no{background:#fff;color:#555;border:1.5px solid #ddd !important;}
+.ask-yes{color:#fff;background:linear-gradient(135deg,#00b894,#00796b);}
+.ask-yes.danger{background:linear-gradient(135deg,#cb2d3e,#ef473a);}
+@keyframes askIn{from{opacity:0}to{opacity:1}}
+</style>
+<script>
+// askBox_(ข้อความ, { title, ok, cancel, danger, icon, alertOnly }) -> Promise<true/false>
+function askBox_(message, o){
+  o = o || {};
+  return new Promise(function(resolve){
+    var ov = document.createElement('div');
+    ov.className = 'ask-ov';
+    var esc_ = function(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    ov.innerHTML = '<div class="ask-card" role="dialog" aria-modal="true">'
+      + '<div class="ask-ic">' + esc_(o.icon || (o.alertOnly ? 'ℹ️' : (o.danger ? '⚠️' : '✅'))) + '</div>'
+      + (o.title ? '<div class="ask-t">' + esc_(o.title) + '</div>' : '')
+      + '<div class="ask-m">' + esc_(message) + '</div>'
+      + '<div class="ask-bs">'
+      + (o.alertOnly ? '' : '<button type="button" class="ask-no">' + esc_(o.cancel || 'ยกเลิก') + '</button>')
+      + '<button type="button" class="ask-yes' + (o.danger ? ' danger' : '') + '">' + esc_(o.ok || (o.alertOnly ? 'ตกลง' : 'ยืนยัน')) + '</button>'
+      + '</div></div>';
+    var done = function(v){ if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(v); };
+    ov.querySelector('.ask-yes').onclick = function(){ done(true); };
+    var no = ov.querySelector('.ask-no'); if (no) no.onclick = function(){ done(false); };
+    ov.onclick = function(e){ if (e.target === ov && !o.alertOnly) done(false); };
+    document.body.appendChild(ov);
+    ov.querySelector('.ask-yes').focus();
+  });
+}
 </script>
 </body>
 </html>

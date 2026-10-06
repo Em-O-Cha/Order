@@ -257,14 +257,21 @@ function submitDecision(){
   if (decision === 'approve') {
     var pts = parseInt(document.getElementById('points').value, 10) || 0;
     if (pts <= 0) return showMsg('กรุณาใส่คะแนนมากกว่า 0');
-    if (!confirm('อนุมัติ ' + r.ref + ' และเพิ่ม ' + pts + ' คะแนนให้ ' + ((r.member || {}).name || 'ลูกค้า') + '?')) return;
     params.points = pts;
+    askBox_('เพิ่ม ' + pts + ' คะแนนให้ ' + ((r.member || {}).name || 'ลูกค้า'), { title: 'อนุมัติ ' + r.ref + '?', ok: '✅ อนุมัติ', icon: '🧾' })
+      .then(function(ok){ if (ok) sendDecision_(params); });
+    return;
   } else {
     var note = document.getElementById('note').value.trim();
     if (!note) return showMsg('กรุณาใส่เหตุผลที่ไม่อนุมัติ');
-    if (!confirm('ไม่อนุมัติ ' + r.ref + '?')) return;
     params.note = note;
+    askBox_('เหตุผล: ' + note, { title: 'ไม่อนุมัติ ' + r.ref + '?', ok: '❌ ไม่อนุมัติ', danger: true })
+      .then(function(ok){ if (ok) sendDecision_(params); });
+    return;
   }
+}
+function sendDecision_(params){
+  var r = data.receipt;
   var btn = document.getElementById('submitBtn');
   btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...';
   api(params).then(function(res){
@@ -295,6 +302,46 @@ function zoom(url){ document.getElementById('zoomImg').src = url; document.getEl
 if (ALL && TOKEN) loadList();
 else if (ID && (TOKEN || LIST_TOKEN)) loadOne();
 else showState('🔒', 'ลิงก์ไม่ครบ กรุณาเปิดจากข้อความในกลุ่มแอดมิน');
+</script>
+
+<!-- ⚡ (6/10/69) ป๊อปอัปยืนยัน/แจ้งเตือนของหน้าเอง แทนกล่อง confirm/alert ของเบราว์เซอร์ ("em-o-cha.github.io บอกว่า") -->
+<style>
+.ask-ov{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;animation:askIn .15s ease;}
+.ask-card{background:#fff;border-radius:18px;max-width:360px;width:100%;padding:22px 20px 18px;box-shadow:0 18px 40px rgba(0,0,0,.25);text-align:center;font-family:inherit;}
+.ask-ic{font-size:34px;line-height:1;margin-bottom:10px;}
+.ask-t{font-size:16px;font-weight:700;color:#1b2e1c;margin-bottom:6px;}
+.ask-m{font-size:14px;color:#555;line-height:1.55;white-space:pre-line;word-break:break-word;}
+.ask-bs{display:flex;gap:10px;margin-top:18px;}
+.ask-bs button{flex:1;height:46px;border-radius:12px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;border:none;}
+.ask-no{background:#fff;color:#555;border:1.5px solid #ddd !important;}
+.ask-yes{color:#fff;background:linear-gradient(135deg,#00b894,#00796b);}
+.ask-yes.danger{background:linear-gradient(135deg,#cb2d3e,#ef473a);}
+@keyframes askIn{from{opacity:0}to{opacity:1}}
+</style>
+<script>
+// askBox_(ข้อความ, { title, ok, cancel, danger, icon, alertOnly }) -> Promise<true/false>
+function askBox_(message, o){
+  o = o || {};
+  return new Promise(function(resolve){
+    var ov = document.createElement('div');
+    ov.className = 'ask-ov';
+    var esc_ = function(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    ov.innerHTML = '<div class="ask-card" role="dialog" aria-modal="true">'
+      + '<div class="ask-ic">' + esc_(o.icon || (o.alertOnly ? 'ℹ️' : (o.danger ? '⚠️' : '✅'))) + '</div>'
+      + (o.title ? '<div class="ask-t">' + esc_(o.title) + '</div>' : '')
+      + '<div class="ask-m">' + esc_(message) + '</div>'
+      + '<div class="ask-bs">'
+      + (o.alertOnly ? '' : '<button type="button" class="ask-no">' + esc_(o.cancel || 'ยกเลิก') + '</button>')
+      + '<button type="button" class="ask-yes' + (o.danger ? ' danger' : '') + '">' + esc_(o.ok || (o.alertOnly ? 'ตกลง' : 'ยืนยัน')) + '</button>'
+      + '</div></div>';
+    var done = function(v){ if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(v); };
+    ov.querySelector('.ask-yes').onclick = function(){ done(true); };
+    var no = ov.querySelector('.ask-no'); if (no) no.onclick = function(){ done(false); };
+    ov.onclick = function(e){ if (e.target === ov && !o.alertOnly) done(false); };
+    document.body.appendChild(ov);
+    ov.querySelector('.ask-yes').focus();
+  });
+}
 </script>
 </body>
 </html>
