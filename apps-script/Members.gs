@@ -6048,6 +6048,7 @@ function adjustMemberPoints(pin, lineUid, points, reason) {
   return { success: true, newPoints: newPoints, lineSent: lineSent, lineNotified: !!notify };
 }
 
+var MEMBER_LIFF_URL_ = 'https://liff.line.me/2010892131-hMnmdrmH'; // หน้าสมาชิก (LIFF เดียวกับลิงก์สมัครสมาชิก)
 // การ์ดแจ้งลูกค้าว่าได้รับคะแนนเพิ่ม (แอดมินเพิ่มให้รายคน) — หน้าตาชุดเดียวกับการ์ดคำสั่งซื้อ/พัสดุจัดส่งแล้ว
 function buildPointsAddedFlexMessage_(added, reason, balance) {
   var body = [ buildOrderHeaderCard_('🎁', 'ได้รับคะแนนสะสมเพิ่ม', 'Em-O-Cha Club') ];
@@ -6075,7 +6076,7 @@ function buildPointsAddedFlexMessage_(added, reason, balance) {
   });
   body.push({
     type: 'button', style: 'primary', color: '#a50d0c', height: 'md', margin: 'lg',
-    action: { type: 'uri', label: '🛒 ไปช้อปที่ร้านเอมโอชา', uri: SHOP_LIFF_URL_ }
+    action: { type: 'uri', label: '👤 ไปหน้าสมาชิก', uri: MEMBER_LIFF_URL_ }
   });
   body.push({
     type: 'text', text: 'ขอบคุณที่รักเอมโอชานะคะ 🙏', size: 'xs', color: '#757575',
