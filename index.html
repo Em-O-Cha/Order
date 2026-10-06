@@ -1396,6 +1396,7 @@ function applyShopBootstrap_(r){
   activeAutoCoupons = (r.coupons || []).filter(function(c){ return c.autoApply; });
   myPricePrivileges_ = (r.privileges || []).filter(function(p){ return p.type === 'price' && !p.isUpcoming && p.restriction; });
   renderCatalog();
+  restoreCartAfterLogin_();
   // ⚡ แก้ — เดิม showState('catalogState') รันทุกครั้งที่ฟังก์ชันนี้ทำงาน ทั้งที่ฟังก์ชันนี้ถูกเรียก 2 รอบ
   // ต่อการเปิดหน้า (รอบแคชทันที + รอบ API จริงตอบกลับมาทีหลัง) ถ้าลูกค้ากดไปหน้าชำระเงินไปแล้วก่อนรอบ API
   // จริงจะตอบกลับมา (เช่นเน็ตช้า) จะโดนดีดกลับมาหน้าแรกกลางคันโดยไม่ตั้งใจทั้งที่กำลังทำรายการอยู่ — สลับไป
@@ -3196,14 +3197,35 @@ function cleanLiffRedirectUri(){
   return url.toString();
 }
 
-function startLineLogin(){
+function startLineLogin(failMsg){
   if (sessionStorage.getItem(LIFF_LOGIN_GUARD)) {
-    showErrorState('เข้าสู่ระบบ LINE ไม่สำเร็จซ้ำ\n\nสาเหตุที่พบบ่อยที่สุด: เบราว์เซอร์บนคอมพิวเตอร์บล็อกคุกกี้บุคคลที่สาม (third-party cookies) ทำให้ LINE จำสถานะล็อกอินไม่ได้\n\nวิธีแก้ชั่วคราว: อนุญาต third-party cookies สำหรับ line.me ในตั้งค่าเบราว์เซอร์ หรือแนะนำให้สั่งซื้อผ่านแอป LINE บนมือถือแทนครับ (เสถียรกว่ามาก)');
+    showErrorState(failMsg || 'เข้าสู่ระบบ LINE ไม่สำเร็จซ้ำ\n\nสาเหตุที่พบบ่อยที่สุด: เบราว์เซอร์บนคอมพิวเตอร์บล็อกคุกกี้บุคคลที่สาม (third-party cookies) ทำให้ LINE จำสถานะล็อกอินไม่ได้\n\nวิธีแก้ชั่วคราว: อนุญาต third-party cookies สำหรับ line.me ในตั้งค่าเบราว์เซอร์ หรือแนะนำให้สั่งซื้อผ่านแอป LINE บนมือถือแทนครับ (เสถียรกว่ามาก)');
     return false;
   }
   sessionStorage.setItem(LIFF_LOGIN_GUARD, '1');
+  saveCartBeforeLogin_();
   liff.login({ redirectUri: cleanLiffRedirectUri() });
   return true;
+}
+
+// ⚡ เพิ่ม (6/10/69) — ต้องเด้งไป login LINE กลางคัน (เช่นเปิดหน้าทิ้งไว้เกิน 1 ชม. แล้วกดชำระเงิน) ตะกร้าเคยหายหมด
+// ลูกค้าต้องเลือกสินค้าใหม่ — จดตะกร้าไว้ใน sessionStorage ก่อนเด้ง แล้วคืนให้ครั้งเดียวหลังกลับมาโหลดสินค้าเสร็จ
+// (ไม่จดตอนแก้ไขออเดอร์เดิม ตะกร้าตอนนั้นเป็นของออเดอร์ที่กำลังแก้)
+var CART_BEFORE_LOGIN_KEY_ = 'emocha.shop.cart-before-login';
+function saveCartBeforeLogin_(){
+  try {
+    if (editingOrderId_ || !Object.keys(cart).length) return;
+    sessionStorage.setItem(CART_BEFORE_LOGIN_KEY_, JSON.stringify(cart));
+  } catch (e) {}
+}
+function restoreCartAfterLogin_(){
+  var saved = null;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(CART_BEFORE_LOGIN_KEY_) || 'null');
+    sessionStorage.removeItem(CART_BEFORE_LOGIN_KEY_);
+  } catch (e) { return; }
+  if (!saved || Object.keys(cart).length) return;
+  setCartFromItems_(Object.keys(saved).map(function(name){ return { name: name, qty: Number(saved[name]) || 0 }; }));
 }
 
 function buildDiagnostics_(){
@@ -3300,8 +3322,18 @@ function initLiff(){
       startLineLogin();
       return;
     }
-    sessionStorage.removeItem(LIFF_LOGIN_GUARD);
     currentIdToken = liff.getIDToken();
+    // ⚡ แก้ (6/10/69) — เปิดบนคอม/เบราว์เซอร์ภายนอก LIFF จำการ login ไว้ใน localStorage หลายวัน (isLoggedIn() = true)
+    // แต่ ID token ที่จำไว้มีอายุแค่ 1 ชม. และ LIFF ไม่ต่ออายุให้เอง หน้าร้านเลยยังดูโปร/สินค้าได้ (วาดจากแคช)
+    // แล้วไปเด้งให้ login LINE ใหม่ตอนกดชำระเงินทุกครั้ง พร้อมตะกร้าหาย — เช็คตั้งแต่เปิดหน้า ถ้าโทเคนหมดอายุให้
+    // login ใหม่เลยก่อนลูกค้าเริ่มเลือกสินค้า (ในแอป LINE ได้โทเคนใหม่ทุกครั้งที่เปิดอยู่แล้ว ไม่ต้องทำ)
+    if (currentIdToken && !isInLineClient_() && !hasUsableIdToken_()) {
+      try { liff.logout(); } catch (e) {}
+      currentIdToken = null;
+      startLineLogin('เข้าสู่ระบบ LINE แล้ว แต่โทเคนที่ได้ยังถูกมองว่าหมดอายุ\n\nสาเหตุที่พบบ่อยที่สุด: นาฬิกา/วันที่ของคอมพิวเตอร์เครื่องนี้ไม่ตรงกับเวลาจริง\n\nวิธีแก้: ตั้งเวลาของเครื่องเป็นแบบอัตโนมัติ (ซิงก์เวลาจากอินเทอร์เน็ต) แล้วเปิดหน้านี้ใหม่ หรือสั่งซื้อผ่านแอป LINE บนมือถือแทนครับ');
+      return;
+    }
+    sessionStorage.removeItem(LIFF_LOGIN_GUARD);
     if (!currentIdToken) {
       showErrorState('LINE Login สำเร็จ แต่ LIFF ไม่ส่ง ID token กลับมา');
       return;
