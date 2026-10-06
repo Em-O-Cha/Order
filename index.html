@@ -1682,7 +1682,8 @@ function autoPromoValueText_(c){
   if (c.type === 'fixed') return 'ลด ' + c.value.toLocaleString('th-TH') + ' บาท';
   if (c.type === 'ship_percent') return c.value >= 100 ? 'ฟรีค่าจัดส่ง' : 'ลดค่าส่ง ' + c.value + '%';
   if (c.type === 'ship_fixed') return 'ลดค่าส่ง ' + c.value.toLocaleString('th-TH') + ' บาท';
-  if (c.type === 'ship_price') return Number(c.value) > 0 ? ('ค่าส่ง ' + Number(c.value).toLocaleString('th-TH') + ' บาท ทุกกรณี') : 'ฟรีค่าจัดส่ง';
+  // ⚡ เพิ่ม (6/10/69) — freeQty ของ ship_price = ส่งฟรีเมื่อซื้อครบกี่ชิ้น
+  if (c.type === 'ship_price') return Number(c.value) > 0 ? ('ค่าส่ง ' + Number(c.value).toLocaleString('th-TH') + ' บาท' + (Number(c.freeQty) > 0 ? (' · ซื้อครบ ' + Number(c.freeQty) + ' ชิ้นส่งฟรี') : ' ทุกกรณี')) : 'ฟรีค่าจัดส่ง';
   if (c.type === 'bogo') {
     // ⚡ เพิ่ม — โค้ดส่วนลด bogo ตอนนี้รองรับ "ลด X%" ของแถมด้วย (ไม่ใช่แถมฟรี 100% เสมอไป) ต้องเช็ค
     // freeDiscountPercent ก่อน ไม่งั้นโค้ด "ชิ้นที่ 2 ลด 50%" จะโชว์เป็น "แถม" ผิดๆ ทำให้ลูกค้าเข้าใจผิด

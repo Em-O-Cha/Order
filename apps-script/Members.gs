@@ -6151,6 +6151,13 @@ function addPrivilegeToAllMembers(pin, name, type, value, expiryDays, startDate,
   }
 }
 // ==================== หน้า Admin — โค้ดส่วนลดทั้งร้าน / เฉพาะสินค้า ====================
+// ช่อง "จำนวนที่แถมต่อรอบ" (คอลัมน์ M) ของ Coupons: bogo = จำนวนที่แถม / ship_price = ส่งฟรีเมื่อซื้อครบกี่ชิ้น (⚡ 6/10/69)
+function couponFreeQtyCell_(type, freeQty) {
+  if (type === 'bogo') return parseFloat(freeQty) || 0;
+  if (type === 'ship_price') return (parseFloat(freeQty) || 0) > 0 ? parseFloat(freeQty) : '';
+  return '';
+}
+
 function createGlobalCoupon(pin, code, type, value, minPurchase, maxUses, expiry, autoApply, restriction, startDate, freeProduct, freeQty, tierRestriction, freeDiscountPercent, stubText, notifyLine, stackable, detailText) {
   if (!checkAdminPin_(pin)) return { success: false, error: 'PIN ไม่ถูกต้อง' };
   try {
@@ -6173,7 +6180,7 @@ function createGlobalCoupon(pin, code, type, value, minPurchase, maxUses, expiry
       expiry ? parseDateInputStr_(expiry) : '', true, !!autoApply, String(restriction || '').trim(),
       startDate ? parseDateInputStr_(startDate) : '',
       storedFreeProductFor_(type, freeProduct),
-      type === 'bogo' ? (parseFloat(freeQty) || 0) : '',
+      couponFreeQtyCell_(type, freeQty),
       String(tierRestriction || '').trim(),
       freeDiscountPercentValue,
       String(stubText || '').trim()
@@ -6192,7 +6199,7 @@ function createGlobalCoupon(pin, code, type, value, minPurchase, maxUses, expiry
   }
 }
 
-function updateGlobalCoupon(pin, rowIndex, type, value, minPurchase, maxUses, expiry, autoApply, restriction, startDate, freeProduct, freeQty, tierRestriction, freeDiscountPercent, stubText, stackable, detailText, notifyLine) {
+function updateGlobalCoupon(pin, rowIndex, type, value, minPurchase, maxUses, expiry, autoApply, restriction, startDate, freeProduct, freeQty, tierRestriction, freeDiscountPercent, stubText, stackable, detailText, notifyLine, newCode) {
   if (!checkAdminPin_(pin)) return { success: false, error: 'PIN ไม่ถูกต้อง' };
   try {
     value = priceSpecFallbackValue_(type, value, restriction, freeProduct); // ⚡ เพิ่ม (1/10/69) — ราคาแยกตามสินค้าครบ = ไม่ต้องกรอกมูลค่า
@@ -6201,6 +6208,16 @@ function updateGlobalCoupon(pin, rowIndex, type, value, minPurchase, maxUses, ex
     var sheet = ensureCouponsSheet_();
     var ri = parseInt(rowIndex);
     if (!ri || ri < 2 || ri > sheet.getLastRow()) return { success: false, error: 'ไม่พบโค้ดนี้' };
+    // ⚡ เพิ่ม (6/10/69) — เปลี่ยนชื่อโค้ดได้ (หน้าแอดมินรุ่นเก่าไม่ส่งมา = ไม่แตะชื่อเดิม) ห้ามว่าง/ห้ามซ้ำกับโค้ดอื่น
+    if (newCode !== undefined && newCode !== null) {
+      var codeValue_ = String(newCode).trim().toUpperCase();
+      if (!codeValue_) return { success: false, error: 'กรุณากรอกโค้ด' };
+      var codes_ = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().map(function (r) { return String(r[0]).trim().toUpperCase(); });
+      if (codes_[ri - 2] !== codeValue_) {
+        if (codes_.some(function (c, idx) { return idx !== ri - 2 && c === codeValue_; })) return { success: false, error: 'มีโค้ดนี้อยู่แล้ว กรุณาใช้ชื่ออื่น' };
+        sheet.getRange(ri, 1).setValue(codeValue_);
+      }
+    }
     sheet.getRange(ri, 2, 1, 3).setValues([[type, parseFloat(value) || 0, parseFloat(minPurchase) || 0]]);
     sheet.getRange(ri, 5).setValue(parseInt(maxUses) || 0);
     sheet.getRange(ri, 7).setValue(expiry ? parseDateInputStr_(expiry) : '');
@@ -6208,7 +6225,7 @@ function updateGlobalCoupon(pin, rowIndex, type, value, minPurchase, maxUses, ex
     sheet.getRange(ri, 10).setValue(String(restriction || '').trim());
     sheet.getRange(ri, 11).setValue(startDate ? parseDateInputStr_(startDate) : '');
     sheet.getRange(ri, 12).setValue(storedFreeProductFor_(type, freeProduct));
-    sheet.getRange(ri, 13).setValue(type === 'bogo' ? (parseFloat(freeQty) || 0) : '');
+    sheet.getRange(ri, 13).setValue(couponFreeQtyCell_(type, freeQty));
     sheet.getRange(ri, 14).setValue(String(tierRestriction || '').trim());
     var freeDiscountPercentValue = type === 'bogo'
       ? ((freeDiscountPercent === '' || freeDiscountPercent === null || freeDiscountPercent === undefined) ? 100 : Math.max(0, Math.min(100, parseFloat(freeDiscountPercent) || 0)))
@@ -6605,7 +6622,11 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
   }
   // ⚡ เพิ่ม (29/9/69) — ค่าส่งราคาพิเศษ: ค่าส่งเหลือ value บาท (ค่าส่งจริงถูกกว่าอยู่แล้ว = ไม่ลด)
   if (type === 'ship_price') {
-    result.shippingDiscount = Math.max(0, (shippingCost || 0) - Math.max(0, value));
+    // ⚡ เพิ่ม (6/10/69) — "ซื้อครบ N ชิ้นส่งฟรี" (N เก็บในช่องจำนวนที่แถม — ว่าง = ค่าส่ง value บาททุกกรณีเหมือนเดิม)
+    var shipPrice_ = Math.max(0, value);
+    var shipFreeAt_ = parseFloat(promo.freeQty) || 0;
+    if (shipFreeAt_ > 0 && computeEligibleInfo_(items || [], restriction).qty >= shipFreeAt_) shipPrice_ = 0;
+    result.shippingDiscount = Math.max(0, (shippingCost || 0) - shipPrice_);
     return result;
   }
   if (type === 'bogo') {
@@ -6688,7 +6709,11 @@ function privilegeValueText_(type, value, restriction, freeProduct, freeQty, fre
   if (type === 'fixed') return 'ลด ' + value + ' บาท';
   if (type === 'ship_percent') return 'ลดค่าส่ง ' + value + '%';
   if (type === 'ship_fixed') return 'ลดค่าส่ง ' + value + ' บาท';
-  if (type === 'ship_price') return (parseFloat(value) || 0) > 0 ? ('ค่าส่ง ' + value + ' บาท ทุกกรณี') : 'ฟรีค่าจัดส่ง';
+  if (type === 'ship_price') {
+    var shipFreeAtText_ = parseFloat(freeQty) || 0;
+    if (!((parseFloat(value) || 0) > 0)) return 'ฟรีค่าจัดส่ง';
+    return 'ค่าส่ง ' + value + ' บาท' + (shipFreeAtText_ > 0 ? (' · ซื้อครบ ' + shipFreeAtText_ + ' ชิ้นส่งฟรี') : ' ทุกกรณี');
+  }
   if (type === 'price') {
     var priceSpecText_ = parsePriceSpec_(freeProduct);
     if (priceSpecText_ && restriction) return priceSpecSummaryText_(value, restriction, priceSpecText_);

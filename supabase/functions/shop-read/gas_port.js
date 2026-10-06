@@ -1782,7 +1782,11 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
   }
   // ⚡ เพิ่ม (29/9/69) — ค่าส่งราคาพิเศษ: ค่าส่งเหลือ value บาท (ค่าส่งจริงถูกกว่าอยู่แล้ว = ไม่ลด)
   if (type === 'ship_price') {
-    result.shippingDiscount = Math.max(0, (shippingCost || 0) - Math.max(0, value));
+    // ⚡ เพิ่ม (6/10/69) — "ซื้อครบ N ชิ้นส่งฟรี" (N เก็บในช่องจำนวนที่แถม — ว่าง = ค่าส่ง value บาททุกกรณีเหมือนเดิม)
+    var shipPrice_ = Math.max(0, value);
+    var shipFreeAt_ = parseFloat(promo.freeQty) || 0;
+    if (shipFreeAt_ > 0 && computeEligibleInfo_(items || [], restriction).qty >= shipFreeAt_) shipPrice_ = 0;
+    result.shippingDiscount = Math.max(0, (shippingCost || 0) - shipPrice_);
     return result;
   }
   if (type === 'bogo') {
