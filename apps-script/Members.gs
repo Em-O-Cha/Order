@@ -6039,17 +6039,53 @@ function adjustMemberPoints(pin, lineUid, points, reason) {
   } finally {
     lock.releaseLock();
   }
-  // ⚡ เพิ่ม (6/10/69) — เพิ่มคะแนนให้รายคนจากหน้าแอดมินแล้วส่ง LINE แจ้งลูกค้า (ส่งหลังปลดล็อก ไม่ให้ LINE ช้าแล้วถ่วง
-  // คนอื่น ส่งไม่สำเร็จก็ไม่กระทบคะแนนที่บันทึกไปแล้ว) — หักคะแนนไม่ส่งแจ้ง
+  // ⚡ เพิ่ม (6/10/69) — เพิ่มคะแนนให้รายคนจากหน้าแอดมินแล้วส่ง LINE (Flex) แจ้งลูกค้า (ส่งหลังปลดล็อก ไม่ให้ LINE ช้า
+  // แล้วถ่วงคนอื่น ส่งไม่สำเร็จก็ไม่กระทบคะแนนที่บันทึกไปแล้ว) — หักคะแนนไม่ส่งแจ้ง
   var lineSent = false;
   if (notify) {
-    var msg = '🎁 คุณได้รับคะแนนสะสมเพิ่ม ' + notify.added.toLocaleString('th-TH') + ' คะแนน'
-      + (notify.reason ? '\nรายละเอียด: ' + notify.reason : '')
-      + '\n\nคะแนนสะสมคงเหลือ ' + notify.balance.toLocaleString('th-TH') + ' คะแนน'
-      + '\nขอบคุณที่รักเอมโอชานะคะ 🙏';
-    lineSent = sendLinePush_(lineUid, msg).success;
+    lineSent = sendLineMessages_(lineUid, [buildPointsAddedFlexMessage_(notify.added, notify.reason, notify.balance)]).success;
   }
   return { success: true, newPoints: newPoints, lineSent: lineSent, lineNotified: !!notify };
+}
+
+// การ์ดแจ้งลูกค้าว่าได้รับคะแนนเพิ่ม (แอดมินเพิ่มให้รายคน) — หน้าตาชุดเดียวกับการ์ดคำสั่งซื้อ/พัสดุจัดส่งแล้ว
+function buildPointsAddedFlexMessage_(added, reason, balance) {
+  var body = [ buildOrderHeaderCard_('🎁', 'ได้รับคะแนนสะสมเพิ่ม', 'Em-O-Cha Club') ];
+  body.push({
+    type: 'box', layout: 'vertical', margin: 'lg', cornerRadius: '12px', backgroundColor: '#fff0ef', paddingAll: '14px',
+    contents: [
+      { type: 'text', text: 'คะแนนที่ได้รับ', size: 'xs', color: '#a50d0c', weight: 'bold', align: 'center' },
+      { type: 'text', text: '+' + added.toLocaleString('th-TH') + ' คะแนน', size: 'xxl', weight: 'bold', color: '#a50d0c', align: 'center', margin: 'sm' }
+    ]
+  });
+  if (reason) {
+    body.push({
+      type: 'box', layout: 'vertical', margin: 'lg', spacing: 'xs', contents: [
+        { type: 'text', text: 'รายละเอียด', size: 'xs', color: '#9e9e9e' },
+        { type: 'text', text: reason, size: 'sm', color: '#424242', wrap: true }
+      ]
+    });
+  }
+  body.push({ type: 'separator', margin: 'lg' });
+  body.push({
+    type: 'box', layout: 'horizontal', margin: 'lg', alignItems: 'center', contents: [
+      { type: 'text', text: 'คะแนนสะสมคงเหลือ', size: 'sm', weight: 'bold', color: '#a50d0c', flex: 3 },
+      { type: 'text', text: balance.toLocaleString('th-TH') + ' คะแนน', size: 'lg', weight: 'bold', color: '#a50d0c', align: 'end', flex: 3 }
+    ]
+  });
+  body.push({
+    type: 'button', style: 'primary', color: '#a50d0c', height: 'md', margin: 'lg',
+    action: { type: 'uri', label: '🛒 ไปช้อปที่ร้านเอมโอชา', uri: SHOP_LIFF_URL_ }
+  });
+  body.push({
+    type: 'text', text: 'ขอบคุณที่รักเอมโอชานะคะ 🙏', size: 'xs', color: '#757575',
+    margin: 'lg', wrap: true, align: 'center'
+  });
+  var bubble = { type: 'bubble', size: 'giga', body: { type: 'box', layout: 'vertical', paddingAll: '20px', spacing: 'md', contents: body } };
+  return {
+    type: 'flex', contents: bubble,
+    altText: '🎁 ได้รับคะแนนสะสมเพิ่ม ' + added.toLocaleString('th-TH') + ' คะแนน คงเหลือ ' + balance.toLocaleString('th-TH') + ' คะแนน'
+  };
 }
 
 function addPointsToAllMembers(pin, points, reason) {
