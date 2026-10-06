@@ -1134,6 +1134,8 @@ function autoTicketTextFor_(type, value, restriction, freeQty, freeDiscountPerce
   type = String(type || '');
   var products = String(restriction || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
   if (type === 'percent' && products.length) return 'ลด ' + (parseFloat(value) || 0) + '% เฉพาะ ' + products.join(', ');
+  // ⚡ เพิ่ม (6/10/69) — ค่าส่งราคาพิเศษที่ส่งฟรีเมื่อซื้อครบ N ชิ้น (หน้าร้านไม่รู้ N เอง)
+  if (type === 'ship_price' && (parseFloat(freeQty) || 0) > 0 && (parseFloat(value) || 0) > 0) return 'ค่าส่ง ' + (parseFloat(value) || 0) + ' บาท · ซื้อครบ ' + (parseFloat(freeQty) || 0) + ' ชิ้นส่งฟรี';
   if (type === 'bogo' && freeDiscountPercent !== '' && freeDiscountPercent !== null && freeDiscountPercent !== undefined) {
     var pct = parseFloat(freeDiscountPercent);
     var qty = parseFloat(freeQty) || 1;

@@ -418,7 +418,7 @@ function updateSignupPrivilegeConfig(pin, enabled, name, type, value, expiryDays
       expiryDate: String(expiryDate || '').trim(),
       restriction: String(restriction || '').trim(),
       freeProduct: typeValue === 'bogo' ? String(freeProduct || '').trim() : '',
-      freeQty: typeValue === 'bogo' ? (parseFloat(freeQty) || 0) : 0,
+      freeQty: couponFreeQtyCell_(typeValue, freeQty) || 0,
       // หน้าแอดมินรุ่นเก่าที่ไม่ส่งค่านี้มา = คงค่าเดิม
       freeDiscountPercent: (freeDiscountPercent === undefined || freeDiscountPercent === null)
         ? signupDiscountCell_(typeValue, getSignupPrivilegeConfig_().freeDiscountPercent) : signupDiscountCell_(typeValue, freeDiscountPercent),
@@ -740,7 +740,7 @@ function createSignupPrivilegeItem(pin, name, type, value, expiryDays, restricti
       name, typeValue, parseFloat(value) || 0, parseInt(expiryDays) || '',
       String(restriction || '').trim(),
       typeValue === 'bogo' ? String(freeProduct || '').trim() : '',
-      typeValue === 'bogo' ? (parseFloat(freeQty) || 0) : '',
+      couponFreeQtyCell_(typeValue, freeQty),
       true, new Date(), parseFloat(minPurchase) || '',
       String(startDate || '').trim(), String(endDate || '').trim()
     ]);
@@ -769,7 +769,7 @@ function updateSignupPrivilegeItem(pin, rowIndex, name, type, value, expiryDays,
       name, typeValue, parseFloat(value) || 0, parseInt(expiryDays) || '',
       String(restriction || '').trim(),
       typeValue === 'bogo' ? String(freeProduct || '').trim() : '',
-      typeValue === 'bogo' ? (parseFloat(freeQty) || 0) : ''
+      couponFreeQtyCell_(typeValue, freeQty)
     ]]);
     sheet.getRange(ri, 10).setValue(parseFloat(minPurchase) || '');
     sheet.getRange(ri, 11).setValue(String(startDate || '').trim());
@@ -4832,6 +4832,8 @@ function autoTicketTextFor_(type, value, restriction, freeQty, freeDiscountPerce
   type = String(type || '');
   var products = String(restriction || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
   if (type === 'percent' && products.length) return 'ลด ' + (parseFloat(value) || 0) + '% เฉพาะ ' + products.join(', ');
+  // ⚡ เพิ่ม (6/10/69) — ค่าส่งราคาพิเศษที่ส่งฟรีเมื่อซื้อครบ N ชิ้น (หน้าร้านไม่รู้ N เอง)
+  if (type === 'ship_price' && (parseFloat(freeQty) || 0) > 0 && (parseFloat(value) || 0) > 0) return 'ค่าส่ง ' + (parseFloat(value) || 0) + ' บาท · ซื้อครบ ' + (parseFloat(freeQty) || 0) + ' ชิ้นส่งฟรี';
   if (type === 'bogo' && freeDiscountPercent !== '' && freeDiscountPercent !== null && freeDiscountPercent !== undefined) {
     var pct = parseFloat(freeDiscountPercent);
     var qty = parseFloat(freeQty) || 1;
@@ -5924,7 +5926,7 @@ function addMemberPrivilege(pin, lineUid, name, type, value, expiryDays, startDa
     var expiryVal = endDateVal || (expiryFromDays_(baseForExpiry, expiryDays));
     ensurePrivilegesSheet_().appendRow([
       lineUid, name, typeValue, parseFloat(value) || 0, expiryVal, 'พนักงาน (Admin Panel)', new Date(), true, false, startDateVal || '',
-      String(restriction || '').trim(), storedFreeProductFor_(typeValue, freeProduct), typeValue === 'bogo' ? (parseFloat(freeQty) || 0) : '',
+      String(restriction || '').trim(), storedFreeProductFor_(typeValue, freeProduct), couponFreeQtyCell_(typeValue, freeQty),
       '', bogoFreeDiscountPercentValue_(typeValue, freeDiscountPercent)
     ]);
     var newPrivRow_ = ensurePrivilegesSheet_().getLastRow();
@@ -5965,7 +5967,7 @@ function updateMemberPrivilege(pin, rowIndex, name, type, value, expiryDays, sta
     sheet.getRange(ri, 10).setValue(startDateVal || '');
     sheet.getRange(ri, 11).setValue(String(restriction || '').trim());
     sheet.getRange(ri, 12).setValue(storedFreeProductFor_(typeValue, freeProduct));
-    sheet.getRange(ri, 13).setValue(typeValue === 'bogo' ? (parseFloat(freeQty) || 0) : '');
+    sheet.getRange(ri, 13).setValue(couponFreeQtyCell_(typeValue, freeQty));
     // หน้าแอดมินรุ่นเก่าที่ไม่ส่งค่านี้มา (undefined) = ไม่แตะค่าเดิม
     if (freeDiscountPercent !== undefined && freeDiscountPercent !== null) sheet.getRange(ri, 15).setValue(bogoFreeDiscountPercentValue_(typeValue, freeDiscountPercent));
     if (stackable !== undefined && stackable !== null) setPrivilegeStackable_(sheet, ri, 1, stackable);
@@ -6128,7 +6130,7 @@ function addPrivilegeToAllMembers(pin, name, type, value, expiryDays, startDate,
     var now = new Date();
     var restrictionValue = String(restriction || '').trim();
     var freeProductValue = storedFreeProductFor_(typeValue, freeProduct);
-    var freeQtyValue = typeValue === 'bogo' ? (parseFloat(freeQty) || 0) : '';
+    var freeQtyValue = couponFreeQtyCell_(typeValue, freeQty);
     var freeDiscountPercentValue = typeValue === 'bogo'
       ? ((freeDiscountPercent === '' || freeDiscountPercent === null || freeDiscountPercent === undefined) ? 100 : Math.max(0, Math.min(100, parseFloat(freeDiscountPercent) || 0)))
       : '';
@@ -6891,7 +6893,7 @@ function createAudienceCoupon_(uids, cfg) {
     code, typeValue, parseFloat(cfg.value) || 0, parseFloat(cfg.minPurchase) || 0, 0, 0,
     expiryVal || '', true, false, String(cfg.restriction || '').trim(), startDateVal || '',
     typeValue === 'bogo' ? String(cfg.freeProduct || '').trim() : '',
-    typeValue === 'bogo' ? (parseFloat(cfg.freeQty) || 0) : '',
+    couponFreeQtyCell_(typeValue, cfg.freeQty),
     '', typeValue === 'bogo' ? 100 : '', String(cfg.name || '').trim()
   ];
   for (var j = 0; j < values.length; j++) row[j] = values[j];
@@ -9802,7 +9804,7 @@ function grantPrivilegeToUids_(uids, cfg) {
       'พนักงาน (ยิงโปรตามกลุ่ม - Admin Panel)', now, true, false, startDateVal || '',
       String(cfg.restriction || '').trim(),
       typeValue === 'bogo' ? String(cfg.freeProduct || '').trim() : '',
-      typeValue === 'bogo' ? (parseFloat(cfg.freeQty) || 0) : '',
+      couponFreeQtyCell_(typeValue, cfg.freeQty),
       parseFloat(cfg.minPurchase) || '', ''];
   });
   var sheet = ensurePrivilegesSheet_();
