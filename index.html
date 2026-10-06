@@ -264,8 +264,10 @@ button.icon-btn-edit{background:linear-gradient(135deg,#ef6c00,#ffa726) !importa
 .editing-order-banner{background:linear-gradient(135deg,#e65100,#fb8c00);color:#fff;border-radius:14px;padding:14px;
   font-size:13.5px;line-height:1.5;margin-bottom:16px;display:flex;align-items:center;gap:12px;text-align:left;
   border:2px solid #ffcc80;animation:editBannerGlow 1.8s ease-in-out infinite;}
-.editing-order-banner .edit-ico{flex-shrink:0;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.22);
-  display:flex;align-items:center;justify-content:center;font-size:22px;}
+/* ⚡ แก้ (6/10/69) — ไอคอนดินสอ (emoji สีส้ม) กลืนกับพื้นส้ม: เปลี่ยนเป็นวงกลมขาว + ดินสอสีส้มเข้ม */
+.editing-order-banner .edit-ico{flex-shrink:0;width:42px;height:42px;border-radius:50%;background:#fff;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.18);}
+.editing-order-banner .edit-ico svg{width:22px;height:22px;display:block;}
 .editing-order-banner .edit-txt{flex:1;min-width:0;}
 .editing-order-banner .edit-title{display:block;font-size:16px;font-weight:600;}
 .editing-order-banner .edit-title b{background:#fff;color:#e65100;border-radius:6px;padding:0 6px;white-space:nowrap;}
@@ -314,7 +316,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
     </div>
 
     <div id="editingOrderBanner" class="editing-order-banner sh">
-      <span class="edit-ico">✏️</span>
+      <span class="edit-ico"><svg viewBox="0 0 24 24" fill="none" stroke="#e65100" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
       <span class="edit-txt"><span class="edit-title">กำลังแก้ไขออเดอร์ <b id="editingOrderIdText"></b></span><span class="edit-hint">เพิ่ม/ลดสินค้า แล้วกดไปหน้าชำระเงิน</span></span>
       <button type="button" onclick="cancelEditOrder_()">ไม่แก้แล้ว</button>
     </div>
