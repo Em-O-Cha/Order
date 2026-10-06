@@ -349,8 +349,8 @@ function loyaltyRow_(label, value, opts) {
   return {
     type: 'box', layout: 'baseline', spacing: 'sm', margin: opts.margin || 'sm',
     contents: [
-      loyaltyText_(label, { size: 'sm', color: '#8A8A8A', flex: 3 }),
-      loyaltyText_(value, { size: 'sm', color: opts.color || '#222222', flex: 5, weight: opts.bold ? 'bold' : 'regular', align: 'end' })
+      loyaltyText_(label, { size: 'sm', color: '#8A8A8A', flex: 0, wrap: false }),
+      loyaltyText_(value, { size: 'sm', color: opts.color || '#222222', flex: 1, weight: opts.bold ? 'bold' : 'regular', align: 'end' })
     ]
   };
 }
@@ -479,7 +479,7 @@ function loyaltyCustomerApprovedFlex_(r) {
         { type: 'box', layout: 'vertical', height: '6px', cornerRadius: '3px',
           background: loyaltyGradient_('#FFB347', '#00B894', '90deg', '#FF6F91'), contents: [{ type: 'filler' }] }
       ].concat(rows).concat([
-        loyaltyText_('สะสมคะแนนต่อ แลกของรางวัลและของพรีเมียมได้ที่หน้าสมาชิก', { size: 'xs', color: '#8A8A8A', margin: 'lg' })
+        loyaltyText_('สะสมคะแนนต่อ แลกของรางวัลและของพรีเมียมได้ที่หน้าสมาชิก', { size: 'xs', color: '#8A8A8A', margin: 'lg', wrap: false, adjustMode: 'shrink-to-fit' })
       ])
     },
     footer: {
