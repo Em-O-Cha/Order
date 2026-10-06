@@ -6076,7 +6076,7 @@ function buildPointsAddedFlexMessage_(added, reason, balance) {
   });
   body.push({
     type: 'button', style: 'primary', color: '#a50d0c', height: 'md', margin: 'lg',
-    action: { type: 'uri', label: '👤 ไปหน้าสมาชิก', uri: MEMBER_LIFF_URL_ }
+    action: { type: 'uri', label: 'เช็คคะแนน', uri: MEMBER_LIFF_URL_ }
   });
   body.push({
     type: 'text', text: 'ขอบคุณที่รักเอมโอชานะคะ 🙏', size: 'xs', color: '#757575',
