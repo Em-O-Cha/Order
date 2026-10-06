@@ -211,8 +211,21 @@
     }).catch(function(e){ fail('lyDetailCard', e); });
   }
 
+  // ⚡ เพิ่ม (6/10/69) — รูปที่ย้ายไป Google Drive แล้ว (ลบออกจาก Supabase) เปิดจาก Drive แทน
+  function driveUrls(r){
+    if (!r.driveFileId) return null;
+    var isImg = (r.fileMime || '').indexOf('image/') === 0;
+    var thumb = function(id, w){ return 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(id) + '&sz=w' + w; };
+    return {
+      fileUrl: isImg ? thumb(r.driveFileId, 3000) : 'https://drive.google.com/file/d/' + encodeURIComponent(r.driveFileId) + '/view',
+      previewUrl: r.drivePreviewId ? thumb(r.drivePreviewId, 1600) : (isImg ? thumb(r.driveFileId, 1600) : '')
+    };
+  }
+
   function renderDetail(){
     var d = receipt, r = d.receipt, m = r.member || {}, now = d.memberNow || {}, ai = (r.ai && r.ai.result) || null;
+    var dv = driveUrls(r);
+    if (dv) { d.fileUrl = dv.fileUrl; d.previewUrl = dv.previewUrl; }
     var x = '<button class="btn btn-outline" style="padding:6px 12px;margin-bottom:10px" onclick="LY.loadList()">← กลับไปรายการ</button>';
     x += '<div class="ly-verdict ' + h(r.aiVerdict) + '">🧾 ' + h(r.ref) + ' · ' + h(STATUS[r.status] || r.status) + '<br><span style="font-weight:400">'
       + h(VERDICT[r.aiVerdict] || '') + ' · ส่งเมื่อ ' + dt(r.createdAt, true) + '</span></div>';

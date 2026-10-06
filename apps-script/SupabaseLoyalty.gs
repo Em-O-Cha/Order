@@ -13,6 +13,7 @@
 //     3. แจ้งผลในกลุ่มแอดมิน และส่ง Flex ไล่สีแจ้งลูกค้า (ได้กี่คะแนน / ไม่ผ่านเพราะอะไร)
 //   ให้คะแนนซ้ำไม่ได้: ก่อนเขียนเช็คใน Points_Log ว่ามีรายการ [7-11 R7-xxxxx] ของใบนี้แล้วหรือยัง
 //   รอบสำรอง: ทุก 1 นาทีผ่าน trigger คิวสมัคร (processRegistrationQueue) เก็บงานที่ปลุกไม่สำเร็จ
+//   รูปใบเสร็จ: ตัดสินแล้วครบ 3 วัน -> ย้ายจาก Supabase ไปโฟลเดอร์ "ใบเสร็จ 7-Eleven" ใน Google Drive (ส่วนที่ 1.5)
 //
 // ของพรีเมียม
 //   ห่อ doGet/doPost action redeemReward: แลกสำเร็จและเป็นหมวด premium -> บันทึกใบจัดส่งใน Supabase
@@ -37,6 +38,9 @@
 
 var LOYALTY_BACKUP_EVERY_SEC_ = 60;
 var LOYALTY_BACKUP_CACHE_KEY_ = 'loyalty_work_backup';
+var LOYALTY_ARCHIVE_EVERY_SEC_ = 30 * 60;
+var LOYALTY_ARCHIVE_CACHE_KEY_ = 'loyalty_archive_drive';
+var LOYALTY_ARCHIVE_RUNNING_KEY_ = 'loyalty_archive_running';
 var LOYALTY_POINTS_TABS_ = ['members/Members', 'members/Points_Log', 'members/Member_Privileges'];
 var LOYALTY_LOG_OVERRIDE_ = null;   // { uid, desc } ระหว่างเขียนคะแนนจากใบเสร็จ (เปลี่ยนคำอธิบายใน Points_Log)
 var LOYALTY_LOG_CAPTURE_ = null;    // [] ระหว่าง redeemReward รัน (เก็บรายการแต้มที่ถูกตัด)
@@ -60,6 +64,147 @@ function loyaltyWorkPendingBackup_() {
   } catch (e) {
     Logger.log('loyaltyWorkPendingBackup_ error: ' + e);
   }
+}
+
+// รอบสำรองย้ายรูปไป Drive (ทุก ~30 นาที ต่อท้ายคิวสมัคร ไม่ให้คิวสมัครต้องรอ)
+function loyaltyArchiveBackup_() {
+  var cache = CacheService.getScriptCache();
+  if (cache.get(LOYALTY_ARCHIVE_CACHE_KEY_)) return;
+  cache.put(LOYALTY_ARCHIVE_CACHE_KEY_, '1', LOYALTY_ARCHIVE_EVERY_SEC_);
+  try {
+    loyaltyArchiveToDrive();
+  } catch (e) {
+    Logger.log('loyaltyArchiveToDrive error: ' + e);
+  }
+}
+
+// ==========================================================================================
+// ส่วนที่ 1.5: ย้ายรูปใบเสร็จไป Google Drive (ไม่ให้เปลืองพื้นที่ Supabase)
+// ==========================================================================================
+// ⚡ เพิ่ม (6/10/69) — ใบที่ตัดสินแล้วครบ archive_after_days วัน (ค่าเริ่ม 3): ดาวน์โหลดรูปจาก Supabase ->
+// บันทึกในโฟลเดอร์ "ใบเสร็จ 7-Eleven" (แยกโฟลเดอร์ตามเดือน) เปิดสิทธิ์ทุกคนที่มีลิงก์ดูได้ (หน้าตรวจใบเสร็จเปิดรูปได้)
+// -> จด id ไฟล์ใน Supabase -> ลบไฟล์ออกจาก Supabase ทำทุก ~30 นาทีผ่านรอบสำรอง (รันเองจาก editor ก็ได้)
+// ไฟล์ใน Supabase ที่ไม่มีใบเสร็จอ้างถึง (เช่น ใบทดสอบที่ลบไปแล้ว) ย้ายไปโฟลเดอร์ย่อย "ไม่มีรายการ" เหมือนกัน
+// ไอดีโฟลเดอร์จำไว้ใน Script Properties ชื่อ LOYALTY_DRIVE_FOLDER_ID (ย้ายโฟลเดอร์ไปที่อื่นใน Drive ได้ ไม่ต้องแก้)
+function loyaltyArchiveToDrive() {
+  var cfg = mirrorConfig_();
+  if (!cfg) return { success: false, error: 'ยังไม่ได้ตั้ง SUPABASE_URL / SUPABASE_SECRET_KEY' };
+  // ไม่ใช้ script lock (ย้ายไฟล์ใช้เวลานาน จะขวางการเขียนคะแนน/งานอื่น) — กันรันซ้อนด้วย cache แทน
+  var cache = CacheService.getScriptCache();
+  if (cache.get(LOYALTY_ARCHIVE_RUNNING_KEY_)) return { success: false, error: 'กำลังย้ายอยู่ในอีกรอบ' };
+  cache.put(LOYALTY_ARCHIVE_RUNNING_KEY_, '1', 300);
+  var done = [], failed = [];
+  try {
+    var work = signupRpc_(cfg, 'loyalty_archive_claim', { p_limit: 5 }) || {};
+    (work.receipts || []).forEach(function (r) {
+      try {
+        loyaltyArchiveReceipt_(cfg, r);
+        done.push(r.ref);
+      } catch (e) {
+        Logger.log('loyaltyArchive ' + r.ref + ': ' + e);
+        failed.push(r.ref + ': ' + e);
+      }
+    });
+    (work.orphans || []).forEach(function (o) {
+      try {
+        var blob = loyaltyStorageGet_(cfg, o.path);
+        if (blob) {
+          blob.setName(String(o.path).replace(/\//g, '_'));
+          loyaltySaveToDrive_(blob, 'ไม่มีรายการ');
+        }
+        loyaltyStorageDelete_(cfg, [o.path]);
+        done.push(o.path);
+      } catch (e2) {
+        Logger.log('loyaltyArchive orphan ' + o.path + ': ' + e2);
+        failed.push(o.path + ': ' + e2);
+      }
+    });
+  } finally {
+    cache.remove(LOYALTY_ARCHIVE_RUNNING_KEY_);
+  }
+  if (failed.length) loyaltyAlertAdmin_('ย้ายรูปใบเสร็จไป Google Drive ไม่สำเร็จ ' + failed.length + ' รายการ: ' + failed.slice(0, 3).join(' / '));
+  Logger.log('ย้ายรูปใบเสร็จไป Drive สำเร็จ ' + done.length + ' รายการ' + (failed.length ? ' ไม่สำเร็จ ' + failed.length : ''));
+  return { success: !failed.length, moved: done, failed: failed };
+}
+
+function loyaltyArchiveReceipt_(cfg, r) {
+  var month = Utilities.formatDate(new Date(r.createdAt), 'Asia/Bangkok', 'yyyy-MM');
+  var name = (r.ref + ' ' + (r.memberName || '') + (r.memberCode ? ' ' + r.memberCode : '')).replace(/[\\\/:*?"<>|]/g, ' ').trim();
+  var fileId = r.driveFileId, previewId = r.drivePreviewId;
+  if (!fileId) {
+    var blob = loyaltyStorageGet_(cfg, r.filePath);
+    if (!blob) throw new Error('ไม่พบไฟล์ใน Supabase');
+    blob.setName(name + loyaltyExt_(r.filePath));
+    fileId = loyaltySaveToDrive_(blob, month);
+  }
+  if (!previewId && r.previewPath) {
+    var pb = loyaltyStorageGet_(cfg, r.previewPath);
+    if (pb) {
+      pb.setName(name + ' (รูปย่อ).jpg');
+      previewId = loyaltySaveToDrive_(pb, month);
+    }
+  }
+  signupRpc_(cfg, 'loyalty_archive_saved', { p_id: r.id, p_file_id: fileId, p_preview_id: previewId || '' });
+  loyaltyStorageDelete_(cfg, [r.filePath].concat(r.previewPath ? [r.previewPath] : []));
+  signupRpc_(cfg, 'loyalty_archive_done', { p_id: r.id });
+}
+
+function loyaltyExt_(path) {
+  var m = /(\.[A-Za-z0-9]{1,5})$/.exec(String(path || ''));
+  return m ? m[1].toLowerCase() : '';
+}
+
+// ไฟล์จาก bucket receipts (ไม่มีแล้ว = null)
+function loyaltyStorageGet_(cfg, path) {
+  var res = UrlFetchApp.fetch(cfg.url + '/storage/v1/object/authenticated/receipts/' + loyaltyStoragePath_(path), {
+    headers: loyaltyStorageHeaders_(cfg), muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  if (code === 404 || (code === 400 && /not.?found/i.test(res.getContentText()))) return null;
+  if (code !== 200) throw new Error('ดาวน์โหลดจาก Supabase ไม่สำเร็จ HTTP ' + code + ' ' + res.getContentText().substring(0, 200));
+  return res.getBlob();
+}
+
+function loyaltyStorageDelete_(cfg, paths) {
+  var res = UrlFetchApp.fetch(cfg.url + '/storage/v1/object/receipts', {
+    method: 'delete', contentType: 'application/json', headers: loyaltyStorageHeaders_(cfg),
+    payload: JSON.stringify({ prefixes: paths }), muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) {
+    throw new Error('ลบไฟล์ใน Supabase ไม่สำเร็จ HTTP ' + res.getResponseCode() + ' ' + res.getContentText().substring(0, 200));
+  }
+}
+
+function loyaltyStoragePath_(path) {
+  return String(path).split('/').map(encodeURIComponent).join('/');
+}
+
+function loyaltyStorageHeaders_(cfg) {
+  return mirrorAuthHeaders_(cfg.key);
+}
+
+// บันทึกลงโฟลเดอร์ "ใบเสร็จ 7-Eleven" / <โฟลเดอร์ย่อย> แล้วเปิดสิทธิ์ทุกคนที่มีลิงก์ดูได้ -> คืน id ไฟล์
+function loyaltySaveToDrive_(blob, subName) {
+  var root = loyaltyDriveRoot_();
+  var it = root.getFoldersByName(subName);
+  var folder = it.hasNext() ? it.next() : root.createFolder(subName);
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return file.getId();
+}
+
+function loyaltyDriveRoot_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('LOYALTY_DRIVE_FOLDER_ID');
+  if (id) {
+    try {
+      var f = DriveApp.getFolderById(id);
+      if (!f.isTrashed()) return f;
+    } catch (e) {}
+  }
+  var folder = DriveApp.createFolder('ใบเสร็จ 7-Eleven');
+  props.setProperty('LOYALTY_DRIVE_FOLDER_ID', folder.getId());
+  return folder;
 }
 
 function loyaltyWorkPending_() {
@@ -716,7 +861,11 @@ function loyaltyInstallHooks_() {
   wrap('processRegistrationQueue', function (orig) {
     return function () {
       try { loyaltyWorkPendingBackup_(); } catch (x) { Logger.log('loyalty backup: ' + x); }
-      return orig.apply(this, arguments);
+      try {
+        return orig.apply(this, arguments);
+      } finally {
+        try { loyaltyArchiveBackup_(); } catch (x2) { Logger.log('loyalty archive: ' + x2); }
+      }
     };
   });
 

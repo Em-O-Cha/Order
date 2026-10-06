@@ -143,8 +143,21 @@ function loadOne(){
   }).catch(function(e){ showState('⚠️', 'เชื่อมต่อไม่สำเร็จ: ' + e.message); });
 }
 
+// ⚡ เพิ่ม (6/10/69) — รูปที่ย้ายไป Google Drive แล้ว (ลบออกจาก Supabase) เปิดจาก Drive แทน
+function driveUrls(r){
+  if (!r.driveFileId) return null;
+  var isImg = (r.fileMime || '').indexOf('image/') === 0;
+  var thumb = function(id, w){ return 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(id) + '&sz=w' + w; };
+  return {
+    fileUrl: isImg ? thumb(r.driveFileId, 3000) : 'https://drive.google.com/file/d/' + encodeURIComponent(r.driveFileId) + '/view',
+    previewUrl: r.drivePreviewId ? thumb(r.drivePreviewId, 1600) : (isImg ? thumb(r.driveFileId, 1600) : '')
+  };
+}
+
 function render(){
   var r = data.receipt, m = r.member || {}, now = data.memberNow || {}, ai = (r.ai && r.ai.result) || null;
+  var dv = driveUrls(r);
+  if (dv) { data.fileUrl = dv.fileUrl; data.previewUrl = dv.previewUrl; }
   var h = '';
   if (LIST_TOKEN) h += '<a class="top-link" href="receiptReview.html?all=1&t=' + encodeURIComponent(LIST_TOKEN) + '">← รายการทั้งหมด</a>';
   else if (data.listLink) h += '<a class="top-link" href="' + esc(data.listLink) + '">📋 รายการรอตรวจทั้งหมด</a>';
