@@ -6033,12 +6033,23 @@ function adjustMemberPoints(pin, lineUid, points, reason) {
     sheet.getRange(rowIndex, 6).setValue(newPoints);
     var desc = (reason ? String(reason).trim() : '') || (delta > 0 ? 'พนักงานเพิ่มคะแนนให้' : 'พนักงานหักคะแนน');
     logPointsTransaction_(lineUid, delta > 0 ? 'adjust_add' : 'adjust_sub', desc, newPoints - currentPoints, newPoints);
-    return { success: true, newPoints: newPoints };
+    var notify = delta > 0 ? { added: newPoints - currentPoints, reason: reason ? String(reason).trim() : '', balance: newPoints } : null;
   } catch (e) {
     return { success: false, error: e.toString() };
   } finally {
     lock.releaseLock();
   }
+  // ⚡ เพิ่ม (6/10/69) — เพิ่มคะแนนให้รายคนจากหน้าแอดมินแล้วส่ง LINE แจ้งลูกค้า (ส่งหลังปลดล็อก ไม่ให้ LINE ช้าแล้วถ่วง
+  // คนอื่น ส่งไม่สำเร็จก็ไม่กระทบคะแนนที่บันทึกไปแล้ว) — หักคะแนนไม่ส่งแจ้ง
+  var lineSent = false;
+  if (notify) {
+    var msg = '🎁 คุณได้รับคะแนนสะสมเพิ่ม ' + notify.added.toLocaleString('th-TH') + ' คะแนน'
+      + (notify.reason ? '\nรายละเอียด: ' + notify.reason : '')
+      + '\n\nคะแนนสะสมคงเหลือ ' + notify.balance.toLocaleString('th-TH') + ' คะแนน'
+      + '\nขอบคุณที่รักเอมโอชานะคะ 🙏';
+    lineSent = sendLinePush_(lineUid, msg).success;
+  }
+  return { success: true, newPoints: newPoints, lineSent: lineSent, lineNotified: !!notify };
 }
 
 function addPointsToAllMembers(pin, points, reason) {
