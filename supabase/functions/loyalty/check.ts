@@ -223,13 +223,16 @@ export function evaluate(ai: AiResult, meta: ReturnType<typeof scanMetadata> | n
   if (date) {
     receiptAt = `${date}T${time}:00+07:00`;
     const at = new Date(receiptAt).getTime();
-    const maxAge = Math.max(parseInt(String(cfg.maxReceiptAgeDays)) || 30, 1);
+    const maxAge = Math.max(parseInt(String(cfg.maxReceiptAgeDays)) || 7, 1);
+    // นับเป็นวันตามปฏิทินไทย: วันที่ส่ง - วันที่ซื้อ (ฐานข้อมูลใช้กติกาเดียวกันตัดสินไม่อนุมัติอัตโนมัติ)
+    const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+    const ageDays = Math.round((Date.parse(today) - Date.parse(date)) / (24 * 3600 * 1000));
     if (cfg.liveFrom && date < String(cfg.liveFrom)) {
       flags.push("ซื้อก่อนวันเริ่มรับใบเสร็จ (" + cfg.liveFrom + ")"); soft.push("ใบเสร็จซื้อก่อนวันเริ่มกิจกรรม"); worsen("suspect");
     }
     if (Number.isNaN(at)) receiptAt = null;
     else if (at > Date.now() + 24 * 3600 * 1000) { flags.push("วันที่ในใบเสร็จอยู่ในอนาคต"); worsen("suspect"); }
-    else if (Date.now() - at > maxAge * 24 * 3600 * 1000) {
+    else if (ageDays > maxAge) {
       flags.push(`ใบเสร็จเก่ากว่า ${maxAge} วัน`); soft.push(`ใบเสร็จเก่ากว่า ${maxAge} วัน`); worsen("suspect");
     }
   }

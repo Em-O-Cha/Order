@@ -348,7 +348,7 @@
       + '<div class="ly-sec">⭐ การให้คะแนน</div>'
       + '<div class="ly-two"><div class="fg"><label>บาทต่อ 1 คะแนน</label><input class="fc" id="lyBpp" type="number" min="1" value="' + h(s.baht_per_point) + '"></div>'
       + '<div class="fg"><label>ส่งได้กี่ใบ/วัน/คน</label><input class="fc" id="lyMaxDay" type="number" min="1" value="' + h(s.max_per_day) + '"></div></div>'
-      + '<div class="fg"><label>อายุใบเสร็จไม่เกิน (วัน)</label><input class="fc" id="lyMaxAge" type="number" min="1" value="' + h(s.max_receipt_age_days) + '"></div>'
+      + '<div class="fg"><label>อายุใบเสร็จไม่เกิน (วัน) — นับจากวันที่ส่ง เกินนี้ไม่อนุมัติอัตโนมัติ</label><input class="fc" id="lyMaxAge" type="number" min="1" value="' + h(s.max_receipt_age_days) + '"></div>'
       + sw('lyLive', 'เปิดรับใบเสร็จ (แสดงปุ่ม 7-Eleven ในหน้าสมาชิก)', 'ปิด = ซ่อนปุ่มในหน้าสมาชิก ลูกค้าส่งใบเสร็จไม่ได้', s.live)
       + '<div class="ly-two" style="margin-top:8px"><div class="fg"><label>เริ่มรับใบเสร็จวันที่</label><input class="fc" id="lyFrom" type="date" value="' + h(s.live_from || '') + '"></div>'
       + '<div class="fg"><label>รับใบเสร็จถึงวันที่</label><input class="fc" id="lyUntil" type="date" value="' + h(s.live_until || '') + '"></div></div>'

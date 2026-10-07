@@ -45,6 +45,7 @@ var LOYALTY_POINTS_TABS_ = ['members/Members', 'members/Points_Log', 'members/Me
 var LOYALTY_LOG_OVERRIDE_ = null;   // { uid, desc } ระหว่างเขียนคะแนนจากใบเสร็จ (เปลี่ยนคำอธิบายใน Points_Log)
 var LOYALTY_LOG_CAPTURE_ = null;    // [] ระหว่าง redeemReward รัน (เก็บรายการแต้มที่ถูกตัด)
 var LOYALTY_TOKEN_PROPS_ = ['LINE_CHANNEL_ACCESS_TOKEN', 'CHANNEL_ACCESS_TOKEN', 'LINE_ACCESS_TOKEN'];
+var LOYALTY_AUTO_REVIEWER_ = 'ระบบ (อัตโนมัติ)'; // ผู้ตัดสินของใบที่ฐานข้อมูลไม่อนุมัติเอง (ใบเสร็จเกินอายุ)
 var LOYALTY_GROUP_ = '';            // Group ID ของรอบทำงานนี้ (จากค่าตั้งใน Supabase)
 
 // ==========================================================================================
@@ -265,7 +266,10 @@ function loyaltyProcessReceipt_(cfg, r) {
     wrote = true;
   }
   if (needs.decision && pointsDone) {
-    loyaltyPush_(LOYALTY_GROUP_, [{ type: 'text', text: loyaltyDecisionText_(r) }], r.id + ':decision:' + r.status);
+    // ระบบไม่อนุมัติเองตอนส่ง (ใบเกินอายุ) — การ์ดใบเสร็จในกลุ่มบอกผลแล้ว ไม่ต้องส่งข้อความผลซ้ำ
+    if (!(needs.admin && r.reviewer === LOYALTY_AUTO_REVIEWER_)) {
+      loyaltyPush_(LOYALTY_GROUP_, [{ type: 'text', text: loyaltyDecisionText_(r) }], r.id + ':decision:' + r.status);
+    }
     loyaltyUpdate_(cfg, 'receipt', r.id, { decision_notified: true });
   }
   if (needs.customer && pointsDone) {
@@ -522,6 +526,9 @@ function loyaltyItemsText_(items) {
 function loyaltyAdminReceiptFlex_(r) {
   var v = LOYALTY_VERDICT_[r.aiVerdict] || LOYALTY_VERDICT_.unchecked;
   if (r.status === 'rejected' && r.duplicateOf) v = { label: 'ใบเสร็จซ้ำ — ระบบไม่อนุมัติอัตโนมัติ', icon: '⛔', start: '#CB2D3E', end: '#EF473A' };
+  else if (r.status === 'rejected' && r.reviewer === LOYALTY_AUTO_REVIEWER_) {
+    v = { label: 'ระบบไม่อนุมัติอัตโนมัติ: ' + (r.reviewNote || ''), icon: '⛔', start: '#CB2D3E', end: '#EF473A' };
+  }
   var m = r.member || {};
   var survey = r.survey || {};
   var body = [

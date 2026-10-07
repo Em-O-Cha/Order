@@ -114,7 +114,11 @@ async function myReceipts(p: P) {
 }
 
 function customerMessage(receipt: Json, soft: string[]): string {
-  if (receipt.status === "rejected") return "ใบเสร็จนี้เคยถูกส่งเข้ามาแล้ว ไม่สามารถใช้สะสมคะแนนซ้ำได้";
+  if (receipt.status === "rejected") {
+    return receipt.duplicateOf || !receipt.reviewNote
+      ? "ใบเสร็จนี้เคยถูกส่งเข้ามาแล้ว ไม่สามารถใช้สะสมคะแนนซ้ำได้"
+      : `ใบเสร็จไม่ผ่านการตรวจสอบ: ${receipt.reviewNote}`;
+  }
   if (receipt.status === "approved") return `ใบเสร็จผ่านการตรวจสอบ ได้รับ ${receipt.points} คะแนน (กำลังเพิ่มเข้าบัญชี)`;
   const base = "ส่งใบเสร็จเรียบร้อย เจ้าหน้าที่จะตรวจสอบและแจ้งผลทาง LINE";
   return soft.length ? `${base}\n(หมายเหตุ: ${soft.join(", ")})` : base;
