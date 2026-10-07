@@ -183,7 +183,8 @@ async function submitReceipt(req: Request) {
   if (form.get("originalReplaced") === "1") extraFlags.push("ไฟล์ต้นฉบับใหญ่เกิน หน้าเว็บย่อรูปก่อนส่ง (ตรวจร่องรอยในไฟล์ไม่ได้)");
   const channel = String(survey.answers.channel || "");
   const ai: AiResult = block
-    ? await aiCheck(ANTHROPIC_API_KEY, block, (prep.productKeywords || []).map(String), channel, String(prep.aiModel || "claude-opus-5-5"))
+    ? await aiCheck(ANTHROPIC_API_KEY, block, (prep.productKeywords || []).map(String), channel, String(prep.aiModel || "claude-opus-5-5"),
+                    cfg.pointPromos || [])
     : { ok: false, error: `ไฟล์ชนิด ${mime} ให้ AI อ่านไม่ได้`, ms: 0 };
   const ev = evaluate(ai, meta, cfg, extraFlags);
 

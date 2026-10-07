@@ -93,7 +93,7 @@
   var receipt = null;         // ใบที่เปิดดูอยู่ (ผลของ action review)
   var decision = 'approve';
   var shipments = [], sender = {};
-  var settings = null, survey = [];
+  var settings = null, survey = [], promos = [];
   var filter = 'pending';
 
   function h(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -238,7 +238,8 @@
       + row('ยอดสินค้าเอมโอชา', '<span style="color:#e8590c">' + (r.emochaAmount != null ? baht(r.emochaAmount) : '-') + '</span>')
       + row('คะแนนที่แนะนำ', r.suggestedPoints + ' คะแนน (' + h(d.bahtPerPoint) + ' บาท = 1)') + '</div>';
     if (r.emochaItems && r.emochaItems.length) {
-      x += '<div class="ly-note">' + r.emochaItems.map(function(i){ return '• ' + h(i.name) + (i.qty ? ' × ' + h(i.qty) : '') + (i.amount ? ' = ' + baht(i.amount) : ''); }).join('<br>') + '</div>';
+      x += '<div class="ly-note">' + r.emochaItems.map(function(i){ return '• ' + h(i.name) + (i.qty ? ' × ' + h(i.qty) : '') + (i.amount ? ' = ' + baht(i.amount) : '')
+        + (i.multiplier ? ' <b style="color:#c2185b">🎁 คะแนน x' + h(i.multiplier) + '</b>' : ''); }).join('<br>') + '</div>';
     }
     if (r.aiFlags && r.aiFlags.length) x += '<ul class="ly-flags">' + r.aiFlags.map(function(f){ return '<li>' + h(f) + '</li>'; }).join('') + '</ul>';
     if (ai && ai.summary_th) x += '<div class="ly-note">🤖 ' + h(ai.summary_th) + '</div>';
@@ -330,6 +331,7 @@
     ensureLinks().then(function(){ return api({ action: 'settingsGet', t: tok.cfg }); }).then(function(r){
       if (!r.success) throw new Error(r.error || 'โหลดไม่สำเร็จ');
       settings = r; survey = JSON.parse(JSON.stringify(r.settings.survey || []));
+      promos = JSON.parse(JSON.stringify(r.settings.point_promos || []));
       renderSettings();
     }).catch(function(e){ fail('lySettingsCard', e); });
   }
@@ -357,6 +359,10 @@
       + sw('lyAuto', 'อนุมัติอัตโนมัติเมื่อ AI ตรวจผ่าน', 'ใบที่ผ่านทุกข้อได้คะแนนทันที ใบที่น่าสงสัยยังรอแอดมิน', s.auto_approve)
       + sw('lySpend', 'นับยอดเข้ายอดซื้อสะสม', 'มีผลกับการเลื่อนระดับสมาชิก', s.count_spend)
       + sw('lyNotifyRej', 'แจ้งลูกค้าเมื่อไม่อนุมัติ', 'ส่ง LINE บอกเหตุผล', s.notify_customer_reject)
+      + '<div class="ly-sec">🎁 โปรคะแนนพิเศษ</div>'
+      + '<div class="hint" style="margin-bottom:8px">ซื้อสินค้าที่กำหนดได้คะแนนคูณ เฉพาะยอดของสินค้านั้น (เช่น x2: สินค้าโปร 60 บาท + สินค้าอื่น 30 บาท = 4 + 1 = 5 คะแนน) · ช่วงวันเทียบกับวันที่ซื้อในใบเสร็จ เว้นว่าง = ไม่จำกัด</div>'
+      + '<div id="lyPromos"></div>'
+      + '<button type="button" class="btn btn-outline btn-block" onclick="LY.addPromo()">➕ เพิ่มโปร</button>'
       + '<div class="ly-sec">📦 ผู้ส่งบนใบจัดส่งของพรีเมียม</div>'
       + '<div class="ly-two"><div class="fg"><label>ชื่อผู้ส่ง</label><input class="fc" id="lySndName" value="' + h(snd.name) + '"></div>'
       + '<div class="fg"><label>เบอร์โทร</label><input class="fc" id="lySndPhone" value="' + h(snd.phone) + '"></div></div>'
@@ -369,6 +375,7 @@
       + '<div class="ly-sec">📊 สรุปผลแบบสอบถาม</div>' + summaryHtml();
     setHtml('lySettingsCard', x);
     renderSurvey();
+    renderPromos();
   }
 function lyLiveStatus(st){
     if (!st) return '';
@@ -415,8 +422,40 @@ function lyLiveStatus(st){
   function addQ(){ readSurvey(); if (survey.length >= 10) return; survey.push({ id: 'q' + Date.now().toString(36), q: '', type: 'single', required: true, options: [] }); renderSurvey(); }
   function delQ(i){ readSurvey(); survey.splice(i, 1); renderSurvey(); }
   function moveQ(i, d){ readSurvey(); var t = survey[i]; survey[i] = survey[i + d]; survey[i + d] = t; renderSurvey(); }
+  // ⚡ เพิ่ม (7/10/69) — โปรคะแนนพิเศษ
+  function readPromos(){
+    document.querySelectorAll('#lyPromos .ly-q').forEach(function(q, i){
+      var f = function(k){ return q.querySelector('[data-f=' + k + ']'); };
+      promos[i].name = f('name').value.trim();
+      promos[i].keywords = f('kw').value.split('\n').map(function(t){ return t.trim(); }).filter(Boolean);
+      promos[i].multiplier = Number(f('mul').value);
+      promos[i].from = f('from').value;
+      promos[i].until = f('until').value;
+      promos[i].active = f('on').checked;
+    });
+  }
+  function renderPromos(){
+    setHtml('lyPromos', promos.length ? promos.map(function(p, i){
+      return '<div class="ly-q"><div class="ly-q-hd"><span>โปร ' + (i + 1) + '</span>'
+        + '<button type="button" class="btn-del" onclick="LY.delPromo(' + i + ')">ลบ</button></div>'
+        + '<div class="fg"><label>ชื่อสินค้า</label><input class="fc" data-f="name" placeholder="เช่น น้ำพริกน้ำย้อย" value="' + h(p.name) + '"></div>'
+        + '<div class="fg"><label>คำที่ใช้หาสินค้านี้ในใบเสร็จ (1 คำต่อบรรทัด)</label><textarea class="fc" data-f="kw" rows="2" style="height:auto;padding:8px 12px" placeholder="เช่น น้ำย้อย">' + h((p.keywords || []).join('\n')) + '</textarea></div>'
+        + '<div class="ly-two" style="margin-bottom:6px"><div class="fg"><label>คูณคะแนน (เท่า)</label><input class="fc" data-f="mul" type="number" min="1.1" max="10" step="0.5" value="' + h(p.multiplier) + '"></div>'
+        + '<label class="chk-row" style="margin:0;align-self:end"><input type="checkbox" data-f="on"' + (p.active ? ' checked' : '') + '> เปิดใช้</label></div>'
+        + '<div class="ly-two"><div class="fg"><label>ซื้อตั้งแต่วันที่</label><input class="fc" data-f="from" type="date" value="' + h(p.from || '') + '"></div>'
+        + '<div class="fg"><label>ถึงวันที่</label><input class="fc" data-f="until" type="date" value="' + h(p.until || '') + '"></div></div></div>';
+    }).join('') : '<div class="hint">ยังไม่มีโปร</div>');
+  }
+  function addPromo(){
+    readPromos();
+    if (promos.length >= 20) return;
+    promos.push({ id: 'p' + Date.now().toString(36), name: '', keywords: [], multiplier: 2, from: '', until: '', active: true });
+    renderPromos();
+  }
+  function delPromo(i){ readPromos(); promos.splice(i, 1); renderPromos(); }
   function saveSettings(){
     readSurvey();
+    readPromos();
     var v = function(id){ return el(id).value.trim(); };
     var payload = {
       admin_group_id: v('lyGroup'), live: el('lyLive').checked, live_from: v('lyFrom'), live_until: v('lyUntil'),
@@ -425,13 +464,15 @@ function lyLiveStatus(st){
       baht_per_point: Number(v('lyBpp')), max_per_day: Number(v('lyMaxDay')), max_receipt_age_days: Number(v('lyMaxAge')),
       sender: { name: v('lySndName'), phone: v('lySndPhone'), address: v('lySndAddr') },
       product_keywords: v('lyKeywords').split('\n').map(function(t){ return t.trim(); }).filter(Boolean),
-      survey: survey.map(function(q){ return { id: q.id, q: String(q.q || '').trim(), type: q.type, required: !!q.required, options: q.options }; })
+      survey: survey.map(function(q){ return { id: q.id, q: String(q.q || '').trim(), type: q.type, required: !!q.required, options: q.options }; }),
+      point_promos: promos.map(function(p){ return { id: p.id, name: p.name, keywords: p.keywords, multiplier: p.multiplier, from: p.from || '', until: p.until || '', active: !!p.active }; })
     };
     var b = el('lyCfgSave'); b.disabled = true; b.textContent = '⏳ กำลังบันทึก...';
     api({ action: 'settingsSave', t: tok.cfg, settings: JSON.stringify(payload) }).then(function(r){
       b.disabled = false; b.textContent = '💾 บันทึกการตั้งค่า';
       if (!r.success) { var e = el('lyCfgErr'); e.textContent = r.error || 'บันทึกไม่สำเร็จ'; e.classList.add('show'); return; }
       settings = r; survey = JSON.parse(JSON.stringify(r.settings.survey || []));
+      promos = JSON.parse(JSON.stringify(r.settings.point_promos || []));
       renderSettings();
       var ok = el('lyCfgOk'); ok.textContent = '✅ บันทึกแล้ว'; ok.classList.add('show');
     }).catch(function(e){ b.disabled = false; b.textContent = '💾 บันทึกการตั้งค่า'; var x = el('lyCfgErr'); x.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + e.message; x.classList.add('show'); });
@@ -520,6 +561,7 @@ function lyLiveStatus(st){
     bump: function(n){ var x = el('lyPoints'); x.value = Math.max(1, (parseInt(x.value, 10) || 0) + n); },
     reason: function(i){ el('lyNote').value = REASONS[i]; }, submitDecision: submitDecision,
     toggleSettings: toggleSettings, addQ: addQ, delQ: delQ, moveQ: moveQ, saveSettings: saveSettings,
+    addPromo: addPromo, delPromo: delPromo,
     loadShipments: loadShipments, renderShipments: renderShipments, ship: ship, cancelShip: cancelShip,
     printSelected: printSelected, zoom: zoom
   };

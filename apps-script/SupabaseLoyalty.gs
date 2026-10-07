@@ -518,8 +518,16 @@ function loyaltyButton_(label, uri, color) {
 function loyaltyItemsText_(items) {
   if (!items || !items.length) return '';
   return items.slice(0, 5).map(function (i) {
-    return '• ' + i.name + (i.qty ? ' x' + i.qty : '') + (i.amount ? ' = ' + loyaltyBaht_(i.amount) : '');
+    return '• ' + i.name + (i.qty ? ' x' + i.qty : '') + (i.amount ? ' = ' + loyaltyBaht_(i.amount) : '') +
+      (i.multiplier ? ' 🎁 คะแนน x' + i.multiplier : '');
   }).join('\n');
+}
+
+// ⚡ เพิ่ม (7/10/69) — โปรคะแนนพิเศษที่ใบนี้ได้ (Edge Function ติดป้าย promo/multiplier ไว้ในรายการสินค้า)
+function loyaltyPromoText_(items) {
+  var seen = {};
+  (items || []).forEach(function (i) { if (i && i.promo) seen[i.promo + ' x' + i.multiplier] = true; });
+  return Object.keys(seen).join(', ');
 }
 
 // ---- กลุ่มแอดมิน: ใบเสร็จใหม่ ----
@@ -543,6 +551,8 @@ function loyaltyAdminReceiptFlex_(r) {
     loyaltyRow_(r.status === 'approved' ? 'ให้คะแนน' : 'คะแนนที่แนะนำ',
       (r.status === 'approved' ? r.points : r.suggestedPoints) + ' คะแนน', { bold: true, color: '#E8590C' })
   ];
+  var promo = loyaltyPromoText_(r.emochaItems);
+  if (promo) body.push(loyaltyRow_('🎁 โปรคะแนนพิเศษ', promo, { bold: true, color: '#C2185B' }));
   var items = loyaltyItemsText_(r.emochaItems);
   if (items) body.push(loyaltyText_(items, { size: 'xs', color: '#555555', margin: 'md' }));
   var flags = (r.aiFlags || []).slice(0, 6);
@@ -610,6 +620,8 @@ function loyaltyCustomerApprovedFlex_(r) {
     loyaltyRow_('วันที่ซื้อ', loyaltyDate_(r.receiptAt, false))
   ];
   if (r.emochaAmount) rows.push(loyaltyRow_('ยอดสินค้าเอมโอชา', loyaltyBaht_(r.emochaAmount)));
+  var promo = loyaltyPromoText_(r.emochaItems);
+  if (promo) rows.push(loyaltyRow_('🎁 โปรคะแนนพิเศษ', promo, { bold: true, color: '#C2185B' }));
   if (r.balanceAfter != null) rows.push(loyaltyRow_('คะแนนสะสมล่าสุด', Number(r.balanceAfter).toLocaleString('en-US') + ' คะแนน', { bold: true, color: '#E8590C' }));
   var bubble = {
     type: 'bubble', size: 'mega',

@@ -2,6 +2,7 @@
 //   sniffMime / scanMetadata  ชนิดไฟล์จริง + ร่องรอยโปรแกรมแต่งรูป/เครื่องมือ AI ในไฟล์
 //   aiCheck                   ให้ Claude อ่านใบเสร็จ (โครงสร้างผลตาม RECEIPT_SCHEMA)
 //   evaluate                  สรุปผล pass / suspect / fail / unchecked + ธงเหตุผล + คีย์ตรวจซ้ำ + คะแนนที่แนะนำ
+//                             (รวมโปรคะแนนพิเศษ: ยอดสินค้าที่อยู่ในโปรคูณตามโปร ติดป้าย promo ไว้ในรายการสินค้า)
 //   validateSurvey            ตรวจคำตอบแบบสอบถามกับค่าตั้ง
 
 import Anthropic from "npm:@anthropic-ai/sdk@0.129.0";
@@ -88,10 +89,11 @@ export const RECEIPT_SCHEMA = {
     items: {
       type: "array",
       items: {
-        type: "object", additionalProperties: false, required: ["name", "qty", "amount", "is_emocha"],
+        type: "object", additionalProperties: false, required: ["name", "qty", "amount", "is_emocha", "promo_id"],
         properties: {
           name: { type: "string" }, qty: { type: "number" }, amount: { type: "number", description: "Line total in THB after line discounts" },
           is_emocha: { type: "boolean", description: "true if this line is an Em-O-Cha (เอมโอชา) product" },
+          promo_id: { type: "string", description: "id of the special-points promo product this Em-O-Cha line is, from the list in the user message. Empty string if none." },
         },
       },
     },
@@ -113,6 +115,7 @@ Reading the receipt
 - 7-Eleven receipts can be a photo of the thermal paper slip from the store, an e-receipt or order summary from 7-Delivery / the 7-Eleven app / ALL Online, or a tax invoice. Treat all of these as 7-Eleven receipts.
 - 7-Eleven prints product names abbreviated and without spaces. A line is an Em-O-Cha product when it contains the brand (เอมโอชา, EMOCHA, EM-O-CHA) or clearly matches one of the brand's products listed in the user message. Do not count other brands' chili paste or noodles.
 - Use the amount actually charged for each Em-O-Cha line (after line discounts). emocha_amount is their sum.
+- Some Em-O-Cha products currently earn extra points. The user message lists them with an id, a name and words that appear in the product name. Set promo_id on a line only when that line is clearly that product; otherwise leave it empty.
 - Report the receipt number exactly as printed. Leave a field empty (or 0) when it is not visible rather than guessing.
 
 Checking authenticity
@@ -124,7 +127,8 @@ Use authenticity "genuine" when you see no concrete problem, "suspicious" when s
 
 export type AiResult = { ok: true; data: Json; model: string; ms: number } | { ok: false; error: string; ms: number };
 
-export async function aiCheck(apiKey: string, block: Json, keywords: string[], channelHint: string, model: string): Promise<AiResult> {
+export async function aiCheck(apiKey: string, block: Json, keywords: string[], channelHint: string, model: string,
+                              promos: Json[] = []): Promise<AiResult> {
   const t0 = Date.now();
   if (!apiKey) return { ok: false, error: "ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY", ms: 0 };
   try {
@@ -132,7 +136,10 @@ export async function aiCheck(apiKey: string, block: Json, keywords: string[], c
     const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
     const userText = `Today in Thailand is ${today}.
 The member says they bought through: ${channelHint || "(not stated)"}.
-Em-O-Cha brand words and product names to look for: ${keywords.join(", ")}.`;
+Em-O-Cha brand words and product names to look for: ${keywords.join(", ")}.
+Special-points promo products: ${promos.length
+      ? promos.map((p) => `[${p.id}] ${p.name} (words: ${(p.keywords || []).join(", ")})`).join("; ")
+      : "(none)"}.`;
     const params: Json = {
       model,
       max_tokens: 16000,
@@ -174,8 +181,30 @@ export type Verdict = "pass" | "suspect" | "fail" | "unchecked";
 export type Evaluation = {
   verdict: Verdict; flags: string[]; soft: string[]; receipt_no: string; store: string; receipt_at: string | null;
   receipt_total: number | null; emocha_amount: number | null; emocha_items: Json[] | null; receipt_key: string | null;
-  loose_key: string | null; suggested_points: number;
+  loose_key: string | null; suggested_points: number; bonus_points: number;
 };
+
+// โปรคะแนนพิเศษที่ใช้กับวันที่ซื้อนี้ (ไม่เห็นวันที่ซื้อ = ใช้วันนี้)
+export function promosFor(cfg: Json, date: string): Json[] {
+  const day = date || new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+  return (Array.isArray(cfg.pointPromos) ? cfg.pointPromos : []).filter((p: Json) =>
+    p && p.active !== false && num(p.multiplier) > 1 && (!p.from || day >= String(p.from)) && (!p.until || day <= String(p.until)));
+}
+
+// สินค้าบรรทัดนี้อยู่ในโปรไหน: AI บอก promo_id มา หรือชื่อสินค้ามีคำของโปร (เทียบแบบไม่สนช่องว่าง/ตัวพิมพ์)
+function promoOf(item: Json, promos: Json[]): Json | null {
+  const name = String(item.name || "").replace(/\s+/g, "").toLowerCase();
+  let best: Json | null = null;
+  for (const p of promos) {
+    const hit = (item.promo_id && String(item.promo_id) === String(p.id)) ||
+      (p.keywords || []).some((k: string) => {
+        const w = String(k || "").replace(/\s+/g, "").toLowerCase();
+        return w && name.includes(w);
+      });
+    if (hit && (!best || num(p.multiplier) > num(best.multiplier))) best = p;
+  }
+  return best;
+}
 
 export function evaluate(ai: AiResult, meta: ReturnType<typeof scanMetadata> | null, cfg: Json, extraFlags: string[]): Evaluation {
   const flags: string[] = [...extraFlags];
@@ -191,7 +220,7 @@ export function evaluate(ai: AiResult, meta: ReturnType<typeof scanMetadata> | n
   }
   const out: Evaluation = { verdict: "pass", flags, soft, receipt_no: "", store: "", receipt_at: null,
                             receipt_total: null, emocha_amount: null, emocha_items: null, receipt_key: null,
-                            loose_key: null, suggested_points: 0 };
+                            loose_key: null, suggested_points: 0, bonus_points: 0 };
   if (!ai.ok) {
     flags.unshift("AI ยังไม่ได้ตรวจ: " + ai.error);
     return { ...out, verdict: "unchecked" };
@@ -243,10 +272,20 @@ export function evaluate(ai: AiResult, meta: ReturnType<typeof scanMetadata> | n
   out.receipt_at = receiptAt;
   out.receipt_total = total || null;
   out.emocha_amount = emochaAmount;
-  out.emocha_items = emochaItems;
+  // โปรคะแนนพิเศษ: ยอดสินค้าในโปรนับเพิ่มอีก (คูณ - 1) เท่า ป้าย promo ติดไว้ในรายการให้แอดมินเห็น
+  const promos = promosFor(cfg, date);
+  let extra = 0;
+  out.emocha_items = emochaItems.map((i: Json) => {
+    const { promo_id: _id, ...item } = i;
+    const p = promoOf(i, promos);
+    if (!p) return item;
+    extra += Math.max(num(i.amount), 0) * (num(p.multiplier) - 1);
+    return { ...item, promo: String(p.name), multiplier: num(p.multiplier) };
+  });
   out.receipt_key = rn.length >= 4 && date ? `${digits(d.store_code) || "-"}|${rn}|${date}` : null;
   out.loose_key = rn.length >= 4 && date ? `${rn}|${date}` : null;
-  out.suggested_points = Math.floor(emochaAmount / bahtPerPoint);
+  out.suggested_points = Math.floor((emochaAmount + extra) / bahtPerPoint);
+  out.bonus_points = out.suggested_points - Math.floor(emochaAmount / bahtPerPoint);
   if (out.suggested_points <= 0 && emochaAmount > 0) { flags.push(`ยอดสินค้าเอมโอชาไม่ถึง ${bahtPerPoint} บาท`); worsen("suspect"); }
   return { ...out, verdict: state.verdict };
 }

@@ -180,7 +180,8 @@ function render(){
     + row('ยอดสินค้าเอมโอชา', r.emochaAmount != null ? baht(r.emochaAmount) : '-', 'big')
     + row('คะแนนที่แนะนำ', r.suggestedPoints + ' คะแนน (' + esc(data.bahtPerPoint) + ' บาท = 1 คะแนน)');
   if (r.emochaItems && r.emochaItems.length) {
-    h += '<div class="items">' + r.emochaItems.map(function(i){ return '<div>• ' + esc(i.name) + (i.qty ? ' × ' + esc(i.qty) : '') + (i.amount ? ' = ' + baht(i.amount) : '') + '</div>'; }).join('') + '</div>';
+    h += '<div class="items">' + r.emochaItems.map(function(i){ return '<div>• ' + esc(i.name) + (i.qty ? ' × ' + esc(i.qty) : '') + (i.amount ? ' = ' + baht(i.amount) : '')
+      + (i.multiplier ? ' <b style="color:#c2185b">🎁 คะแนน x' + esc(i.multiplier) + '</b>' : '') + '</div>'; }).join('') + '</div>';
   }
   if (r.aiFlags && r.aiFlags.length) h += '<ul class="flags">' + r.aiFlags.map(function(f){ return '<li>' + esc(f) + '</li>'; }).join('') + '</ul>';
   if (ai && ai.summary_th) h += '<div class="summary">🤖 ' + esc(ai.summary_th) + '</div>';

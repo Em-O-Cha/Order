@@ -70,7 +70,7 @@ textarea.fc{height:auto;padding:10px 12px;resize:vertical;line-height:1.5;}
 <script>
 var API_URL = 'https://qotlepudmkuniyjvqmle.supabase.co/functions/v1/loyalty?forceFunctionRegion=ap-northeast-2';
 var TOKEN = new URLSearchParams(location.search).get('t') || '';
-var data = null, survey = [];
+var data = null, survey = [], promos = [];
 
 function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function api(params){ return fetch(API_URL, { method: 'POST', body: new URLSearchParams(params).toString() }).then(function(r){ return r.json(); }); }
@@ -85,6 +85,7 @@ function load(){
     if (!r.success) { document.getElementById('app').innerHTML = '<div class="state"><div class="ico">🔒</div>' + esc(r.error || 'โหลดไม่สำเร็จ') + '</div>'; return; }
     data = r;
     survey = JSON.parse(JSON.stringify(r.settings.survey || []));
+    promos = JSON.parse(JSON.stringify(r.settings.point_promos || []));
     render();
   }).catch(function(e){ document.getElementById('app').innerHTML = '<div class="state"><div class="ico">⚠️</div>เชื่อมต่อไม่สำเร็จ: ' + esc(e.message) + '</div>'; });
 }
@@ -105,7 +106,7 @@ function render(){
     + '<div class="grid2"><div class="fg"><label>ยอดสินค้าเอมโอชา (บาท) ต่อ 1 คะแนน</label><input class="fc" id="baht_per_point" type="number" min="1" step="1" value="' + esc(s.baht_per_point) + '"></div>'
     + '<div class="fg"><label>ส่งได้กี่ใบต่อวันต่อคน</label><input class="fc" id="max_per_day" type="number" min="1" step="1" value="' + esc(s.max_per_day) + '"></div></div>'
     + '<div class="fg"><label>อายุใบเสร็จไม่เกิน (วัน) — นับจากวันที่ส่ง เกินนี้ไม่อนุมัติอัตโนมัติ</label><input class="fc" id="max_receipt_age_days" type="number" min="1" step="1" value="' + esc(s.max_receipt_age_days) + '">'
-    + '<div class="hint">เกินกำหนด = ติดธงให้แอดมินพิจารณา (ไม่ปฏิเสธเอง)</div></div>'
+    + '<div class="hint">ซื้อวันที่ 1 ส่งได้ถึงวันที่ 1 + จำนวนวันนี้ · เกินกำหนด = ไม่อนุมัติอัตโนมัติ พร้อมแจ้งเหตุผลลูกค้า</div></div>'
     + toggle('live', 'เปิดรับใบเสร็จ (แสดงปุ่ม 7-Eleven ในหน้าสมาชิก)', 'ปิด = ซ่อนปุ่มในหน้าสมาชิก ลูกค้าส่งใบเสร็จไม่ได้', s.live)
     + '<div class="grid2" style="margin-top:8px"><div class="fg"><label>เริ่มรับใบเสร็จวันที่</label><input class="fc" id="live_from" type="date" value="' + esc(s.live_from || '') + '"></div>'
     + '<div class="fg"><label>รับใบเสร็จถึงวันที่</label><input class="fc" id="live_until" type="date" value="' + esc(s.live_until || '') + '"></div></div>'
@@ -115,6 +116,10 @@ function render(){
     + toggle('count_spend', 'นับยอดเข้ายอดซื้อสะสม', 'เปิด = ยอดสินค้าเอมโอชาในใบเสร็จมีผลกับระดับสมาชิก', s.count_spend)
     + toggle('notify_customer_reject', 'แจ้งลูกค้าเมื่อไม่อนุมัติ', 'ส่ง LINE บอกเหตุผลให้ลูกค้า', s.notify_customer_reject)
     + '</div>';
+
+  // ⚡ เพิ่ม (7/10/69) — โปรคะแนนพิเศษ
+  h += '<div class="card"><h2>🎁 โปรคะแนนพิเศษ</h2><div class="desc">ซื้อสินค้าที่กำหนดได้คะแนนคูณ เฉพาะยอดของสินค้านั้น (เช่น x2: สินค้าโปร 60 บาท + สินค้าอื่น 30 บาท = 4 + 1 = 5 คะแนน) · ช่วงวันเทียบกับวันที่ซื้อในใบเสร็จ เว้นว่าง = ไม่จำกัด</div><div id="promos"></div>'
+    + '<button type="button" class="add" onclick="addPromo()">➕ เพิ่มโปร</button></div>';
 
   h += '<div class="card"><h2>📦 ผู้ส่งบนใบจัดส่งของพรีเมียม</h2><div class="desc">พิมพ์อยู่ส่วน "ผู้ส่ง" ของทุกใบ</div>'
     + '<div class="grid2"><div class="fg"><label>ชื่อผู้ส่ง</label><input class="fc" id="sender_name" value="' + esc(sender.name) + '"></div>'
@@ -131,6 +136,7 @@ function render(){
   document.getElementById('app').innerHTML = h;
   document.getElementById('saveBar').style.display = '';
   renderSurvey();
+  renderPromos();
 }
 
 function lyLiveStatus(st){
@@ -187,11 +193,44 @@ function addQ(){
 function delQ(i){ readSurvey(); askBox_('ลบคำถาม "' + (survey[i].q || 'ข้อ ' + (i + 1)) + '"?', { title: 'ลบคำถาม', ok: 'ลบ', danger: true }).then(function(ok){ if (!ok) return; survey.splice(i, 1); renderSurvey(); }); }
 function moveQ(i, d){ readSurvey(); var t = survey[i]; survey[i] = survey[i + d]; survey[i + d] = t; renderSurvey(); }
 
+// ---- โปรคะแนนพิเศษ ----
+function readPromos(){
+  document.querySelectorAll('#promos .q').forEach(function(el, i){
+    var f = function(k){ return el.querySelector('[data-f=' + k + ']'); };
+    promos[i].name = f('name').value.trim();
+    promos[i].keywords = f('keywords').value.split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+    promos[i].multiplier = Number(f('multiplier').value);
+    promos[i].from = f('from').value;
+    promos[i].until = f('until').value;
+    promos[i].active = f('active').checked;
+  });
+}
+function renderPromos(){
+  document.getElementById('promos').innerHTML = promos.length ? promos.map(function(p, i){
+    return '<div class="q"><div class="q-hd"><b>โปร ' + (i + 1) + '</b>'
+      + '<button type="button" class="del" onclick="delPromo(' + i + ')">ลบ</button></div>'
+      + '<div class="fg"><label>ชื่อสินค้า (แสดงให้แอดมิน/ลูกค้าเห็น)</label><input class="fc" data-f="name" placeholder="เช่น น้ำพริกน้ำย้อย" value="' + esc(p.name) + '"></div>'
+      + '<div class="fg"><label>คำที่ใช้หาสินค้านี้ในใบเสร็จ (1 คำต่อบรรทัด)</label><textarea class="fc" data-f="keywords" rows="2" placeholder="เช่น น้ำย้อย">' + esc((p.keywords || []).join('\n')) + '</textarea></div>'
+      + '<div class="grid2"><div class="fg"><label>คูณคะแนน (เท่า)</label><input class="fc" data-f="multiplier" type="number" min="1.1" max="10" step="0.5" value="' + esc(p.multiplier) + '"></div>'
+      + '<div class="sw" style="border:none;padding:4px 0"><b>เปิดใช้</b><label class="tg"><input type="checkbox" data-f="active"' + (p.active ? ' checked' : '') + '><span></span></label></div></div>'
+      + '<div class="grid2"><div class="fg"><label>ซื้อตั้งแต่วันที่</label><input class="fc" data-f="from" type="date" value="' + esc(p.from || '') + '"></div>'
+      + '<div class="fg"><label>ถึงวันที่</label><input class="fc" data-f="until" type="date" value="' + esc(p.until || '') + '"></div></div></div>';
+  }).join('') : '<div class="hint">ยังไม่มีโปร</div>';
+}
+function addPromo(){
+  readPromos();
+  if (promos.length >= 20) return showMsg('โปรมีได้ไม่เกิน 20 รายการ', false);
+  promos.push({ id: 'p' + Date.now().toString(36), name: '', keywords: [], multiplier: 2, from: '', until: '', active: true });
+  renderPromos();
+}
+function delPromo(i){ readPromos(); askBox_('ลบโปร "' + (promos[i].name || 'โปร ' + (i + 1)) + '"?', { title: 'ลบโปร', ok: 'ลบ', danger: true }).then(function(ok){ if (!ok) return; promos.splice(i, 1); renderPromos(); }); }
+
 // ---- บันทึก ----
 function showMsg(t, ok){ var el = document.getElementById('msg'); el.textContent = t; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
 function intOf(id){ return Number(document.getElementById(id).value); }
 function save(){
   readSurvey();
+  readPromos();
   var v = function(id){ return document.getElementById(id).value.trim(); };
   var settings = {
     admin_group_id: v('admin_group_id'),
@@ -205,7 +244,8 @@ function save(){
     max_receipt_age_days: intOf('max_receipt_age_days'),
     sender: { name: v('sender_name'), phone: v('sender_phone'), address: v('sender_address') },
     product_keywords: v('product_keywords').split('\n').map(function(x){ return x.trim(); }).filter(Boolean),
-    survey: survey.map(function(q){ return { id: q.id, q: q.q.trim(), type: q.type, required: !!q.required, options: q.options }; })
+    survey: survey.map(function(q){ return { id: q.id, q: q.q.trim(), type: q.type, required: !!q.required, options: q.options }; }),
+    point_promos: promos.map(function(p){ return { id: p.id, name: p.name, keywords: p.keywords, multiplier: p.multiplier, from: p.from || '', until: p.until || '', active: !!p.active }; })
   };
   if (settings.auto_approve && !data.settings.auto_approve && !save._autoOk) {
     askBox_('เปิดอนุมัติอัตโนมัติ? ใบเสร็จที่ AI ตรวจผ่านทุกข้อจะได้คะแนนทันทีโดยไม่รอแอดมิน', { title: 'เปิดอนุมัติอัตโนมัติ?', ok: 'เปิดใช้', icon: '🤖' })
@@ -218,6 +258,7 @@ function save(){
     btn.disabled = false;
     if (!r.success) return showMsg(r.error || 'บันทึกไม่สำเร็จ', false);
     data = r; survey = JSON.parse(JSON.stringify(r.settings.survey || []));
+    promos = JSON.parse(JSON.stringify(r.settings.point_promos || []));
     render();
     showMsg('✅ บันทึกแล้ว', true);
   }).catch(function(e){ btn.disabled = false; showMsg('เชื่อมต่อไม่สำเร็จ: ' + e.message, false); });
