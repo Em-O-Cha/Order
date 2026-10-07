@@ -360,7 +360,7 @@
       + sw('lySpend', 'นับยอดเข้ายอดซื้อสะสม', 'มีผลกับการเลื่อนระดับสมาชิก', s.count_spend)
       + sw('lyNotifyRej', 'แจ้งลูกค้าเมื่อไม่อนุมัติ', 'ส่ง LINE บอกเหตุผล', s.notify_customer_reject)
       + '<div class="ly-sec">🎁 โปรคะแนนพิเศษ</div>'
-      + '<div class="hint" style="margin-bottom:8px">ซื้อสินค้าที่กำหนดได้คะแนนคูณ เฉพาะยอดของสินค้านั้น (เช่น x2: สินค้าโปร 60 บาท + สินค้าอื่น 30 บาท = 4 + 1 = 5 คะแนน) · ช่วงวันเทียบกับวันที่ซื้อในใบเสร็จ เว้นว่าง = ไม่จำกัด</div>'
+      + '<div class="hint" style="margin-bottom:8px">ซื้อสินค้าที่ร่วมโปรได้คะแนนคูณ เฉพาะยอดของสินค้านั้น 1 โปรใส่สินค้าได้หลายตัว (เช่น x2: สินค้าโปร 60 บาท + สินค้าอื่น 30 บาท = 4 + 1 = 5 คะแนน) · ช่วงวันเทียบกับวันที่ซื้อในใบเสร็จ เว้นว่าง = ไม่จำกัด</div>'
       + '<div id="lyPromos"></div>'
       + '<button type="button" class="btn btn-outline btn-block" onclick="LY.addPromo()">➕ เพิ่มโปร</button>'
       + '<div class="ly-sec">📦 ผู้ส่งบนใบจัดส่งของพรีเมียม</div>'
@@ -438,8 +438,8 @@ function lyLiveStatus(st){
     setHtml('lyPromos', promos.length ? promos.map(function(p, i){
       return '<div class="ly-q"><div class="ly-q-hd"><span>โปร ' + (i + 1) + '</span>'
         + '<button type="button" class="btn-del" onclick="LY.delPromo(' + i + ')">ลบ</button></div>'
-        + '<div class="fg"><label>ชื่อสินค้า</label><input class="fc" data-f="name" placeholder="เช่น น้ำพริกน้ำย้อย" value="' + h(p.name) + '"></div>'
-        + '<div class="fg"><label>คำที่ใช้หาสินค้านี้ในใบเสร็จ (1 คำต่อบรรทัด)</label><textarea class="fc" data-f="kw" rows="2" style="height:auto;padding:8px 12px" placeholder="เช่น น้ำย้อย">' + h((p.keywords || []).join('\n')) + '</textarea></div>'
+        + '<div class="fg"><label>ชื่อโปร</label><input class="fc" data-f="name" placeholder="เช่น โปรน้ำพริก คะแนน x2" value="' + h(p.name) + '"></div>'
+        + '<div class="fg"><label>สินค้าที่ร่วมโปร (1 สินค้าต่อบรรทัด สูงสุด 30 — ใส่ชื่อหรือคำที่อยู่ในชื่อสินค้าบนใบเสร็จ)</label><textarea class="fc" data-f="kw" rows="4" style="height:auto;padding:8px 12px" placeholder="เช่น&#10;น้ำย้อย&#10;ลงเรือ&#10;ตะไคร้หอม">' + h((p.keywords || []).join('\n')) + '</textarea></div>'
         + '<div class="ly-two" style="margin-bottom:6px"><div class="fg"><label>คูณคะแนน (เท่า)</label><input class="fc" data-f="mul" type="number" min="1.1" max="10" step="0.5" value="' + h(p.multiplier) + '"></div>'
         + '<label class="chk-row" style="margin:0;align-self:end"><input type="checkbox" data-f="on"' + (p.active ? ' checked' : '') + '> เปิดใช้</label></div>'
         + '<div class="ly-two"><div class="fg"><label>ซื้อตั้งแต่วันที่</label><input class="fc" data-f="from" type="date" value="' + h(p.from || '') + '"></div>'
