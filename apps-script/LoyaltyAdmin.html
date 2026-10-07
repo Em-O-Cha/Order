@@ -372,7 +372,8 @@
       + '<div class="ly-sec">📝 แบบสอบถาม (ตัวเลือก 1 ข้อต่อบรรทัด)</div><div id="lySurvey"></div>'
       + '<button type="button" class="btn btn-outline btn-block" onclick="LY.addQ()">➕ เพิ่มคำถาม</button>'
       + '<button type="button" class="btn btn-block" style="margin-top:12px" id="lyCfgSave" onclick="LY.saveSettings()">💾 บันทึกการตั้งค่า</button>'
-      + '<div class="ly-sec">📊 สรุปผลแบบสอบถาม</div>' + summaryHtml();
+      + '<div class="ly-sec">📊 สรุปผลแบบสอบถาม</div>' + summaryHtml()
+      + '<button type="button" class="btn btn-outline btn-block" style="margin-top:10px" id="lyReportBtn" onclick="LY.sendReport()">📤 ส่งรายงานแบบสอบถามเข้า LINE กลุ่มแอดมิน</button>';
     setHtml('lySettingsCard', x);
     renderSurvey();
     renderPromos();
@@ -453,6 +454,14 @@ function lyLiveStatus(st){
     renderPromos();
   }
   function delPromo(i){ readPromos(); promos.splice(i, 1); renderPromos(); }
+  // ⚡ เพิ่ม (7/10/69) — ส่งรายงานแบบสอบถามเข้ากลุ่ม LINE แอดมิน (Apps Script ส่งเป็น Flex)
+  function sendReport(){
+    var b = el('lyReportBtn'); b.disabled = true;
+    api({ action: 'surveyReport', t: tok.cfg }).then(function(r){
+      b.disabled = false;
+      alertMsg(r.success ? '✅ ส่งแล้ว รายงานจะเข้ากลุ่ม LINE ภายในไม่กี่วินาที' : (r.error || 'ส่งไม่สำเร็จ'));
+    }).catch(function(e){ b.disabled = false; alertMsg('เชื่อมต่อไม่สำเร็จ: ' + e.message); });
+  }
   function saveSettings(){
     readSurvey();
     readPromos();
@@ -561,7 +570,7 @@ function lyLiveStatus(st){
     bump: function(n){ var x = el('lyPoints'); x.value = Math.max(1, (parseInt(x.value, 10) || 0) + n); },
     reason: function(i){ el('lyNote').value = REASONS[i]; }, submitDecision: submitDecision,
     toggleSettings: toggleSettings, addQ: addQ, delQ: delQ, moveQ: moveQ, saveSettings: saveSettings,
-    addPromo: addPromo, delPromo: delPromo,
+    addPromo: addPromo, delPromo: delPromo, sendReport: sendReport,
     loadShipments: loadShipments, renderShipments: renderShipments, ship: ship, cancelShip: cancelShip,
     printSelected: printSelected, zoom: zoom
   };

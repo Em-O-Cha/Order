@@ -132,7 +132,8 @@ function render(){
   h += '<div class="card"><h2>📝 แบบสอบถาม</h2><div class="desc">คำถามแบบติ๊กที่ลูกค้าตอบก่อนแนบใบเสร็จ (สูงสุด 10 ข้อ) — ตัวเลือก 1 ข้อต่อบรรทัด</div><div id="survey"></div>'
     + '<button type="button" class="add" onclick="addQ()">➕ เพิ่มคำถาม</button></div>';
 
-  h += '<div class="card"><h2>📊 สรุปผลแบบสอบถาม</h2><div class="desc">นับจากใบเสร็จที่ไม่ถูกปฏิเสธ</div>' + summaryHtml() + '</div>';
+  h += '<div class="card"><h2>📊 สรุปผลแบบสอบถาม</h2><div class="desc">นับจากใบเสร็จที่ไม่ถูกปฏิเสธ</div>' + summaryHtml()
+    + '<button type="button" class="add" id="reportBtn" onclick="sendReport()">📤 ส่งรายงานแบบสอบถามเข้า LINE กลุ่มแอดมิน</button></div>';
   document.getElementById('app').innerHTML = h;
   document.getElementById('saveBar').style.display = '';
   renderSurvey();
@@ -224,6 +225,16 @@ function addPromo(){
   renderPromos();
 }
 function delPromo(i){ readPromos(); askBox_('ลบโปร "' + (promos[i].name || 'โปร ' + (i + 1)) + '"?', { title: 'ลบโปร', ok: 'ลบ', danger: true }).then(function(ok){ if (!ok) return; promos.splice(i, 1); renderPromos(); }); }
+
+// ---- ส่งรายงานแบบสอบถามเข้ากลุ่ม LINE แอดมิน (Apps Script ส่งเป็น Flex) ----
+function sendReport(){
+  var b = document.getElementById('reportBtn');
+  b.disabled = true;
+  api({ action: 'surveyReport', t: TOKEN }).then(function(r){
+    b.disabled = false;
+    showMsg(r.success ? '✅ ส่งแล้ว รายงานจะเข้ากลุ่ม LINE ภายในไม่กี่วินาที' : (r.error || 'ส่งไม่สำเร็จ'), !!r.success);
+  }).catch(function(e){ b.disabled = false; showMsg('เชื่อมต่อไม่สำเร็จ: ' + e.message, false); });
+}
 
 // ---- บันทึก ----
 function showMsg(t, ok){ var el = document.getElementById('msg'); el.textContent = t; el.className = 'msg ' + (ok ? 'ok' : 'err'); }

@@ -16,6 +16,7 @@
 //   action=shipUpdate  id, t (ของใบนั้น หรือของ all=1 + id), status, tracking, carrier
 //   action=settingsGet  t (ของหน้าตั้งค่า)              -> ค่าตั้ง + ลิงก์ + สถิติ + สรุปแบบสอบถาม
 //   action=settingsSave t, settings (JSON เฉพาะช่องที่แก้) -> ตรวจค่าในฐานข้อมูลก่อนบันทึก
+//   action=surveyReport t (ของหน้าตั้งค่า)               -> ขอให้ Apps Script ส่งรายงานแบบสอบถามเข้ากลุ่ม LINE แอดมิน
 //
 // deploy ด้วย verify_jwt = false (หน้าเว็บไม่มี JWT ของ Supabase) — ต้องตั้ง secret ANTHROPIC_API_KEY
 // ให้ AI ตรวจใบเสร็จ (ไม่ได้ตั้ง = รับใบเสร็จได้ตามปกติ แต่ขึ้นว่า "AI ยังไม่ได้ตรวจ" ให้แอดมินตรวจเอง)
@@ -167,11 +168,17 @@ async function submitReceipt(req: Request) {
   const base = `${c.uid!.replace(/[^A-Za-z0-9]/g, "")}/${month}/${crypto.randomUUID()}`;
   const filePath = `${base}.${extOf(file.name, mime)}`;
   const previewPath = preview ? `${base}-preview.jpg` : null;
-  await storagePut(filePath, bytes, mime);
-  if (preview && previewPath) await storagePut(previewPath, preview, "image/jpeg");
   // รูปให้ LINE แสดงในกลุ่มแอดมิน: รูปย่อ หรือไฟล์เดิมถ้าเป็น JPEG/PNG ไม่เกิน 10 MB
   const lineImagePath = previewPath || ((mime === "image/jpeg" || mime === "image/png") && bytes.length <= 10 * 1024 * 1024 ? filePath : null);
-  const previewUrl = await signedUrl(lineImagePath, LINE_PREVIEW_TTL_SEC);
+  // อัปโหลดไฟล์ไปพร้อมกับให้ AI ตรวจ (ไม่ต้องรอกัน ไฟล์ใหญ่ไม่ทำให้ลูกค้ารอนานขึ้น)
+  const stored = (async () => {
+    await Promise.all([
+      storagePut(filePath, bytes, mime),
+      preview && previewPath ? storagePut(previewPath, preview, "image/jpeg") : Promise.resolve(),
+    ]);
+    return await signedUrl(lineImagePath, LINE_PREVIEW_TTL_SEC);
+  })();
+  stored.catch(() => {}); // รอผลด้านล่าง กันเตือน unhandled rejection ระหว่าง AI ทำงาน
 
   // AI
   const extraFlags: string[] = [];
@@ -186,6 +193,7 @@ async function submitReceipt(req: Request) {
                     cfg.pointPromos || [])
     : { ok: false, error: `ไฟล์ชนิด ${mime} ให้ AI อ่านไม่ได้`, ms: 0 };
   const ev = evaluate(ai, meta, cfg, extraFlags);
+  const previewUrl = await stored;
 
   const member = prep.member || {};
   const row = {
@@ -289,6 +297,14 @@ async function settingsSave(p: P) {
   return json({ success: true, ...r });
 }
 
+async function surveyReport(p: P) {
+  if (!await tokenOk("cfg", "-", String(p.t || ""))) return fail("ลิงก์ไม่ถูกต้องหรือหมดอายุ");
+  const r = await rpc("loyalty_survey_report_request", {});
+  if (!r.ok) return fail(r.error);
+  background(kickAppsScript());
+  return json({ success: true });
+}
+
 // ---------------------------------------------------------------------------
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -306,6 +322,7 @@ Deno.serve(async (req) => {
       case "shipUpdate": return await shipUpdate(p);
       case "settingsGet": return await settingsGet(p);
       case "settingsSave": return await settingsSave(p);
+      case "surveyReport": return await surveyReport(p);
       default: return fail("ไม่รู้จักคำสั่ง");
     }
   } catch (e) {

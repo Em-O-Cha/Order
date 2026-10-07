@@ -239,7 +239,22 @@ function loyaltyWorkPending_() {
     }
   });
   if (pointsWritten && typeof mirrorAfterBackgroundWrite_ === 'function') mirrorAfterBackgroundWrite_(LOYALTY_POINTS_TABS_);
+  try {
+    if (loyaltySendSurveyReport_(cfg)) results.push({ ref: 'survey-report', ok: true });
+  } catch (e) {
+    loyaltyAlertAdmin_('ส่งรายงานแบบสอบถามไม่สำเร็จ: ' + String(e).substring(0, 200));
+  }
   return { success: true, processed: results.length, results: results };
+}
+
+// ⚡ เพิ่ม (7/10/69) — แอดมินกด "ส่งรายงานแบบสอบถามเข้า LINE" ที่หน้าตั้งค่า -> ส่ง Flex สรุปเข้ากลุ่มแอดมิน
+// (คำขอถูกล้างตอนรับงาน กดซ้ำได้ถ้าส่งไม่สำเร็จ) — คืน true ถ้าส่ง
+function loyaltySendSurveyReport_(cfg) {
+  var rep = signupRpc_(cfg, 'loyalty_survey_report_claim', {});
+  if (!rep) return false;
+  if (!LOYALTY_GROUP_) throw new Error('ยังไม่ได้ใส่ Group ID');
+  loyaltyPush_(LOYALTY_GROUP_, [loyaltySurveyReportFlex_(rep)], 'survey-report:' + rep.requestedAt, loyaltySurveyReportText_(rep));
+  return true;
 }
 
 function loyaltyUpdate_(cfg, kind, id, patch) {
@@ -609,6 +624,83 @@ function loyaltyDecisionText_(r) {
       (r.balanceAfter != null ? ' (คงเหลือ ' + r.balanceAfter + ' คะแนน)' : '');
   }
   return '❌ ' + r.ref + ' ไม่อนุมัติ' + who + '\nลูกค้า: ' + (m.name || '-') + '\nเหตุผล: ' + (r.reviewNote || '-');
+}
+
+// ---- กลุ่มแอดมิน: รายงานแบบสอบถาม ----
+var LOYALTY_BAR_COLORS_ = ['#00B894', '#0984E3', '#6C5CE7', '#E17055', '#FDCB6E', '#E84393'];
+
+function loyaltySurveyRows_(rep) {
+  var summary = rep.summary || {};
+  return (rep.survey || []).map(function (q) {
+    var answers = (summary[q.id] || []).slice().sort(function (a, b) { return b.count - a.count; });
+    var total = answers.reduce(function (t, a) { return t + a.count; }, 0);
+    return { q: q.q, multi: q.type === 'multi', answers: answers, total: total };
+  });
+}
+
+function loyaltySurveyReportFlex_(rep) {
+  var st = rep.stats || {};
+  var n = Number(rep.respondents) || 0;
+  var stat = function (value, label) {
+    return { type: 'box', layout: 'vertical', flex: 1, contents: [
+      loyaltyText_(value, { color: '#FFFFFF', weight: 'bold', size: 'lg', align: 'center', wrap: false, adjustMode: 'shrink-to-fit' }),
+      loyaltyText_(label, { color: '#FFFFFFCC', size: 'xxs', align: 'center' })
+    ] };
+  };
+  var body = [];
+  loyaltySurveyRows_(rep).forEach(function (row, qi) {
+    var color = LOYALTY_BAR_COLORS_[qi % LOYALTY_BAR_COLORS_.length];
+    body.push({ type: 'box', layout: 'vertical', margin: qi ? 'xl' : 'none', spacing: 'sm', contents: [
+      loyaltyText_((qi + 1) + '. ' + row.q, { weight: 'bold', size: 'sm', color: '#1B2E1C' }),
+      loyaltyText_(row.multi ? 'ตอบได้หลายข้อ · % ของผู้ตอบ ' + n + ' คน' : 'ผู้ตอบ ' + row.total + ' คน', { size: 'xxs', color: '#8A8A8A' })
+    ] });
+    if (!row.answers.length) {
+      body.push(loyaltyText_('ยังไม่มีคำตอบ', { size: 'xs', color: '#8A8A8A', margin: 'sm' }));
+      return;
+    }
+    row.answers.slice(0, 6).forEach(function (a) {
+      var base = row.multi ? n : row.total;
+      var pct = base ? Math.round(a.count / base * 100) : 0;
+      body.push({ type: 'box', layout: 'vertical', margin: 'md', spacing: 'xs', contents: [
+        { type: 'box', layout: 'baseline', contents: [
+          loyaltyText_(a.answer, { size: 'xs', color: '#424242', flex: 1 }),
+          loyaltyText_(a.count + ' (' + pct + '%)', { size: 'xs', color: color, weight: 'bold', flex: 0, wrap: false })
+        ] },
+        { type: 'box', layout: 'vertical', height: '8px', cornerRadius: '4px', backgroundColor: '#EEF2EE', contents: [
+          { type: 'box', layout: 'vertical', height: '8px', cornerRadius: '4px', width: Math.max(pct, 2) + '%',
+            backgroundColor: color, contents: [{ type: 'filler' }] }
+        ] }
+      ] });
+    });
+  });
+  var bubble = {
+    type: 'bubble', size: 'giga',
+    header: {
+      type: 'box', layout: 'vertical', paddingAll: '20px', background: loyaltyGradient_('#00B894', '#0984E3', '135deg'),
+      contents: [
+        loyaltyText_('📊 รายงานแบบสอบถาม 7-Eleven', { color: '#FFFFFF', weight: 'bold', size: 'lg' }),
+        loyaltyText_('ณ ' + loyaltyDate_(rep.requestedAt, true) + ' · ผู้ตอบ ' + n + ' คน', { color: '#FFFFFFE6', size: 'xs', margin: 'sm' }),
+        { type: 'box', layout: 'horizontal', margin: 'lg', paddingAll: '10px', cornerRadius: '12px', backgroundColor: '#FFFFFF26',
+          contents: [
+            stat(String(st.total || 0), 'ใบเสร็จ'),
+            stat(String(st.approved || 0), 'อนุมัติ'),
+            stat(Number(st.pointsGiven || 0).toLocaleString('en-US'), 'คะแนนที่ให้'),
+            stat(loyaltyBaht_(st.emochaAmount || 0), 'ยอดเอมโอชา')
+          ] }
+      ]
+    },
+    body: { type: 'box', layout: 'vertical', paddingAll: '20px', contents: body.length ? body : [loyaltyText_('ยังไม่มีแบบสอบถาม', { size: 'sm' })] }
+  };
+  return { type: 'flex', altText: '📊 รายงานแบบสอบถาม 7-Eleven (ผู้ตอบ ' + n + ' คน)', contents: bubble };
+}
+
+function loyaltySurveyReportText_(rep) {
+  var lines = ['📊 รายงานแบบสอบถาม 7-Eleven (ผู้ตอบ ' + (rep.respondents || 0) + ' คน)'];
+  loyaltySurveyRows_(rep).forEach(function (row, qi) {
+    lines.push('', (qi + 1) + '. ' + row.q);
+    row.answers.slice(0, 6).forEach(function (a) { lines.push('• ' + a.answer + ': ' + a.count); });
+  });
+  return lines.join('\n');
 }
 
 // ---- ลูกค้า: ผ่านการตรวจสอบ (ไล่สี) ----
