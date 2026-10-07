@@ -127,7 +127,7 @@ Use authenticity "genuine" when you see no concrete problem, "suspicious" when s
 
 export type AiResult = { ok: true; data: Json; model: string; ms: number } | { ok: false; error: string; ms: number };
 
-export async function aiCheck(apiKey: string, block: Json, keywords: string[], channelHint: string, model: string,
+export async function aiCheck(apiKey: string, block: Json, keywords: string[], model: string,
                               promos: Json[] = []): Promise<AiResult> {
   const t0 = Date.now();
   if (!apiKey) return { ok: false, error: "ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY", ms: 0 };
@@ -135,7 +135,6 @@ export async function aiCheck(apiKey: string, block: Json, keywords: string[], c
     const client = new Anthropic({ apiKey, timeout: 100_000, maxRetries: 1 });
     const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
     const userText = `Today in Thailand is ${today}.
-The member says they bought through: ${channelHint || "(not stated)"}.
 Em-O-Cha brand words and product names to look for: ${keywords.join(", ")}.
 Special-points promo products: ${promos.length
       ? promos.map((p) => `[${p.id}] ${p.name} (words: ${(p.keywords || []).join(", ")})`).join("; ")

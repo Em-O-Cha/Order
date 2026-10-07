@@ -538,10 +538,9 @@ function loyaltyAdminReceiptFlex_(r) {
     v = { label: 'ระบบไม่อนุมัติอัตโนมัติ: ' + (r.reviewNote || ''), icon: '⛔', start: '#CB2D3E', end: '#EF473A' };
   }
   var m = r.member || {};
-  var survey = r.survey || {};
   var body = [
     loyaltyText_('👤 ' + (m.name || m.lineName || '-') + (m.memberCode ? '  (' + m.memberCode + ')' : ''), { weight: 'bold', size: 'md' }),
-    loyaltyText_('📞 ' + (m.phone || '-') + (survey.channel ? '  ·  ' + survey.channel : ''), { size: 'xs', color: '#8A8A8A', margin: 'xs' }),
+    loyaltyText_('📞 ' + (m.phone || '-'), { size: 'xs', color: '#8A8A8A', margin: 'xs' }),
     { type: 'separator', margin: 'md' },
     loyaltyRow_('สาขา', r.store || '-', { margin: 'md' }),
     loyaltyRow_('เลขที่ใบเสร็จ', r.receiptNo || '-'),
