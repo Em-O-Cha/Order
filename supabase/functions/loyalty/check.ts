@@ -2,7 +2,7 @@
 //   sniffMime / scanMetadata  ชนิดไฟล์จริง + ร่องรอยโปรแกรมแต่งรูป/เครื่องมือ AI ในไฟล์
 //   aiCheck                   ให้ Claude อ่านใบเสร็จ (โครงสร้างผลตาม RECEIPT_SCHEMA)
 //   evaluate                  สรุปผล pass / suspect / fail / unchecked + ธงเหตุผล + คีย์ตรวจซ้ำ + คะแนนที่แนะนำ
-//                             (รวมโปรคะแนนพิเศษ: ยอดสินค้าที่อยู่ในโปรคูณตามโปร ติดป้าย promo ไว้ในรายการสินค้า)
+//                             (รวมโปรคะแนนพิเศษ: คิดคะแนนจากยอดสินค้าในโปรก่อนแล้วค่อยคูณ ติดป้าย promo ไว้ในรายการสินค้า)
 //   validateSurvey            ตรวจคำตอบแบบสอบถามกับค่าตั้ง
 
 import Anthropic from "npm:@anthropic-ai/sdk@0.129.0";
@@ -272,20 +272,23 @@ export function evaluate(ai: AiResult, meta: ReturnType<typeof scanMetadata> | n
   out.receipt_at = receiptAt;
   out.receipt_total = total || null;
   out.emocha_amount = emochaAmount;
-  // โปรคะแนนพิเศษ: ยอดสินค้าในโปรนับเพิ่มอีก (คูณ - 1) เท่า ป้าย promo ติดไว้ในรายการให้แอดมินเห็น
+  // โปรคะแนนพิเศษ: คิดคะแนนจากยอดสินค้าในโปรก่อน (ปัดลง) แล้วค่อยคูณ — เช่น x2 สินค้าโปร 59 บาท = 1 คะแนน x2 = 2
+  // คะแนนปกติคิดจากยอดสินค้าเอมโอชาทั้งใบ + โบนัส = คะแนนของยอดในโปร x (คูณ - 1) แยกตามตัวคูณ
   const promos = promosFor(cfg, date);
-  let extra = 0;
+  const promoAmount = new Map<number, number>();
   out.emocha_items = emochaItems.map((i: Json) => {
     const { promo_id: _id, ...item } = i;
     const p = promoOf(i, promos);
     if (!p) return item;
-    extra += Math.max(num(i.amount), 0) * (num(p.multiplier) - 1);
-    return { ...item, promo: String(p.name), multiplier: num(p.multiplier) };
+    const m = num(p.multiplier);
+    promoAmount.set(m, (promoAmount.get(m) || 0) + Math.max(num(i.amount), 0));
+    return { ...item, promo: String(p.name), multiplier: m };
   });
   out.receipt_key = rn.length >= 4 && date ? `${digits(d.store_code) || "-"}|${rn}|${date}` : null;
   out.loose_key = rn.length >= 4 && date ? `${rn}|${date}` : null;
-  out.suggested_points = Math.floor((emochaAmount + extra) / bahtPerPoint);
-  out.bonus_points = out.suggested_points - Math.floor(emochaAmount / bahtPerPoint);
+  out.bonus_points = 0;
+  for (const [m, amount] of promoAmount) out.bonus_points += Math.floor(Math.floor(amount / bahtPerPoint) * (m - 1));
+  out.suggested_points = Math.floor(emochaAmount / bahtPerPoint) + out.bonus_points;
   if (out.suggested_points <= 0 && emochaAmount > 0) { flags.push(`ยอดสินค้าเอมโอชาไม่ถึง ${bahtPerPoint} บาท`); worsen("suspect"); }
   return { ...out, verdict: state.verdict };
 }
