@@ -62,6 +62,8 @@ function makeBook(id, name) {
   books.set(id, book);
   return book;
 }
+// สมุดเปล่า (ไม่ดึงข้อมูลจริง) สำหรับทดสอบด้วยข้อมูลสมมติ
+export function makeEmptyBook(id, name) { return makeBook(id, name); }
 export function loadBookFromMirror(id, source, name) {
   const tabs = sql(`select public.mirror_get_tabs(array(select source||'/'||tab from mirror.tabs where source='${source}')) t`)[0].t;
   const book = makeBook(id, name);

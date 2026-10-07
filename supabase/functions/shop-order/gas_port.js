@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 154 รายการ (106 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 157 รายการ (109 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -532,9 +532,10 @@ function getCachedPointsPromosRawData_() {
 function getActivePointsMultiplier_(items, subtotal, now) {
   try {
     var data = getCachedPointsPromosRawData_();
-    if (!data.length) return { multiplier: 1, name: null };
+    if (!data.length) return { multiplier: 1, name: null, productPromos: [] };
     now = now || new Date();
-    var best = { multiplier: 1, name: null };
+    var best = { multiplier: 1, name: null, productPromos: [] };
+    var productRows = [];
     data.forEach(function (row) {
       if (row[1] !== 'multiplier') return;
       var active = row[2] === true || String(row[2]).toUpperCase() === 'TRUE';
@@ -544,19 +545,66 @@ function getActivePointsMultiplier_(items, subtotal, now) {
       if (expiryDateVal && isExpired_(expiryDateVal, now)) return;
       var minPurchase = parseFloat(row[6]) || 0;
       var restriction = String(row[7] || '').trim();
+      var mult = parseFloat(row[5]) || 1;
       if (restriction) {
-        var eligible = computeEligibleInfo_(items || [], restriction);
-        if (eligible.qty <= 0) return;
+        if (mult > 1) productRows.push({ name: row[0], multiplier: mult, restriction: restriction });
+        return;
       } else if (minPurchase > 0) {
         if ((subtotal || 0) < minPurchase) return;
       }
-      var mult = parseFloat(row[5]) || 1;
-      if (mult > best.multiplier) best = { multiplier: mult, name: row[0] };
+      if (mult > best.multiplier) { best.multiplier = mult; best.name = row[0]; }
     });
+    if (productRows.length) {
+      var byPromo = {};
+      (items || []).forEach(function (it) {
+        var amount = (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0);
+        if (amount <= 0) return;
+        var top = null;
+        productRows.forEach(function (p, i) {
+          if (computeEligibleInfo_([it], p.restriction).qty <= 0) return;
+          if (!top || p.multiplier > productRows[top.i].multiplier) top = { i: i };
+        });
+        if (top) byPromo[top.i] = (byPromo[top.i] || 0) + amount;
+      });
+      Object.keys(byPromo).forEach(function (i) {
+        var p = productRows[i];
+        best.productPromos.push({ name: p.name, multiplier: p.multiplier, amount: byPromo[i] });
+      });
+      best.productPromos.sort(function (a, b) { return b.multiplier - a.multiplier; });
+    }
     return best;
   } catch (e) {
-    return { multiplier: 1, name: null };
+    return { multiplier: 1, name: null, productPromos: [] };
   }
+}
+
+function calcShopOrderPoints_(baseAmount, multiplierInfo, tierMultiplier, repeatConfig) {
+  baseAmount = Math.max(0, parseFloat(baseAmount) || 0);
+  multiplierInfo = multiplierInfo || {};
+  var billMult = multiplierInfo.multiplier || 1;
+  var points = Math.floor(baseAmount / BAHT_PER_POINT) * billMult;
+  var amountLeft = baseAmount;
+  (multiplierInfo.productPromos || []).forEach(function (p) {
+    var amount = Math.min(p.amount || 0, amountLeft);
+    amountLeft -= amount;
+    if (p.multiplier > billMult) points += Math.floor(amount / BAHT_PER_POINT) * (p.multiplier - billMult);
+  });
+  var repeatMult = repeatConfig ? (repeatConfig.multiplier || 1) : 1;
+  return Math.floor(points * (tierMultiplier || 1) * repeatMult) + (repeatConfig ? (repeatConfig.bonusPoints || 0) : 0);
+}
+
+function pointsBaseAmount_(billTotal, deliveryAndCodFee) {
+  return Math.max(0, (parseFloat(billTotal) || 0) - (parseFloat(deliveryAndCodFee) || 0));
+}
+
+function pointsMultiplierNoteParts_(info) {
+  var parts = [];
+  if (!info) return parts;
+  if (info.multiplier > 1) parts.push('คูณแต้ม x' + info.multiplier + ' (' + info.name + ')');
+  (info.productPromos || []).forEach(function (p) {
+    if (p.multiplier > (info.multiplier || 1)) parts.push('คูณแต้ม x' + p.multiplier + ' เฉพาะสินค้าโปร (' + p.name + ')');
+  });
+  return parts;
 }
 
 function getActiveRepeatBonusConfig_(items, subtotal, now) {
@@ -2015,6 +2063,9 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       if (repeatConfig_.bonusPoints > 0) discountNoteParts.push('ซื้อซ้ำเดือนนี้: ' + repeatConfig_.name + ' (+' + repeatConfig_.bonusPoints + ' แต้ม)');
     }
     if (pointsMultiplierInfo_.multiplier > 1) discountNoteParts.push('คูณแต้ม: ' + pointsMultiplierInfo_.name + ' (x' + pointsMultiplierInfo_.multiplier + ')');
+    pointsMultiplierInfo_.productPromos.forEach(function (p) {
+      if (p.multiplier > pointsMultiplierInfo_.multiplier) discountNoteParts.push('คูณแต้ม: ' + p.name + ' (x' + p.multiplier + ' เฉพาะสินค้าโปร)');
+    });
     if (pointsRedeemResult_.pointsUsed > 0) {
       discountNoteParts.push('แลกคะแนน: ' + pointsRedeemResult_.pointsUsed + ' คะแนน (-' + Math.round(pointsRedeemResult_.discount) + ')');
     }
@@ -2124,13 +2175,9 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     }
 
     var tierBeforeOrder = resolveTierByStoredValue_(memberTierName, memberLifetimeSpend, profile.sub);
-    var basePoints = Math.floor(finalAmount / BAHT_PER_POINT);
-    var repeatMultiplier_ = repeatConfig_ ? (repeatConfig_.multiplier || 1) : 1;
-    var pointsEarned = Math.floor(basePoints * tierBeforeOrder.pointMultiplier * pointsMultiplierInfo_.multiplier * repeatMultiplier_)
-      + (repeatConfig_ ? (repeatConfig_.bonusPoints || 0) : 0);
+    var pointsEarned = calcShopOrderPoints_(pointsBaseAmount_(finalAmount, deliveryColValue_), pointsMultiplierInfo_, tierBeforeOrder.pointMultiplier, repeatConfig_);
 
-    var promoNoteParts_ = [];
-    if (pointsMultiplierInfo_.multiplier > 1) promoNoteParts_.push('คูณแต้ม x' + pointsMultiplierInfo_.multiplier + ' (' + pointsMultiplierInfo_.name + ')');
+    var promoNoteParts_ = pointsMultiplierNoteParts_(pointsMultiplierInfo_);
     if (repeatConfig_ && repeatConfig_.multiplier > 1) promoNoteParts_.push('ซื้อซ้ำคูณแต้ม x' + repeatConfig_.multiplier + ' (' + repeatConfig_.name + ')');
     if (repeatConfig_ && repeatConfig_.bonusPoints > 0) promoNoteParts_.push('โบนัสซื้อซ้ำ +' + repeatConfig_.bonusPoints + ' แต้ม (' + repeatConfig_.name + ')');
     var promoNote_ = promoNoteParts_.length ? ('— รวม ' + promoNoteParts_.join(', ')) : '';
