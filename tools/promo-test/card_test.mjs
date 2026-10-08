@@ -63,6 +63,15 @@ const slipMsg = JSON.stringify(c.buildBuyerPendingSlipFlexMessage_('REV1', [], '
 ok('2d) LINE หาลูกค้า: ออเดอร์บัตรปุ่ม "ชำระด้วยบัตร" / ออเดอร์โอนยังเป็น "แนบสลิป"',
   cardMsg.includes('💳 ชำระด้วยบัตร') && cardMsg.includes('รอชำระด้วยบัตร') && !cardMsg.includes('📎 แนบสลิป') && slipMsg.includes('📎 แนบสลิป') && !slipMsg.includes('ชำระด้วยบัตร'));
 
+// 2e) ฟรีค่าธรรมเนียมเมื่อยอดถึงเกณฑ์
+setCard({ enabled: true, fee: 3, feeType: 'percent', feeFreeFrom: base });
+let oFree = order('card');
+ok('2e) ยอดถึงเกณฑ์ฟรีค่าธรรมเนียม -> ไม่คิดค่าธรรมเนียม', oFree.success && oFree.cardFee === 0 && oFree.totalAmount === base, `ค่าธรรมเนียม ${oFree.cardFee}`);
+setCard({ enabled: true, fee: 3, feeType: 'percent', feeFreeFrom: base + 1 });
+oFree = order('card');
+ok('2f) ยอดต่ำกว่าเกณฑ์ -> คิดค่าธรรมเนียมตามปกติ', oFree.success && oFree.cardFee === fee, `ค่าธรรมเนียม ${oFree.cardFee}`);
+setCard({ enabled: true, fee: 3, feeType: 'percent', minAmount: 0, maxAmount: 0 });
+
 // 3) ยอดขั้นต่ำ
 setCard({ enabled: true, fee: 3, feeType: 'percent', minAmount: 1000 });
 o = order('card');

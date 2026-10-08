@@ -303,6 +303,7 @@ function normalizeCardConfig_(src) {
     maxAmount: Math.max(0, parseFloat(src.maxAmount) || 0),   // 0 = ไม่จำกัดเพดาน
     fee: Math.max(0, parseFloat(src.fee) || 0),               // 0 = ร้านรับค่าธรรมเนียมเอง
     feeType: src.feeType === 'fixed' ? 'fixed' : 'percent',
+    feeFreeFrom: Math.max(0, parseFloat(src.feeFreeFrom) || 0), // ยอดตั้งแต่เท่านี้ขึ้นไปไม่คิดค่าธรรมเนียม (0 = คิดทุกบิล)
     note: String(src.note || CARD_CONFIG_DEFAULT_NOTE_),
     // โหมดทดสอบ (คีย์ทดสอบของผู้ให้บริการ ไม่มีเงินจริง): เห็นปุ่ม/จ่ายได้เฉพาะเบอร์ผู้ทดสอบ — ตั้งให้เองตอนบันทึก
     testOnly: src.testOnly === true || String(src.testOnly) === 'true',
@@ -334,6 +335,7 @@ function getCardConfig_() {
 function calcCardFee_(amountBeforeFee, cfg) {
   cfg = cfg || getCardConfig_();
   if (!cfg.fee) return 0;
+  if (cfg.feeFreeFrom > 0 && (parseFloat(amountBeforeFee) || 0) >= cfg.feeFreeFrom) return 0; // ยอดถึงเกณฑ์ ฟรีค่าธรรมเนียม
   if (cfg.feeType === 'percent') return Math.round((parseFloat(amountBeforeFee) || 0) * cfg.fee / 100);
   return Math.round(cfg.fee);
 }

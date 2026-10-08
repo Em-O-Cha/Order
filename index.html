@@ -2874,6 +2874,7 @@ function cardFeeAmount_(){
   if (selectedPayment !== 'card' || !cardInfo_ || !cardInfo_.fee) return 0;
   var base = getFinalTotalBeforeCod_();
   if (base <= 0) return 0;
+  if (cardInfo_.feeFreeFrom > 0 && base >= cardInfo_.feeFreeFrom) return 0; // ยอดถึงเกณฑ์ ฟรีค่าธรรมเนียม
   if (cardInfo_.feeType === 'fixed') return Math.round(cardInfo_.fee);
   return Math.round(base * cardInfo_.fee / 100);
 }
@@ -2966,6 +2967,11 @@ function renderPaymentDetail(targetElId, fixedTotal, showBoth){
       + '<p style="font-weight:600;color:#1565c0;font-size:15px">💳 ชำระด้วยบัตรเครดิต/เดบิต</p>'
       + '<p style="font-size:24px;font-weight:700;color:#1565c0;margin-top:8px">฿' + total.toLocaleString('th-TH') + '</p>'
       + (cardFeeNow_ > 0 ? '<p style="font-size:12px;color:var(--g6);margin-top:4px">(รวมค่าธรรมเนียมชำระด้วยบัตร ฿' + cardFeeNow_.toLocaleString('th-TH') + ' แล้ว)</p>' : '')
+      + (cardInfo_ && cardInfo_.fee > 0 && cardInfo_.feeFreeFrom > 0
+          ? '<p style="font-size:12px;color:' + (cardFeeNow_ > 0 ? '#e65100' : '#2e7d32') + ';margin-top:4px">' + (cardFeeNow_ > 0
+              ? '💡 สั่งครบ ฿' + Math.round(cardInfo_.feeFreeFrom).toLocaleString('th-TH') + ' ฟรีค่าธรรมเนียมบัตร'
+              : '✅ ยอดครบ ฿' + Math.round(cardInfo_.feeFreeFrom).toLocaleString('th-TH') + ' ฟรีค่าธรรมเนียมบัตร') + '</p>'
+          : '')
       + '<p style="font-size:12.5px;color:var(--g6);margin-top:10px;line-height:1.6">' + escHtml((cardInfo_ && cardInfo_.note) || 'ชำระผ่านหน้าชำระเงินของธนาคาร') + '</p>'
       + '<p style="font-size:12px;color:var(--g6);margin-top:6px">กดยืนยันสั่งซื้อ แล้วกด "ชำระด้วยบัตร" เพื่อไปหน้าชำระเงินค่ะ</p>'
       + '</div>';
