@@ -1,7 +1,7 @@
 // card-pay: ชำระด้วยบัตรเครดิต/เดบิต (Stripe Checkout / K Payment Link กสิกรไทย) — คีย์อยู่ที่นี่ที่เดียว (Supabase Secrets)
 //
 // เรียกด้วย x-internal-key เท่านั้น (Apps Script SupabaseCard.gs / ชุดทดสอบ) ยกเว้น action=notify (ธนาคารแจ้งผล)
-//   status                     เชื่อมต่อธนาคารแล้วหรือยัง { ready, provider, mode, message }
+//   status      [deep=1]       เชื่อมต่อธนาคารแล้วหรือยัง { ready, provider, mode, message, permissions (deep) }
 //   createLink  orderId amount lineUid description returnUrl
 //                              ลิงก์ชำระเงินของออเดอร์ (ยอดจากชีตที่ Apps Script ส่งมา) — ลิงก์เดิมที่ยอดเท่าเดิมและยัง
 //                              ไม่หมดอายุใช้ซ้ำ ยอดเปลี่ยน (แก้ไขออเดอร์) = ลิงก์ใหม่ ลิงก์เก่าใช้ไม่ได้ จ่ายแล้ว = { paid: true }
@@ -177,7 +177,9 @@ Deno.serve(async (req) => {
     const action = String(p.action || "");
     if (action === "status") {
       const st = provider.ready();
-      return json({ success: true, ready: st.ready, provider: provider.name, mode: provider.mode, message: st.message });
+      // deep=1: ถามผู้ให้บริการด้วยว่าคีย์มีสิทธิ์ครบไหม (ช้ากว่า ใช้ตอนตั้งค่า/ตรวจ)
+      const permissions = p.deep === "1" && st.ready && provider.checkPermissions ? await provider.checkPermissions() : undefined;
+      return json({ success: true, ready: st.ready, provider: provider.name, mode: provider.mode, message: st.message, permissions });
     }
     if (action === "createLink") return await createLink(p);
     if (action === "check") return await check(p);

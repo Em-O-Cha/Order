@@ -29,6 +29,10 @@ const server = Deno.serve({ port: 0, onListen: () => {} }, async (req) => {
     sessions.set(id, s);
     return Response.json(s);
   }
+  if (req.method === "GET" && ["/v1/checkout/sessions", "/v1/payment_intents", "/v1/charges", "/v1/balance_transactions"].includes(url.pathname)) {
+    if (url.pathname === "/v1/balance_transactions" && denyBalance) return Response.json({ error: { type: "invalid_request_error", message: "The provided key does not have the required permissions" } }, { status: 403 });
+    return Response.json({ object: "list", data: [], has_more: false, url: url.pathname });
+  }
   const pm = url.pathname.match(/^\/v1\/payment_intents\/([^/]+)$/);
   if (req.method === "GET" && pm) return Response.json({ id: pm[1], object: "payment_intent", status: "succeeded", latest_charge: "ch_1" });
   if (req.method === "GET" && url.pathname === "/v1/charges/ch_1") {
@@ -108,6 +112,13 @@ ok("4c) ไม่มีลายเซ็น -> ปฏิเสธ", rejected);
 const other = JSON.stringify({ id: "evt_2", object: "event", type: "customer.created", data: { object: { id: "cus_1" } } });
 const h2 = await Stripe.webhooks.generateTestHeaderStringAsync({ payload: other, secret: WHSEC, cryptoProvider: Stripe.createSubtleCryptoProvider() });
 ok("4d) event อื่นที่ไม่เกี่ยว -> ไม่ทำอะไร", JSON.stringify(await prov.parseNotify(other, new Headers({ "stripe-signature": h2 }))) === "{}");
+
+let perms = await prov.checkPermissions();
+ok("5) ตรวจสิทธิ์คีย์ครบ", perms.checkoutSessions === true && perms.paymentIntents === true && perms.charges === true && perms.balance === true, JSON.stringify(perms));
+denyBalance = true;
+perms = await prov.checkPermissions();
+ok("5b) ไม่มีสิทธิ์ Balance -> balance=false", perms.balance === false && perms.charges === true, JSON.stringify(perms));
+denyBalance = false;
 
 await server.shutdown();
 console.log(fails ? `\nไม่ผ่าน ${fails} ข้อ` : "\nผ่านทั้งหมด");

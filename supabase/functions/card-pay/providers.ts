@@ -32,6 +32,7 @@ export interface CardProvider {
   createLink(input: CreateLinkInput): Promise<CreateLinkResult>;
   inquire(row: CardRow): Promise<InquiryResult>;
   paymentDetails?(paidRef: string): Promise<PaymentDetails | null>; // อ่านซ้ำทีหลังได้ (ค่าธรรมเนียมที่ยังไม่มาตอนจ่าย)
+  checkPermissions?(): Promise<Record<string, boolean | string>>;  // คีย์มีสิทธิ์ที่ระบบใช้ครบไหม (หน้าแอดมิน/ตรวจตอนตั้งค่า)
   parseNotify(body: string, headers: Headers): NotifyRef | Promise<NotifyRef>; // throw = ข้อความปลอม/ลายเซ็นไม่ถูก
   notifyAck(): Response;
 }
@@ -207,6 +208,20 @@ export class StripeProvider implements CardProvider {
     // ช่องทางยืนยันทีหลังแล้วไม่สำเร็จ (async_payment_failed) = session complete แต่ยัง unpaid และ PaymentIntent ใช้ต่อไม่ได้
     if (s.status === "complete" && pi && (pi.status === "canceled" || pi.status === "requires_payment_method")) return { status: "failed", raw };
     return { status: "pending", raw };
+  }
+  // ลองอ่านแบบไม่แก้ข้อมูลอะไร: true = มีสิทธิ์, false = ไม่มีสิทธิ์, ข้อความ = ผิดพลาดอย่างอื่น
+  async checkPermissions(): Promise<Record<string, boolean | string>> {
+    if (!this.client) return {};
+    const c = this.client;
+    const probe = async (fn: () => Promise<unknown>) => {
+      try { await fn(); return true; } catch (e) { return isPermissionError(e) ? false : String((e as Error).message || e).slice(0, 120); }
+    };
+    return {
+      checkoutSessions: await probe(() => c.checkout.sessions.list({ limit: 1 })),
+      paymentIntents: await probe(() => c.paymentIntents.list({ limit: 1 })),
+      charges: await probe(() => c.charges.list({ limit: 1 })),
+      balance: await probe(() => c.balanceTransactions.list({ limit: 1 })),
+    };
   }
   // วิธีชำระ (Visa •••• 4242 เครดิต / PromptPay) + ค่าธรรมเนียมจาก balance transaction
   // คีย์ต้องมีสิทธิ์อ่าน Charges (วิธีชำระ) และ Balance (ค่าธรรมเนียม) — ไม่มีสิทธิ์ก็ไม่ทำให้การยืนยันออเดอร์พัง
