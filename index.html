@@ -2127,7 +2127,7 @@ function renderOrderHistory(list, isStale){
   }
   var h = list.map(function(o){
     var oid = escHtml(o.orderId);
-    if (o.isCard) cardOrderIds_[o.orderId] = true;
+    if (o.isCard) cardOrderIds_[o.orderId] = true; else delete cardOrderIds_[o.orderId];
     return '<div class="history-item">'
       + '<div class="row"><span><b>#' + oid + '</b></span><span class="badge-pending">' + (o.isCard ? '⏳ รอชำระด้วยบัตร' : '⏳ รอแนบสลิป') + '</span></div>'
       + '<div class="row"><span>วันที่</span><span>' + escHtml(o.date) + '</span></div>'
@@ -3327,7 +3327,9 @@ function showOrderResult_(r){
 
   var noSlip = r.skipSlipUpload || r.totalAmount <= 0;
   lastOrderIsCard_ = !noSlip && (!!r.isCard || selectedPayment === 'card'); // ⚡ เพิ่ม (8/10/69)
-  if (lastOrderIsCard_ && r.orderId) cardOrderIds_[r.orderId] = true;
+  // ⚡ แก้ (8/10/69) — แก้ไขออเดอร์แล้วเปลี่ยนวิธีชำระ: จำวิธีใหม่ของเลขนี้ (เปลี่ยนจากบัตรเป็นโอน/พร้อมเพย์ ต้องลืมว่าเป็นบัตร
+  // ไม่งั้นปุ่ม "แนบสลิป" ของออเดอร์นี้จะพาไปหน้าจ่ายบัตรแทน)
+  if (r.orderId) { if (lastOrderIsCard_) cardOrderIds_[r.orderId] = true; else delete cardOrderIds_[r.orderId]; }
   if (lastOrderIsCard_) setPayStepLabel_('card');
   var doneHint_ = document.getElementById('orderDoneHint');
   if (doneHint_ && !noSlip) doneHint_.textContent = lastOrderIsCard_
@@ -3366,7 +3368,7 @@ function showOrderResult_(r){
       return;
     }
     pendingSlipOrderId = orderId;
-    if (lastOrderIsCard_) cardOrderIds_[orderId] = true;
+    if (lastOrderIsCard_) cardOrderIds_[orderId] = true; else delete cardOrderIds_[orderId];
     setSlipButtonWaiting_(false);
     updateEditOrderBtn_();
     if (!document.getElementById('orderDoneState').classList.contains('sh')) startSlipStatusPoll_(orderId);

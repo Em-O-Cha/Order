@@ -72,6 +72,14 @@ oFree = order('card');
 ok('2f) ยอดต่ำกว่าเกณฑ์ -> คิดค่าธรรมเนียมตามปกติ', oFree.success && oFree.cardFee === fee, `ค่าธรรมเนียม ${oFree.cardFee}`);
 setCard({ enabled: true, fee: 3, feeType: 'percent', minAmount: 0, maxAmount: 0 });
 
+// 2g) แก้ไขออเดอร์บัตร (ยังไม่จ่าย) เปลี่ยนเป็นโอนเงิน -> ช่องทาง/ค่าธรรมเนียมตามวิธีใหม่ และกลับเป็นบัตรได้
+let oEdit = order('card');
+let oEdited = c.createShopOrder('t', JSON.stringify(items), 'bank', '', 'ที่อยู่', 'กรุงเทพมหานคร', '', oEdit.orderId, '', 0);
+ok('2g) แก้ไขบัตร -> โอนเงิน: เลขเดิม ไม่มีค่าธรรมเนียม ช่องทางเป็นโอนเงิน', oEdited.success && oEdited.orderId === oEdit.orderId && !oEdited.isCard && oEdited.cardFee === 0 && /โอนเงิน/.test(cell(oEdit.orderId, 10)), cell(oEdit.orderId, 10));
+oEdited = c.createShopOrder('t', JSON.stringify(items), 'card', '', 'ที่อยู่', 'กรุงเทพมหานคร', '', oEdit.orderId, '', 0);
+ok('2h) แก้ไขโอนเงิน -> บัตร: ช่องทางบัตร มีค่าธรรมเนียม', oEdited.success && oEdited.isCard && oEdited.cardFee === fee && /บัตรเครดิต/.test(cell(oEdit.orderId, 10)), cell(oEdit.orderId, 10));
+c.cancelShopOrder('t', oEdit.orderId);
+
 // 3) ยอดขั้นต่ำ
 setCard({ enabled: true, fee: 3, feeType: 'percent', minAmount: 1000 });
 o = order('card');
