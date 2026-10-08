@@ -1,0 +1,24 @@
+// การ์ดออเดอร์ใหม่ในกลุ่มแอดมิน: กล่องไฮไลต์ช่องทางชำระแยกสีตามช่องทาง — node admin_card_test.mjs <โฟลเดอร์ members-line>
+import { createGas } from './gasmock.mjs';
+const { ctx: c } = createGas([process.argv[2] + '/Members.gs', process.argv[2] + '/SupabaseCard.gs']);
+let fails = 0;
+const ok = (label, cond, extra = '') => { if (!cond) fails++; console.log((cond ? 'ผ่าน ' : 'ไม่ผ่าน ') + label + (extra ? ' | ' + extra : '')); };
+const items = [{ name: 'พริกผัดน้ำมันงา', qty: 1, price: 169 }];
+const card = (label, slip, extra = {}) => JSON.stringify(c.buildAdminOrderFlexMessage_('REV1', 'ก', '080', items, label, 158, 'ที่อยู่', 'กรุงเทพมหานคร', [], [], { subtotal: 169, shippingCost: 29, slipImageUrl: slip, ...extra }));
+const slip = 'https://drive.google.com/uc?id=abc123';
+let j = card('บัตรเครดิต/เดบิต (LINE Shop)', 'ชำระด้วยบัตรแล้ว (อ้างอิง pi_1)', { cardMethod: 'Visa •••• 4242 · เครดิต' });
+ok('1) บัตร: ฟ้า + วิธีชำระ + อ้างอิง', j.includes('#e3f2fd') && j.includes('Visa •••• 4242 · เครดิต · อ้างอิง pi_1') && j.includes('จ่ายด้วยบัตรแล้ว'));
+j = card('โอนเงินธนาคาร (LINE Shop)', slip);
+ok('2) โอนเงิน + สลิป: เขียว แนบสลิปแล้ว', j.includes('#e8f5e9') && j.includes('🏦 โอนเงินธนาคาร · แนบสลิปแล้ว') && j.includes('ตรวจยอดกับสลิป'));
+j = card('พร้อมเพย์ (LINE Shop)', slip);
+ok('3) พร้อมเพย์ + สลิป', j.includes('#e0f7fa') && j.includes('📱 พร้อมเพย์ · แนบสลิปแล้ว'));
+j = card('โอนเงินธนาคาร (LINE Shop)', 'ไม่มีค่าใช้จ่าย (ยอด 0 บาท)');
+ok('4) โอนเงินไม่มีสลิป (ยอด 0) -> ไม่เขียนว่าแนบสลิป', j.includes('🏦 โอนเงินธนาคาร"') && !j.includes('แนบสลิปแล้ว'));
+j = card('เก็บเงินปลายทาง', 'เก็บเงินปลายทาง (ไม่มีสลิป)');
+ok('5) เก็บเงินปลายทาง: แดงอ่อน + ป้ายแดงใหญ่ด้านบนยังอยู่', j.includes('#ffebee') && j.includes('ยังไม่ได้รับเงิน') && j.includes('💵 เก็บเงินปลายทาง (COD)'));
+j = card('QR พร้อมเพย์x', '');
+ok('6) ช่องทางที่มีคำว่าพร้อมเพย์จากระบบอื่นก็ไฮไลต์', j.includes('#e0f7fa'));
+j = card('Shopee', '');
+ok('7) ช่องทางไม่รู้จัก -> บรรทัดเทาแบบเดิม', j.includes('ช่องทางชำระเงิน: Shopee') && !j.includes('#e8f5e9'));
+console.log(fails ? `\nไม่ผ่าน ${fails} ข้อ` : '\nผ่านทั้งหมด');
+process.exit(fails ? 1 : 0);
