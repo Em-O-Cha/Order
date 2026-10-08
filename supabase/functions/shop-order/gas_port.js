@@ -464,57 +464,20 @@ function generateShopRevenueId_(sheet) {
   var prefix = 'REV' + yy + mm;
   // สำคัญ: ต้องอิงจากข้อมูลจริงในชีต Revenue ทุกครั้ง ห้ามใช้ cache เพียงอย่างเดียว
   // เพราะออเดอร์ไม่ได้เข้ามาทางช่องทางนี้ทางเดียว ยังมีระบบอื่น (เช่น Revenue Spunky Online)
-  // ที่เขียนแถวใหม่ลงชีตเดียวกันนี้ด้วย ถ้าเชื่อ cache ของสคริปต์นี้ฝ่ายเดียว เลขที่จะเพี้ยน/ชนกับ
-  // เลขที่ที่ถูกใช้ไปแล้วจากอีกช่องทางได้ จึงต้องอิงข้อมูลจริงในชีตเสมอ (อยู่ภายใต้ ScriptLock
-  // ของ createShopOrder อยู่แล้ว จึงไม่ชนกันเองภายในระบบนี้)
-  // ⚡ แก้ (ตามที่ขอ) — ทางด่วนก่อนเสมอ: เช็คแค่ "แถวสุดท้ายของชีต" ถ้าตรงกับเดือนนี้พอดี เอาเลขนั้น+1 ได้เลย
-  // เร็วที่สุด — เคสส่วนใหญ่เกือบทั้งหมดเข้าทางนี้ เพราะข้อมูลต่อท้ายล่างสุดเสมอ แถวสุดท้ายจึงมีเลขสูงสุดของทุก
-  // เดือนที่ผ่านมาอยู่แล้วโดยปกติ
-  // ⚡ แก้เพิ่ม — แต่ถ้าออเดอร์ล่าสุดมีหลายรายการ (หลายแถว) เลขที่ออเดอร์จะอยู่แค่แถวแรกของออเดอร์นั้นเท่านั้น
-  // แถวถัด ๆ ไปของรายการอื่นในออเดอร์เดียวกันจะว่างคอลัมน์ A (รูปแบบเดียวกับที่ deleteExistingOrderRows_/
-  // getBillDataForNotify_ ใช้อยู่แล้ว) ถ้าแถวสุดท้ายดันว่างแบบนี้แล้วเช็คแค่แถวเดียวจะพลาด จึงอ่านย้อนขึ้นไปเป็น
-  // ก้อนเล็ก ๆ (PROBE แถว ในการอ่าน 1 ครั้ง — ออเดอร์นึงไม่เกิน 5 รายการ 10 แถวพอเหลือเฟือ) หาแถวที่ไม่ว่างล่าสุด
-  // ก่อน แล้วค่อยเอามาเทียบเดือน — ถ้าตรงเดือนนี้เอาเลขนั้น+1 เลย ยังเร็วเหมือนเดิม (อ่านทีเดียวจบ ไม่ต้องวนหลายรอบ)
-  // ถ้าในช่วง PROBE แถวนี้ไม่เจอเลขที่เลย
-  // (หรือเจอแต่ไม่ตรงเดือนนี้) ค่อย fallback ไปไล่สแกนย้อนหลังเป็นก้อนๆ แบบเดิม (ช้ากว่าแต่ชัวร์กว่า) — เกิดขึ้น
-  // ไม่บ่อย (แค่ออเดอร์แรกๆ ของแต่ละเดือน หรือออเดอร์ล่าสุดมีรายการเยอะเกิน PROBE แถว) ยอมรับได้ที่จะช้าเฉพาะรอบนั้น
+  // ที่เขียนแถวใหม่ลงชีตเดียวกันนี้ด้วย (อยู่ภายใต้ ScriptLock ของ createShopOrder อยู่แล้ว)
+  // ⚡ แก้ (8/10/69) — อ่านเลขที่ทั้งคอลัมน์ A แล้วหาเลขสูงสุดของเดือนนี้ (แบบเดียวกับ Revenue Spunky Online)
+  // เดิมดูแค่ "เลขที่ของแถวล่างสุด" แต่ออเดอร์ที่ลูกค้ากดแก้ไขจะถูกย้ายไปต่อท้ายชีตโดยใช้เลขเดิม
+  // ถ้าแถวล่างสุดเป็นออเดอร์เก่าที่เพิ่งแก้ (เช่น REV6910016 ต่อจาก REV6910048) ออเดอร์ใหม่จะได้ REV6910017
+  // ซึ่งซ้ำกับบิลที่มีอยู่แล้ว — อ่านคอลัมน์เดียวรอบเดียวยังเร็วอยู่
   var lastRow = sheet.getLastRow();
   var maxNum = 0;
   if (lastRow > 1) {
-    var PROBE = 10;
-    var probeStart = Math.max(2, lastRow - PROBE + 1);
-    var probeIds = sheet.getRange(probeStart, 1, lastRow - probeStart + 1, 1).getValues();
-    var lastId = '';
-    for (var p = probeIds.length - 1; p >= 0; p--) {
-      var probeVal = String(probeIds[p][0] || '');
-      if (probeVal) { lastId = probeVal; break; }
-    }
-    if (lastId && lastId.indexOf(prefix) === 0) {
-      maxNum = parseInt(lastId.slice(prefix.length), 10) || 0;
-    } else {
-      var CHUNK = 1000;
-      var SAFETY_MARGIN = 20;
-      var row = lastRow;
-      var consecutiveMiss = 0;
-      var stop = false;
-      while (row >= 2 && !stop) {
-        var chunkStart = Math.max(2, row - CHUNK + 1);
-        var numRows = row - chunkStart + 1;
-        var ids = sheet.getRange(chunkStart, 1, numRows, 1).getValues().map(function (r) { return String(r[0]); });
-        for (var i = ids.length - 1; i >= 0; i--) {
-          var id = ids[i];
-          if (id && id.indexOf(prefix) === 0) {
-            consecutiveMiss = 0;
-            var n = parseInt(id.slice(prefix.length), 10) || 0;
-            if (n > maxNum) maxNum = n;
-          } else if (id) {
-            consecutiveMiss++;
-            if (consecutiveMiss >= SAFETY_MARGIN) { stop = true; break; }
-          }
-        }
-        row = chunkStart - 1;
-      }
-    }
+    sheet.getRange(2, 1, lastRow - 1, 1).getValues().forEach(function (r) {
+      var id = String(r[0] || '');
+      if (id.indexOf(prefix) !== 0) return;
+      var n = parseInt(id.slice(prefix.length), 10) || 0;
+      if (n > maxNum) maxNum = n;
+    });
   }
   var seq = maxNum + 1;
   var seqStr = seq < 10 ? '00' + seq : seq < 100 ? '0' + seq : String(seq);
