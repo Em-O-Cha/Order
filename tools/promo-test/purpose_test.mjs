@@ -1,0 +1,46 @@
+// "ซื้อครั้งนี้สำหรับ..." ในหน้ายืนยันที่อยู่: ค่าตั้ง / บังคับตอบ / บันทึกคอลัมน์ AK / หน้าร้านรุ่นเก่า / แก้ไขออเดอร์
+//   node purpose_test.mjs <โฟลเดอร์ members-line>
+import { createGas, makeEmptyBook } from './gasmock.mjs';
+const DIR = process.argv[2];
+const MB = '15yYmENUcxz5VO1ajhkAgU-seeZ3cMCs43Jm4xlYKvFk', RV = '1SSUCIrTUVe-dDB4pZF73uCG7d-SoZ-k04fM8pln6ZRY', MS = '1aZ3wp-9dU1jNoQ-FVpA9uKNNOYJSSEGmL8IjZXU_40w';
+makeEmptyBook(MB, 'Members');
+const rv = makeEmptyBook(RV, 'Revenue').api.insertSheet('Revenue');
+rv.appendRow(Array.from({ length: 34 }, (_, i) => 'h' + (i + 1)));
+const sku = makeEmptyBook(MS, 'Master').api.insertSheet('SKU');
+sku.appendRow(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'หมวด', 'ขนาด', 'ราคา', 'รูป', 'น้ำหนัก']);
+sku.appendRow(['', '', '', '', '', '', '', 'น้ำพริกหนังปลา', '59', 59, '', 100]);
+const { ctx: c } = createGas([DIR + '/Members.gs']);
+c.verifyLineIdToken_ = () => ({ sub: 'U1', name: 'x' });
+c.sendLineMessages_ = () => ({ success: true });
+c.checkAdminPin_ = () => true;
+c.ensureMembersSheet_().appendRow(['U1', 'ก', '', '0800000001', new Date(), 0, '', 'ที่อยู่', 'กรุงเทพมหานคร', 'ทดสอบ', '', 0, 'M1']);
+let fails = 0;
+const ok = (label, cond, extra = '') => { if (!cond) fails++; console.log((cond ? 'ผ่าน ' : 'ไม่ผ่าน ') + label + (extra ? ' | ' + extra : '')); };
+const items = JSON.stringify([{ name: 'น้ำพริกหนังปลา 59', qty: 1 }]);
+const order = (purpose, editId) => c.createShopOrder('t', items, 'bank', '', 'ที่อยู่', 'กรุงเทพมหานคร', '', editId || '', '', 0, undefined, purpose);
+const ak = (id) => { const g = rv._st.grid; for (let i = 1; i < g.length; i++) if (g[i] && g[i][0] === id) return g[i][36]; return undefined; };
+
+const def = c.getPurchasePurposeConfig_();
+ok('1) ค่าเริ่มต้น: เปิด + บังคับตอบ + "กรุณาเลือก" + 7 ตัวเลือก', def.enabled && def.required && /^กรุณาเลือก/.test(def.placeholder) && def.options.length === 7, JSON.stringify(def));
+let r = order('');
+ok('2) บังคับตอบแต่ไม่เลือก -> สั่งไม่ได้', !r.success && /ซื้อครั้งนี้สำหรับ/.test(r.error), r.error);
+r = order('อะไรก็ไม่รู้');
+ok('3) ค่าไม่อยู่ในตัวเลือก -> สั่งไม่ได้', !r.success, r.error);
+r = order('ทานที่ทำงาน');
+ok('4) เลือกแล้ว -> สั่งได้ + บันทึกคอลัมน์ AK + หัวคอลัมน์', r.success && ak(r.orderId) === 'ทานที่ทำงาน' && rv._st.grid[0][36] === 'ซื้อครั้งนี้สำหรับ', String(ak(r.orderId)));
+const first = r.orderId;
+r = order(undefined);
+ok('5) หน้าร้านรุ่นเก่า (ไม่ส่งค่า) -> ยังสั่งได้', r.success, r.error || '');
+r = order('ซื้อไปขายต่อ', first);
+ok('6) แก้ไขออเดอร์เปลี่ยนคำตอบ -> AK เป็นคำใหม่', r.success && ak(first) === 'ซื้อไปขายต่อ', String(ak(first)));
+const e = c.getPendingOrderForEdit('t', first);
+ok('7) โหลดออเดอร์มาแก้ไข -> ได้คำตอบเดิม', e.success && e.purchasePurpose === 'ซื้อไปขายต่อ', JSON.stringify(e.purchasePurpose));
+let u = c.updatePurchasePurposeConfig('pin', JSON.stringify({ enabled: true, required: false, placeholder: 'เลือกหน่อย', options: '🍚 ทานเอง\n\n🎁 ของฝาก\n🍚 ทานเอง' }));
+ok('8) แอดมินแก้ตัวเลือก: ตัดบรรทัดว่าง/ซ้ำ', u.success && u.config.options.join('|') === '🍚 ทานเอง|🎁 ของฝาก' && u.config.required === false, JSON.stringify(u.config));
+r = order('');
+ok('9) ไม่บังคับ -> ไม่เลือกก็สั่งได้', r.success, r.error || '');
+u = c.updatePurchasePurposeConfig('pin', JSON.stringify({ enabled: false, required: true, options: 'ก' }));
+r = order('');
+ok('10) ปิดคำถาม -> สั่งได้ ไม่บังคับ', r.success && c.getPurchasePurposeConfig_().enabled === false, r.error || '');
+console.log(fails ? `\nไม่ผ่าน ${fails} ข้อ` : '\nผ่านทั้งหมด');
+process.exit(fails ? 1 : 0);

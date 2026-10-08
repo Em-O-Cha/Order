@@ -64,7 +64,7 @@ const MAX_ATTEMPTS = 5;
 // พารามิเตอร์ของ createShopOrder ที่เก็บไว้ให้ Apps Script รันซ้ำ (ไม่เก็บโทเคน LINE)
 const ORDER_PARAMS = [
   "itemsB64", "paymentMethod", "couponCode", "shippingAddress", "province", "excludePrivilegeName",
-  "purchaseReferrerCode", "pointsToRedeem", "giftChoices", "existingOrderId",
+  "purchaseReferrerCode", "pointsToRedeem", "giftChoices", "existingOrderId", "purchasePurpose",
 ];
 
 type Result = Record<string, any>;
@@ -120,6 +120,8 @@ function runKind(kind: Kind, tabs: Map<string, Tab>, keys: string[], profile: Re
     // แก้ไขออเดอร์: ตัวจำลองลบแถวไม่ได้ ทำนายโดยถือว่าแถวเดิมถูกลบแล้ว (createShopOrder เช็คก่อนแล้วว่าออเดอร์มีจริง
     // เป็นของลูกค้าคนนี้ และยังไม่แนบสลิป) / ออเดอร์ที่รอแนบสลิปยังไม่มีรายการแลกคะแนนให้คืน
     deleteExistingOrderRows_: () => true, reverseRedeemedPointsForOrder_: () => 0,
+    // คำตอบ "ซื้อครั้งนี้สำหรับ" (คอลัมน์ AK) ไม่มีผลกับยอด/ผลลัพธ์ — ตัวเขียนจริงคือ Apps Script ตอนรันคำขอซ้ำ
+    writePurchasePurpose_: noop,
   });
   let result: Result;
   try {
@@ -127,7 +129,7 @@ function runKind(kind: Kind, tabs: Map<string, Tab>, keys: string[], profile: Re
     if (kind === "order") {
       result = gas.createShopOrder("supabase", gas.decodeItemsB64_(p.itemsB64), p.paymentMethod, p.couponCode,
         p.shippingAddress, p.province, p.excludePrivilegeName, String(p.existingOrderId || "").trim(),
-        p.purchaseReferrerCode, p.pointsToRedeem, p.giftChoices);
+        p.purchaseReferrerCode, p.pointsToRedeem, p.giftChoices, p.purchasePurpose);
     } else if (kind === "slip") {
       // รูปจริงไม่ต้องใช้ตอนตรวจเงื่อนไข (ตัวจริงอัปโหลดลง Drive ตอนเขียนชีต)
       result = gas.uploadShopSlip(p.orderId, "AA==", p.fileName, p.mimeType);

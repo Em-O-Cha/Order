@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 168 รายการ (116 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 177 รายการ (120 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -353,6 +353,68 @@ function evaluateCardEligibility_(amountBeforeFee, cfg, phone) {
     return { allowed: false, reason: 'ยอดสั่งซื้อเกินเพดานชำระด้วยบัตร (รับสูงสุด ' + Math.round(cfg.maxAmount).toLocaleString('th-TH') + ' บาท)' };
   }
   return { allowed: true, reason: '' };
+}
+
+var PURCHASE_PURPOSE_PROP_ = 'PURCHASE_PURPOSE_CONFIG_V1';
+
+var PURCHASE_PURPOSE_CACHE_KEY_ = 'purchase_purpose_v1';
+
+var PURCHASE_PURPOSE_COL_ = 37;
+
+var PURCHASE_PURPOSE_HEADER_ = 'ซื้อครั้งนี้สำหรับ';
+
+var PURCHASE_PURPOSE_DEFAULT_OPTIONS_ = ['ทานเองที่บ้าน', 'ทานกับครอบครัว', 'ทานที่ทำงาน', 'พกไปเที่ยว / เดินทาง', 'เป็นของฝาก / ของขวัญ', 'ซื้อไปขายต่อ', 'อื่นๆ'];
+
+function normalizePurchasePurposeConfig_(src) {
+  src = src || {};
+  var opts = (Array.isArray(src.options) ? src.options : String(src.options || '').split(/\r?\n/))
+    .map(function (x) { return String(x || '').trim().substring(0, 60); })
+    .filter(function (x, i, a) { return x && a.indexOf(x) === i; })
+    .slice(0, 20);
+  return {
+    enabled: src.enabled === undefined ? true : (src.enabled === true || String(src.enabled) === 'true'),
+    required: src.required === undefined ? true : (src.required === true || String(src.required) === 'true'),
+    placeholder: String(src.placeholder || 'กรุณาเลือก ซื้อครั้งนี้สำหรับ...').trim().substring(0, 60),
+    options: opts.length ? opts : PURCHASE_PURPOSE_DEFAULT_OPTIONS_.slice()
+  };
+}
+
+function getPurchasePurposeConfig_() {
+  try {
+    var cache = CacheService.getScriptCache();
+    var hit = cache.get(PURCHASE_PURPOSE_CACHE_KEY_);
+    if (hit) return JSON.parse(hit);
+    var raw = PropertiesService.getScriptProperties().getProperty(PURCHASE_PURPOSE_PROP_);
+    var cfg = normalizePurchasePurposeConfig_(raw ? JSON.parse(raw) : {});
+    try { cache.put(PURCHASE_PURPOSE_CACHE_KEY_, JSON.stringify(cfg), 300); } catch (e) {}
+    return cfg;
+  } catch (e) {
+    return normalizePurchasePurposeConfig_({});
+  }
+}
+
+function resolvePurchasePurpose_(value, cfg) {
+  cfg = cfg || getPurchasePurposeConfig_();
+  if (!cfg.enabled) return { value: '' };
+  var v = String(value || '').trim();
+  if (!v) return cfg.required ? { error: 'กรุณาเลือก "ซื้อครั้งนี้สำหรับ" ก่อนยืนยันสั่งซื้อ' } : { value: '' };
+  if (cfg.options.indexOf(v) === -1) return cfg.required ? { error: 'ตัวเลือก "ซื้อครั้งนี้สำหรับ" ไม่ถูกต้อง กรุณาเลือกใหม่' } : { value: '' };
+  return { value: v };
+}
+
+function writePurchasePurpose_(sheet, row, value) {
+  try {
+    if (sheet.getMaxColumns() < PURCHASE_PURPOSE_COL_) sheet.insertColumnsAfter(sheet.getMaxColumns(), PURCHASE_PURPOSE_COL_ - sheet.getMaxColumns());
+    var head = String(sheet.getRange(1, PURCHASE_PURPOSE_COL_).getValue() || '').trim();
+    if (head && head !== PURCHASE_PURPOSE_HEADER_) {
+      logErrorToSheet_('writePurchasePurpose_', 'คอลัมน์ AK ของชีต Revenue ถูกใช้ชื่ออื่นอยู่แล้ว ("' + head + '") — ไม่บันทึก "ซื้อครั้งนี้สำหรับ"');
+      return;
+    }
+    if (!head) sheet.getRange(1, PURCHASE_PURPOSE_COL_).setValue(PURCHASE_PURPOSE_HEADER_);
+    sheet.getRange(row, PURCHASE_PURPOSE_COL_).setValue(value || '');
+  } catch (e) {
+    logErrorToSheet_('writePurchasePurpose_', 'แถว ' + row + ' — ' + e);
+  }
 }
 
 function getMemberCodBlock_(lineUid) {
@@ -1899,7 +1961,7 @@ function applyPromoExclusivity_(privileges, coupons, items) {
   return { privileges: outPriv, coupons: outCp, dropped: dropped, exclusivePrivilegeUsed: exclusivePrivilegeUsed };
 }
 
-function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shippingAddress, province, excludePrivilegeName, existingOrderId, purchaseReferrerCode, pointsToRedeem, giftChoices) {
+function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shippingAddress, province, excludePrivilegeName, existingOrderId, purchaseReferrerCode, pointsToRedeem, giftChoices, purchasePurpose) {
   var profile;
   try {
     profile = verifyLineIdToken_(idToken);
@@ -1918,6 +1980,9 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     if (!address) return { success: false, error: 'กรุณากรอกที่อยู่จัดส่ง' };
     var provinceValue = String(province || '').trim();
     if (!provinceValue) return { success: false, error: 'กรุณาเลือกจังหวัด' };
+    // ⚡ เพิ่ม (8/10/69) — "ซื้อครั้งนี้สำหรับ..." หน้าร้านรุ่นเก่าที่ยังไม่ส่งค่านี้มา (undefined) ไม่บังคับ กันสั่งซื้อไม่ได้
+    var purposeRes_ = purchasePurpose === undefined || purchasePurpose === null ? { value: '' } : resolvePurchasePurpose_(purchasePurpose);
+    if (purposeRes_.error) return { success: false, error: purposeRes_.error };
 
     var memberSheet = ensureMembersSheet_();
     var customerName = profile.name || '';
@@ -2182,6 +2247,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
                         'AE' + startRow + ':AE' + endRow_, 'AH' + startRow + ':AH' + endRow_])
          .setNumberFormat('dd/MM/yyyy HH:mm:ss');
     sheet.getRange(startRow, 1, rows.length, REVENUE_TOTAL_COLS_).setValues(rows);
+    if (purchasePurpose !== undefined && purchasePurpose !== null && (purposeRes_.value || isEditingExistingOrder)) writePurchasePurpose_(sheet, startRow, purposeRes_.value);
 
     // ⚡ แก้ (perf) — เดิมยิงเขียนชีตแยก 1 รอบต่อสิทธิ์ 1 ใบ (ลูกค้าที่ใช้สิทธิ์หลายใบพร้อมกันยิ่งรอนาน)
     // เปลี่ยนมาใช้ getRangeList().setValue() ซึ่งเซ็ตค่าเดียวกันให้ทุกช่องพร้อมกันในการยิงรอบเดียว

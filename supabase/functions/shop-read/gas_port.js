@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 178 รายการ (126 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 184 รายการ (128 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -343,6 +343,42 @@ function calcCardFee_(amountBeforeFee, cfg) {
   if (cfg.feeFreeFrom > 0 && (parseFloat(amountBeforeFee) || 0) >= cfg.feeFreeFrom) return 0; // ยอดถึงเกณฑ์ ฟรีค่าธรรมเนียม
   if (cfg.feeType === 'percent') return Math.round((parseFloat(amountBeforeFee) || 0) * cfg.fee / 100);
   return Math.round(cfg.fee);
+}
+
+var PURCHASE_PURPOSE_PROP_ = 'PURCHASE_PURPOSE_CONFIG_V1';
+
+var PURCHASE_PURPOSE_CACHE_KEY_ = 'purchase_purpose_v1';
+
+var PURCHASE_PURPOSE_COL_ = 37;
+
+var PURCHASE_PURPOSE_DEFAULT_OPTIONS_ = ['ทานเองที่บ้าน', 'ทานกับครอบครัว', 'ทานที่ทำงาน', 'พกไปเที่ยว / เดินทาง', 'เป็นของฝาก / ของขวัญ', 'ซื้อไปขายต่อ', 'อื่นๆ'];
+
+function normalizePurchasePurposeConfig_(src) {
+  src = src || {};
+  var opts = (Array.isArray(src.options) ? src.options : String(src.options || '').split(/\r?\n/))
+    .map(function (x) { return String(x || '').trim().substring(0, 60); })
+    .filter(function (x, i, a) { return x && a.indexOf(x) === i; })
+    .slice(0, 20);
+  return {
+    enabled: src.enabled === undefined ? true : (src.enabled === true || String(src.enabled) === 'true'),
+    required: src.required === undefined ? true : (src.required === true || String(src.required) === 'true'),
+    placeholder: String(src.placeholder || 'กรุณาเลือก ซื้อครั้งนี้สำหรับ...').trim().substring(0, 60),
+    options: opts.length ? opts : PURCHASE_PURPOSE_DEFAULT_OPTIONS_.slice()
+  };
+}
+
+function getPurchasePurposeConfig_() {
+  try {
+    var cache = CacheService.getScriptCache();
+    var hit = cache.get(PURCHASE_PURPOSE_CACHE_KEY_);
+    if (hit) return JSON.parse(hit);
+    var raw = PropertiesService.getScriptProperties().getProperty(PURCHASE_PURPOSE_PROP_);
+    var cfg = normalizePurchasePurposeConfig_(raw ? JSON.parse(raw) : {});
+    try { cache.put(PURCHASE_PURPOSE_CACHE_KEY_, JSON.stringify(cfg), 300); } catch (e) {}
+    return cfg;
+  } catch (e) {
+    return normalizePurchasePurposeConfig_({});
+  }
 }
 
 function getMemberCodBlock_(lineUid) {
@@ -1324,6 +1360,8 @@ function getShopBootstrap(idToken) {
         return { enabled: cardCfg.enabled && (!cardCfg.testOnly || isCardTesterPhone_(row[3], cardCfg)), minAmount: cardCfg.minAmount, maxAmount: cardCfg.maxAmount,
                  fee: cardCfg.fee, feeType: cardCfg.feeType, feeFreeFrom: cardCfg.feeFreeFrom || 0, note: cardCfg.note };
       })(),
+      // ⚡ เพิ่ม (8/10/69) — Dropdown "ซื้อครั้งนี้สำหรับ..." ในหน้ายืนยันที่อยู่
+      purchasePurpose: getPurchasePurposeConfig_(),
       purchaseReferralEnabled: !!(referralStatus && referralStatus.enabled)
     };
   } catch (e) {
@@ -2539,6 +2577,7 @@ function getPendingOrderForEdit(idToken, orderId) {
       paymentMethod: isCardPaymentLabel_(bill.paymentLabel) ? 'card' : (bill.paymentLabel.indexOf('พร้อมเพย์') !== -1 ? 'promptpay' : 'bank'),
       shippingAddress: bill.address, province: bill.province,
       pointsToRedeem: pending.points || 0, purchaseReferrerCode: bill.purchaseReferrerCode || '',
+      purchasePurpose: (function () { try { var sh = ensureRevenueSheet_(); return sh.getMaxColumns() >= PURCHASE_PURPOSE_COL_ ? String(sh.getRange(target.row, PURCHASE_PURPOSE_COL_).getValue() || '') : ''; } catch (e) { return ''; } })(),
       totalAmount: bill.billTotal
     };
   } catch (e) {
