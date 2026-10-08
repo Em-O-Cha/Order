@@ -438,6 +438,8 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
       <select id="confirmProvinceSelect" style="width:100%;height:44px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Kanit',sans-serif;background:#fff;margin-bottom:18px">
         <option value="">— เลือกจังหวัด —</option>
       </select>
+      <!-- ⚡ เพิ่ม (8/10/69) — "ซื้อครั้งนี้สำหรับ..." ตั้งคำ/ตัวเลือก/บังคับตอบได้ที่หน้าแอดมิน (แท็บค่าจัดส่ง) -->
+      <select id="confirmPurposeSelect" class="sh" onchange="this.style.borderColor=''" style="width:100%;height:44px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:'Kanit',sans-serif;background:#fff;margin:-8px 0 18px"></select>
       <button class="btn btn-block" onclick="confirmSubmitOrder()" id="confirmAddressBtn">✅ ยืนยันที่อยู่และสั่งซื้อ</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px" onclick="closeAddressConfirmModal()">← กลับไปหน้าชำระเงิน</button>
     </div>
@@ -622,6 +624,8 @@ var selectedPayment = 'promptpay';
 var codInfo_ = null;
 // ⚡ เพิ่ม (8/10/69) — เงื่อนไขชำระด้วยบัตร (เปิดใช้/ยอดขั้นต่ำ-เพดาน/ค่าธรรมเนียม) จาก getShopBootstrap — ใช้ซ่อน/โชว์ปุ่มเท่านั้น
 var cardInfo_ = null;
+var purposeInfo_ = null; // ⚡ เพิ่ม (8/10/69) — { enabled, required, placeholder, options } จาก bootstrap
+var savedPurpose_ = '';  // คำตอบเดิมของออเดอร์ที่กำลังแก้ไข
 var cardOrderIds_ = {}; // ออเดอร์ที่เลือกชำระด้วยบัตร (ปุ่ม "แนบสลิป" ของออเดอร์เหล่านี้พาไปหน้าชำระเงินของธนาคารแทน)
 var appliedCouponCode = '';
 var lastDiscountInfo = null;
@@ -891,6 +895,7 @@ function startEditOrder_(orderId, fromState, btnEl){
     savedProvince = d.province || savedProvince;
     savedAddressLoaded = true;
     document.getElementById('purchaseReferrerInput').value = d.purchaseReferrerCode || '';
+    savedPurpose_ = d.purchasePurpose || '';
     setCartFromItems_(d.items);
     showState('catalogState');
   }).catch(function(e){
@@ -1582,6 +1587,7 @@ function applyShopBootstrap_(r){
   if (r.paymentInfo) paymentInfo = r.paymentInfo;
   if (r.cod) codInfo_ = r.cod;
   if (r.card) cardInfo_ = r.card;
+  if (r.purchasePurpose) purposeInfo_ = r.purchasePurpose;
 
   warmOrderHistory_();
   handleCardPayReturn_();
@@ -3127,6 +3133,23 @@ function buildPromptPayPayload(promptPayId, amount){
 }
 
 // ==================== Popup ยืนยันที่อยู่จัดส่ง (14/8/69) ====================
+// ⚡ เพิ่ม (8/10/69) — Dropdown "ซื้อครั้งนี้สำหรับ..." (ซ่อนถ้าร้านปิดคำถามนี้)
+function renderPurposeSelect_(){
+  var sel = document.getElementById('confirmPurposeSelect');
+  if (!sel) return;
+  var on = !!(purposeInfo_ && purposeInfo_.enabled && (purposeInfo_.options || []).length);
+  sel.classList.toggle('sh', !on);
+  if (!on) { sel.innerHTML = ''; return; }
+  var keep = sel.value || savedPurpose_ || '';
+  sel.innerHTML = '<option value="">— ' + escHtml(purposeInfo_.placeholder || 'กรุณาเลือก ซื้อครั้งนี้สำหรับ...') + ' —</option>'
+    + purposeInfo_.options.map(function(o){ return '<option value="' + escHtml(o).replace(/"/g, '&quot;') + '">' + escHtml(o) + '</option>'; }).join('');
+  sel.value = purposeInfo_.options.indexOf(keep) !== -1 ? keep : '';
+  sel.style.borderColor = '';
+}
+function selectedPurpose_(){
+  var sel = document.getElementById('confirmPurposeSelect');
+  return (sel && !sel.classList.contains('sh')) ? sel.value : '';
+}
 function openAddressConfirmPopup(){
   var errBox = document.getElementById('checkoutErrBox');
   errBox.classList.add('sh');
@@ -3141,6 +3164,7 @@ function openAddressConfirmPopup(){
 
   document.getElementById('confirmAddressInput').value = savedAddress || '';
   document.getElementById('confirmProvinceSelect').value = savedProvince || '';
+  renderPurposeSelect_();
   document.getElementById('addressConfirmModal').classList.add('show');
 }
 
@@ -3165,6 +3189,13 @@ function confirmSubmitOrder(){
   if (!shippingAddress) { document.getElementById('confirmAddressInput').focus(); return; }
   var province = document.getElementById('confirmProvinceSelect').value;
   if (!province) { document.getElementById('confirmProvinceSelect').focus(); return; }
+  var purchasePurpose = selectedPurpose_();
+  if (purposeInfo_ && purposeInfo_.enabled && purposeInfo_.required && !purchasePurpose && !document.getElementById('confirmPurposeSelect').classList.contains('sh')) {
+    var ps_ = document.getElementById('confirmPurposeSelect');
+    ps_.style.borderColor = '#c62828';
+    ps_.focus();
+    return;
+  }
 
   var btn = document.getElementById('confirmAddressBtn');
   btn.disabled = true;
@@ -3183,6 +3214,7 @@ function confirmSubmitOrder(){
   var purchaseReferrerCode = document.getElementById('purchaseReferrerInput').value.trim();
 
   var orderPayload_ = { itemsB64: itemsB64, paymentMethod: selectedPayment, couponCode: appliedCouponCode, shippingAddress: shippingAddress, province: province, excludePrivilegeName: excludedPrivilegeRowIndexes.join('|'), existingOrderId: currentOrderId, purchaseReferrerCode: purchaseReferrerCode, pointsToRedeem: pointsToRedeemInput_, giftChoices: giftChoicesForOrder_() };
+  if (purposeInfo_ && purposeInfo_.enabled) orderPayload_.purchasePurpose = purchasePurpose;
 
   getFreshIdToken().then(function(idToken){
     function viaAppsScript(){
