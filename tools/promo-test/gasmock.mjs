@@ -46,6 +46,7 @@ function makeSheetObj(book, name, grid) {
     getRangeList: (list) => { const rs = list.map((a1) => { const m = /^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/.exec(a1); const cn = (L) => [...L].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0); const r1 = +m[2], c1 = cn(m[1]), r2 = m[4] ? +m[4] : r1, c2 = m[3] ? cn(m[3]) : c1; return range(r1, c1, r2 - r1 + 1, c2 - c1 + 1); }); const RL = { setValue: (v) => { rs.forEach((r) => r.setValue(v)); return RL; }, setNumberFormat: (f) => { rs.forEach((r) => r.setNumberFormat(f)); return RL; } }; return RL; },
     appendRow: (vals) => { const r = lastRow() + 1; vals.forEach((v, j) => set(r, j + 1, v)); return S; },
     deleteRows: (start, n) => { st.grid.splice(start - 1, n); const nf = new Map(); for (const [k, f] of st.fmt) { const [rr, cc] = k.split(':').map(Number); if (rr < start) nf.set(k, f); else if (rr >= start + n) nf.set((rr - n) + ':' + cc, f); } st.fmt = nf; return S; },
+    insertRowsAfter: (after, n) => { st.grid.splice(after, 0, ...Array.from({ length: n }, () => [])); const nf = new Map(); for (const [k, f] of st.fmt) { const [rr, cc] = k.split(':').map(Number); nf.set((rr > after ? rr + n : rr) + ':' + cc, f); } st.fmt = nf; return S; },
     insertColumnsAfter: () => S, setFrozenRows: () => S, setColumnWidth: () => S, autoResizeColumns: () => S, getSheetId: () => 1,
     _st: st,
   };

@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 167 รายการ (115 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 168 รายการ (116 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -482,6 +482,20 @@ function generateShopRevenueId_(sheet) {
   var seq = maxNum + 1;
   var seqStr = seq < 10 ? '00' + seq : seq < 100 ? '0' + seq : String(seq);
   return prefix + seqStr;
+}
+
+function findOrderRowSpan_(sheet, orderId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return null;
+  var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  var start = -1;
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(orderId)) { start = i; break; }
+  }
+  if (start === -1) return null;
+  var count = 1;
+  while (start + count < ids.length && !ids[start + count][0]) count++;
+  return { start: start + 2, count: count };
 }
 
 function getOrderFinalAmount_(sheet, orderId) {
@@ -2057,9 +2071,13 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     var isEditingExistingOrder = false;
     var oldFinalAmount = 0;
     var revenueId;
+    // ⚡ แก้ (8/10/69) — แก้ไขออเดอร์: เขียนทับแถวเดิมของออเดอร์ ณ ตำแหน่งเดิม (ไม่ลบแล้วไปต่อท้ายชีต)
+    // เลขบิลเดิมจึงยังเรียงอยู่ในลำดับเดิม ไม่โผล่แทรกท้ายชีตปนกับเลขใหม่ (แบบเดียวกับแก้ไขบิลใน Revenue Spunky Online)
+    var editSpan_ = null;
     if (existingOrderId) {
       oldFinalAmount = getOrderFinalAmount_(sheet, existingOrderId);
-      if (deleteExistingOrderRows_(sheet, existingOrderId)) {
+      editSpan_ = findOrderRowSpan_(sheet, existingOrderId);
+      if (editSpan_) {
         revenueId = existingOrderId;
         isEditingExistingOrder = true;
       } else {
@@ -2069,13 +2087,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       revenueId = generateShopRevenueId_(sheet);
     }
     var timestamp = new Date();
-    var startRow = sheet.getLastRow() + 1;
-
-    // ⚡ แก้ (perf) — คอลัมน์ 2 (B) กับ 23 (W) ใช้รูปแบบวันที่เหมือนกัน รวมเป็นการยิงรอบเดียวด้วย getRangeList
-    sheet.getRange(startRow, 15, 100, 1).setNumberFormat('@STRING@');
-    sheet.getRangeList(['B' + startRow + ':B' + (startRow + 99), 'W' + startRow + ':W' + (startRow + 99),
-                        'AE' + startRow + ':AE' + (startRow + 99), 'AH' + startRow + ':AH' + (startRow + 99)])
-         .setNumberFormat('dd/MM/yyyy HH:mm:ss');
+    var startRow = editSpan_ ? editSpan_.start : sheet.getLastRow() + 1;
 
     applyGiftChoices_(appliedPrivileges, couponResults, giftChoices); // ⚡ เพิ่ม (1/10/69) — รสของแถมที่ลูกค้าเลือก
     var paymentLabel = isCodOrder
@@ -2155,6 +2167,18 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       }
     });
 
+    // แก้ไขออเดอร์: จำนวนรายการเปลี่ยน -> เพิ่ม/ลบเฉพาะแถวส่วนต่างต่อจากแถวของออเดอร์นี้ แล้วเขียนทับ
+    if (editSpan_ && rows.length > editSpan_.count) {
+      sheet.insertRowsAfter(editSpan_.start + editSpan_.count - 1, rows.length - editSpan_.count);
+    } else if (editSpan_ && rows.length < editSpan_.count) {
+      sheet.deleteRows(editSpan_.start + rows.length, editSpan_.count - rows.length);
+    }
+    // ⚡ แก้ (perf) — คอลัมน์ 2 (B) กับ 23 (W) ใช้รูปแบบวันที่เหมือนกัน รวมเป็นการยิงรอบเดียวด้วย getRangeList
+    var endRow_ = startRow + rows.length - 1;
+    sheet.getRange(startRow, 15, rows.length, 1).setNumberFormat('@STRING@');
+    sheet.getRangeList(['B' + startRow + ':B' + endRow_, 'W' + startRow + ':W' + endRow_,
+                        'AE' + startRow + ':AE' + endRow_, 'AH' + startRow + ':AH' + endRow_])
+         .setNumberFormat('dd/MM/yyyy HH:mm:ss');
     sheet.getRange(startRow, 1, rows.length, REVENUE_TOTAL_COLS_).setValues(rows);
 
     // ⚡ แก้ (perf) — เดิมยิงเขียนชีตแยก 1 รอบต่อสิทธิ์ 1 ใบ (ลูกค้าที่ใช้สิทธิ์หลายใบพร้อมกันยิ่งรอนาน)
