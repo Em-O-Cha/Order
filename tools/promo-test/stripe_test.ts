@@ -14,6 +14,8 @@ const ok = (label: string, cond: boolean, extra = "") => {
 // ---------- เซิร์ฟเวอร์ Stripe จำลอง ----------
 const sessions = new Map<string, Record<string, unknown>>();
 let lastCreate: URLSearchParams | null = null;
+let denyBalance = false;
+let chargePmd: Record<string, unknown> = { type: "card", card: { brand: "visa", last4: "4242", funding: "credit", country: "TH", wallet: null } };
 const server = Deno.serve({ port: 0, onListen: () => {} }, async (req) => {
   const url = new URL(req.url);
   if (req.method === "POST" && url.pathname === "/v1/checkout/sessions") {
@@ -26,6 +28,16 @@ const server = Deno.serve({ port: 0, onListen: () => {} }, async (req) => {
     };
     sessions.set(id, s);
     return Response.json(s);
+  }
+  const pm = url.pathname.match(/^\/v1\/payment_intents\/([^/]+)$/);
+  if (req.method === "GET" && pm) return Response.json({ id: pm[1], object: "payment_intent", status: "succeeded", latest_charge: "ch_1" });
+  if (req.method === "GET" && url.pathname === "/v1/charges/ch_1") {
+    const wantsBt = url.searchParams.getAll("expand[]").includes("balance_transaction") || url.search.includes("balance_transaction");
+    if (wantsBt && denyBalance) return Response.json({ error: { type: "invalid_request_error", message: "The provided key does not have the required permissions" } }, { status: 403 });
+    return Response.json({
+      id: "ch_1", object: "charge", payment_method_details: chargePmd,
+      balance_transaction: wantsBt ? { id: "txn_1", object: "balance_transaction", fee: 1077, net: 31173, currency: "thb" } : "txn_1",
+    });
   }
   const m = url.pathname.match(/^\/v1\/checkout\/sessions\/([^/]+)$/);
   if (req.method === "GET" && m && sessions.has(m[1])) return Response.json(sessions.get(m[1]));
@@ -68,6 +80,17 @@ ok("3c) ยืนยันทีหลังไม่สำเร็จ -> faile
 s.payment_status = "paid"; s.payment_intent = { id: "pi_123", object: "payment_intent", status: "succeeded" };
 r = await prov.inquire(row);
 ok("3d) จ่ายแล้ว -> paid ยอด 332.5 อ้างอิง pi_123", r.status === "paid" && r.paidAmount === 332.5 && r.paidRef === "pi_123", JSON.stringify(r));
+ok("3f) วิธีชำระ + ค่าธรรมเนียม", r.details?.method === "Visa •••• 4242 · เครดิต" && r.details?.fee === 10.77 && r.details?.net === 311.73, JSON.stringify(r.details));
+denyBalance = true;
+let d = await prov.paymentDetails("pi_123");
+ok("3g) คีย์ไม่มีสิทธิ์ Balance -> ได้วิธีชำระ ไม่มีค่าธรรมเนียม ไม่พัง", d?.method === "Visa •••• 4242 · เครดิต" && d?.fee === null && !!d?.note, JSON.stringify(d));
+denyBalance = false;
+chargePmd = { type: "promptpay", promptpay: {} };
+d = await prov.paymentDetails("pi_123");
+ok("3h) PromptPay", d?.method === "PromptPay" && d?.fee === 10.77, JSON.stringify(d));
+chargePmd = { type: "card", card: { brand: "mastercard", last4: "1234", funding: "debit", country: "JP", wallet: { type: "apple_pay" } } };
+d = await prov.paymentDetails("pi_123");
+ok("3i) Apple Pay บัตรเดบิตต่างประเทศ", d?.method === "Apple Pay · Mastercard •••• 1234 · เดบิต · บัตรต่างประเทศ JP", d?.method);
 s.status = "expired"; s.payment_status = "unpaid"; s.payment_intent = null;
 r = await prov.inquire(row);
 ok("3e) หมดอายุ -> expired", r.status === "expired");

@@ -106,6 +106,13 @@ ok('8c) ตั้งคิวส่ง LINE ยืนยัน/ให้แต�
 const k1 = cell(cardId, 11);
 r = c.cardConfirmOrder_(cardId, { amount: base + fee, ref: 'REF999' });
 ok('9) ยืนยันซ้ำ -> already ไม่เขียนทับ', r.success && r.already && cell(cardId, 11) === k1);
+ok('9a) ยังไม่รู้วิธีชำระ -> คอลัมน์ AI/AJ ว่าง', !cell(cardId, 35) && !cell(cardId, 36));
+r = c.cardConfirmOrder_(cardId, { amount: base + fee, ref: 'REF123', method: 'Visa •••• 4242 · เครดิต', fee: 10.77 });
+ok('9c) ยืนยันซ้ำพร้อมวิธีชำระ/ค่าธรรมเนียม -> เติม AI/AJ + หัวคอลัมน์', r.already && cell(cardId, 35) === 'Visa •••• 4242 · เครดิต' && cell(cardId, 36) === 10.77
+  && rv().getRange(1, 35).getValue() === c.CARD_METHOD_HEADER_ && rv().getRange(1, 36).getValue() === c.CARD_FEE_HEADER_ && cell(cardId, 11) === k1,
+  cell(cardId, 35) + ' / ' + cell(cardId, 36));
+r = c.cardConfirmOrder_(cardId, { amount: base + fee, ref: 'REF123', method: '', fee: null });
+ok('9d) ข้อมูลว่างทีหลัง -> ไม่เขียนทับค่าเดิม', cell(cardId, 35) === 'Visa •••• 4242 · เครดิต' && cell(cardId, 36) === 10.77);
 r = c.cardHandleShopAction_('startCardPayment', 't', cardId);
 ok('9b) ขอลิงก์หลังจ่ายแล้ว -> paid', r.success && r.paid === true);
 

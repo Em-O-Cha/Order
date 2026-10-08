@@ -17,9 +17,11 @@ export type CreateLinkInput = {
   orderId: string; amount: number; description: string; returnUrl: string; notifyUrl: string; expiresAt: Date;
 };
 export type CreateLinkResult = { linkId: string; url: string; expiresAt: string; raw: unknown };
+// วิธีชำระ + ค่าธรรมเนียมที่ผู้ให้บริการหัก (บาท) — fee/net เป็น null ถ้ายังไม่รู้ (ไม่มีสิทธิ์อ่าน หรือยังไม่ตัดยอด)
+export type PaymentDetails = { method: string; fee: number | null; net: number | null; note?: string };
 export type InquiryResult = {
   status: "pending" | "paid" | "failed" | "expired";
-  paidAmount?: number; paidRef?: string; paidAt?: string; raw?: unknown;
+  paidAmount?: number; paidRef?: string; paidAt?: string; raw?: unknown; details?: PaymentDetails | null;
 };
 export type NotifyRef = { linkId?: string; orderId?: string };
 
@@ -29,6 +31,7 @@ export interface CardProvider {
   ready(): { ready: boolean; message: string };
   createLink(input: CreateLinkInput): Promise<CreateLinkResult>;
   inquire(row: CardRow): Promise<InquiryResult>;
+  paymentDetails?(paidRef: string): Promise<PaymentDetails | null>; // อ่านซ้ำทีหลังได้ (ค่าธรรมเนียมที่ยังไม่มาตอนจ่าย)
   parseNotify(body: string, headers: Headers): NotifyRef | Promise<NotifyRef>; // throw = ข้อความปลอม/ลายเซ็นไม่ถูก
   notifyAck(): Response;
 }
@@ -111,7 +114,8 @@ class KBankProvider implements CardProvider {
 //     จ่ายแล้ว = payment_status ไม่ใช่ unpaid (รองรับช่องทางที่ยืนยันทีหลังผ่าน async_payment_succeeded)
 // Secrets ใน Supabase (Edge Functions → Secrets) — ห้ามใส่ในโค้ด/แชท:
 //   CARD_PROVIDER=stripe
-//   STRIPE_API_KEY         Restricted API key (rk_test_… / rk_live_…) สิทธิ์ Checkout Sessions: Write
+//   STRIPE_API_KEY         Restricted API key (rk_test_… / rk_live_…) สิทธิ์ Checkout Sessions: Write,
+//                          PaymentIntents: Read, Charges: Read (วิธีชำระ), Balance: Read (ค่าธรรมเนียม)
 //                          (ใช้ sk_ ได้แต่ไม่แนะนำ) — rk_test_/sk_test_ = โหมดทดสอบ
 //   STRIPE_WEBHOOK_SECRET  whsec_… ของ webhook endpoint ด้านล่าง
 // Webhook endpoint ใน Stripe Dashboard: https://<project>.supabase.co/functions/v1/card-pay?action=notify
@@ -123,6 +127,25 @@ const STRIPE_EVENTS = new Set([
   "checkout.session.async_payment_failed", "checkout.session.expired",
 ]);
 const randomLetters = (n: number) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => String.fromCharCode(97 + (b % 26))).join("");
+
+const isPermissionError = (e: unknown) => (e as { type?: string; statusCode?: number })?.type === "StripePermissionError" ||
+  (e as { statusCode?: number })?.statusCode === 403;
+const FUNDING_TH: Record<string, string> = { credit: "เครดิต", debit: "เดบิต", prepaid: "เติมเงิน" };
+const WALLET_TH: Record<string, string> = { apple_pay: "Apple Pay", google_pay: "Google Pay", samsung_pay: "Samsung Pay", link: "Link" };
+export function stripeMethodLabel(d: Stripe.Charge.PaymentMethodDetails | null | undefined): string {
+  if (!d) return "";
+  if (d.type === "card" && d.card) {
+    const c = d.card;
+    const brand = ({ visa: "Visa", mastercard: "Mastercard", amex: "Amex", jcb: "JCB", unionpay: "UnionPay", discover: "Discover", diners: "Diners" } as Record<string, string>)[c.brand || ""] || (c.brand || "บัตร");
+    const parts = [brand + (c.last4 ? " •••• " + c.last4 : "")];
+    if (c.funding && FUNDING_TH[c.funding]) parts.push(FUNDING_TH[c.funding]);
+    if (c.country && c.country !== "TH") parts.push("บัตรต่างประเทศ " + c.country);
+    const wallet = c.wallet?.type ? WALLET_TH[c.wallet.type] || c.wallet.type : "";
+    return (wallet ? wallet + " · " : "") + parts.join(" · ");
+  }
+  if (d.type === "promptpay") return "PromptPay";
+  return d.type;
+}
 
 export class StripeProvider implements CardProvider {
   name = "stripe";
@@ -174,16 +197,46 @@ export class StripeProvider implements CardProvider {
     const pi = s.payment_intent && typeof s.payment_intent === "object" ? s.payment_intent : null;
     const raw = { id: s.id, status: s.status, payment_status: s.payment_status, payment_intent: pi?.id ?? s.payment_intent ?? null };
     if (s.status === "complete" && s.payment_status !== "unpaid") {
+      const paidRef = pi?.id || (typeof s.payment_intent === "string" ? s.payment_intent : s.id);
       return {
-        status: "paid", paidAmount: (s.amount_total ?? 0) / 100,
-        paidRef: pi?.id || (typeof s.payment_intent === "string" ? s.payment_intent : s.id),
-        paidAt: new Date().toISOString(), raw,
+        status: "paid", paidAmount: (s.amount_total ?? 0) / 100, paidRef,
+        paidAt: new Date().toISOString(), raw, details: await this.paymentDetails(paidRef),
       };
     }
     if (s.status === "expired") return { status: "expired", raw };
     // ช่องทางยืนยันทีหลังแล้วไม่สำเร็จ (async_payment_failed) = session complete แต่ยัง unpaid และ PaymentIntent ใช้ต่อไม่ได้
     if (s.status === "complete" && pi && (pi.status === "canceled" || pi.status === "requires_payment_method")) return { status: "failed", raw };
     return { status: "pending", raw };
+  }
+  // วิธีชำระ (Visa •••• 4242 เครดิต / PromptPay) + ค่าธรรมเนียมจาก balance transaction
+  // คีย์ต้องมีสิทธิ์อ่าน Charges (วิธีชำระ) และ Balance (ค่าธรรมเนียม) — ไม่มีสิทธิ์ก็ไม่ทำให้การยืนยันออเดอร์พัง
+  async paymentDetails(paidRef: string): Promise<PaymentDetails | null> {
+    if (!this.client || !/^pi_/.test(paidRef)) return null;
+    try {
+      const pi = await this.client.paymentIntents.retrieve(paidRef);
+      const chargeId = typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id;
+      if (!chargeId) return null;
+      let charge: Stripe.Charge;
+      let note = "";
+      try {
+        charge = await this.client.charges.retrieve(chargeId, { expand: ["balance_transaction"] });
+      } catch (e) {
+        if (!isPermissionError(e)) throw e;
+        charge = await this.client.charges.retrieve(chargeId); // ไม่มีสิทธิ์ Balance: ได้แค่วิธีชำระ
+        note = "คีย์ Stripe ยังไม่มีสิทธิ์อ่าน Balance (ค่าธรรมเนียม)";
+      }
+      const bt = charge.balance_transaction && typeof charge.balance_transaction === "object" ? charge.balance_transaction : null;
+      const toBaht = (v: number) => Math.round(v) / 100;
+      return {
+        method: stripeMethodLabel(charge.payment_method_details),
+        fee: bt ? toBaht(bt.fee) : null,
+        net: bt ? toBaht(bt.net) : null,
+        ...(note ? { note } : bt && bt.currency !== "thb" ? { note: "สกุลเงิน " + bt.currency.toUpperCase() } : {}),
+      };
+    } catch (e) {
+      console.error("stripe paymentDetails", paidRef, e);
+      return isPermissionError(e) ? { method: "", fee: null, net: null, note: "คีย์ Stripe ยังไม่มีสิทธิ์อ่าน Charges (วิธีชำระ)" } : null;
+    }
   }
   async parseNotify(body: string, headers: Headers): Promise<NotifyRef> {
     const event = await Stripe.webhooks.constructEventAsync(
