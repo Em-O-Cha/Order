@@ -293,7 +293,7 @@ var CARD_CONFIG_PROP_ = 'CARD_CONFIG_V1';
 
 var CARD_CONFIG_CACHE_KEY_ = 'card_config_v1';
 
-var CARD_CONFIG_DEFAULT_NOTE_ = 'รองรับบัตร Visa / Mastercard ทุกธนาคาร ชำระผ่านระบบ Stripe';
+var CARD_CONFIG_DEFAULT_NOTE_ = 'รองรับบัตร Visa / Mastercard ทุกธนาคาร';
 
 function normalizeCardConfig_(src) {
   src = src || {};
