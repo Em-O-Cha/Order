@@ -239,12 +239,26 @@ button,.btn,.sbu,.shop-cta-btn{
 .payment-method,.payment-method.active{
   background:transparent !important;border:0 !important;box-shadow:none !important;color:#1a5c2a !important;
 }
-.payment-method-title,.payment-method.active .payment-method-title{color:#1a5c2a !important;}
-.payment-method-icon{background:#dff1e2 !important;color:#28733a !important;}
+/* ⚡ แก้ (8/10/69) — แต่ละช่องทางมีสีของตัวเอง (พร้อมเพย์น้ำเงิน / โอนเขียว / ปลายทางส้ม / บัตรม่วง)
+   ไม่ได้เลือก = วงกลมสีอ่อน ไอคอนสีของช่องทาง · เลือกอยู่ = วงกลมสีเข้มเต็มวง ไอคอนขาว + ✓ มุมขวาบน */
+.payment-method{--pm-d:#1b6b32;--pm-l:#4caf50;--pm-bg:#e3f3e5;--pm-bd:#b9dcbf;}
+#optPromptpay{--pm-d:#1a4b8c;--pm-l:#3f7fd1;--pm-bg:#e3edf9;--pm-bd:#b7cbe8;}
+#optBank{--pm-d:#1b6b32;--pm-l:#4caf50;--pm-bg:#e3f3e5;--pm-bd:#b9dcbf;}
+#optCod{--pm-d:#d35400;--pm-l:#ff9a3c;--pm-bg:#fff0e2;--pm-bd:#f6cda6;}
+#optCard{--pm-d:#5b2c9c;--pm-l:#8e5ad8;--pm-bg:#efe7fa;--pm-bd:#d3bfee;}
+.payment-method-title,.payment-method.active .payment-method-title{color:var(--pm-d) !important;}
+.payment-method-icon{position:relative;background:var(--pm-bg) !important;color:var(--pm-d) !important;
+  border:1.5px solid var(--pm-bd);box-shadow:none !important;}
 .payment-method.active .payment-method-icon{
-  background:linear-gradient(135deg,#176b32,#54ad61) !important;color:#fff !important;
-  box-shadow:0 5px 12px rgba(23,107,50,.28) !important;
+  background:linear-gradient(135deg,var(--pm-d),var(--pm-l)) !important;color:#fff !important;border-color:transparent;
+  box-shadow:0 5px 12px rgba(0,0,0,.22) !important;
 }
+.payment-method.active .payment-method-icon::after{content:'✓';position:absolute;top:-5px;right:-5px;width:20px;height:20px;
+  border-radius:50%;background:#fff;color:var(--pm-d);font-size:12px;font-weight:800;line-height:20px;text-align:center;
+  box-shadow:0 1px 4px rgba(0,0,0,.25);}
+.payment-method-sub{order:3;display:block;font-size:11px;font-weight:400;color:#8a8a8a;line-height:1.2;}
+.payment-method.active .payment-method-sub{color:var(--pm-d);}
+.payment-methods.three .payment-method-sub{font-size:10px;}
 /* ปุ่ม Copy เป็นปุ่มเครื่องมือ จึงคงพื้นเรียบไว้ */
 button.copy-account-btn{background:#fff !important;border:1px solid #d7d7d7 !important;box-shadow:none !important;}
 /* ปุ่มดำเนินการต่อและปุ่ม “ไม่ใช่” ในคำสั่งซื้อรอดำเนินการ ใช้สีเขียว */
