@@ -145,6 +145,7 @@ export function stripeMethodLabel(d: Stripe.Charge.PaymentMethodDetails | null |
     return (wallet ? wallet + " · " : "") + parts.join(" · ");
   }
   if (d.type === "promptpay") return "PromptPay";
+  if (d.type === "link") return "Link (บัตรที่ลูกค้าบันทึกไว้กับ Stripe)";
   return d.type;
 }
 
