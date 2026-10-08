@@ -646,6 +646,12 @@ var slipUploadSource_ = '';
 
 // ==================== Stepper (14/8/69) ====================
 var STEP_MAP_ = { catalogState: 0, checkoutState: 1, orderDoneState: 2 };
+// ⚡ เพิ่ม (19/9/69) — เก็บเงินปลายทาง/บัตรไม่มีขั้นตอนแนบสลิป เปลี่ยนป้ายขั้นที่ 3 ของแถบสถานะให้ตรงความจริง
+// (เรียกทั้งตอนเลือกวิธีชำระ และตอนจ่ายบัตรจากประวัติ/กลับมาจากหน้าชำระเงินที่หน้าโหลดใหม่)
+function setPayStepLabel_(method){
+  var el = document.querySelector('.step[data-step="2"] .step-label');
+  if (el) el.textContent = (method === 'cod') ? 'ยืนยันออเดอร์' : (method === 'card' ? 'ชำระด้วยบัตร' : 'แนบสลิป');
+}
 function setStepper(stepIdx){
   var wrap = document.getElementById('orderStepper');
   if (stepIdx === null || stepIdx === undefined) { wrap.classList.add('sh'); return; }
@@ -686,6 +692,7 @@ function closeCardPayModal_(){
 function startCardPayment_(orderId){
   if (cardPayBusy_ || !orderId) return;
   cardPayBusy_ = true;
+  setPayStepLabel_('card');
   openCardPayModal_(orderId, 'loading', '⏳ กำลังเปิดหน้าชำระเงิน...');
   getFreshIdToken().then(function(idToken){
     return callApi('startCardPayment', { idToken: idToken, orderId: orderId });
@@ -707,6 +714,7 @@ function handleCardPayReturn_(){
   if (!WANT_CARDPAY_ORDER_ || cardReturnHandled_) return;
   cardReturnHandled_ = true;
   cardOrderIds_[WANT_CARDPAY_ORDER_] = true;
+  setPayStepLabel_('card');
   try {
     var u = new URL(location.href);
     u.searchParams.delete('cardpay'); u.searchParams.delete('mocklink');
@@ -735,6 +743,7 @@ function pollCardPayment_(orderId, attempt){
 }
 function showCardPaid_(orderId, amount){
   closeCardPayModal_();
+  setPayStepLabel_('card');
   delete cardOrderIds_[orderId];
   orderHistoryCache_.invalidate();
   if (pendingSlipOrderId === orderId && !document.getElementById('orderDoneState').classList.contains('sh')) {
@@ -771,6 +780,7 @@ function openSlipUploadPage(){
 
 function openSlipUploadModal(orderId, source){
   if (isCardOrder_(orderId)) { startCardPayment_(orderId); return; } // ⚡ เพิ่ม (8/10/69) — ออเดอร์ชำระด้วยบัตร
+  setPayStepLabel_('bank');
   slipTargetOrderId = orderId;
   slipUploadSource_ = source || 'orderDone';
   slipUploadData = null;
@@ -2813,9 +2823,7 @@ function selectPayment(method){
     btn.classList.toggle('active', isActive);
     btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
-  // ⚡ เพิ่ม (19/9/69) — เก็บเงินปลายทางไม่มีขั้นตอนแนบสลิป เปลี่ยนป้ายขั้นที่ 3 ของแถบสถานะให้ตรงความจริง
-  var slipStepLabel = document.querySelector('.step[data-step="2"] .step-label');
-  if (slipStepLabel) slipStepLabel.textContent = (method === 'cod') ? 'ยืนยันออเดอร์' : (method === 'card' ? 'ชำระด้วยบัตร' : 'แนบสลิป');
+  setPayStepLabel_(method);
   renderPaymentDetail();
   renderDiscountSummary(); // ค่าธรรมเนียม/ยอดสุทธิเปลี่ยนตามวิธีชำระที่เลือก
 }
@@ -3314,6 +3322,7 @@ function showOrderResult_(r){
   var noSlip = r.skipSlipUpload || r.totalAmount <= 0;
   lastOrderIsCard_ = !noSlip && (!!r.isCard || selectedPayment === 'card'); // ⚡ เพิ่ม (8/10/69)
   if (lastOrderIsCard_ && r.orderId) cardOrderIds_[r.orderId] = true;
+  if (lastOrderIsCard_) setPayStepLabel_('card');
   var doneHint_ = document.getElementById('orderDoneHint');
   if (doneHint_ && !noSlip) doneHint_.textContent = lastOrderIsCard_
     ? 'กด "ชำระด้วยบัตร" ด้านล่างเพื่อไปหน้าชำระเงิน — ชำระสำเร็จแล้วระบบยืนยันคำสั่งซื้อให้อัตโนมัติ'
