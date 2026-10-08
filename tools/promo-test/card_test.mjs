@@ -23,12 +23,13 @@ const setCard = (cfg) => { props.setProperty('CARD_CONFIG_V1', JSON.stringify(cf
 
 // card-pay จำลอง
 let edge = { paid: false, amount: 0 };
+let edgeMode = 'live';
 const edgeCalls = [];
 c.cardEdge_ = (p) => {
   edgeCalls.push(p.action);
-  if (p.action === 'status') return { success: true, ready: true, provider: 'mock', mode: 'test' };
+  if (p.action === 'status') return { success: true, ready: true, provider: 'stripe', mode: edgeMode };
   if (p.action === 'createLink') return { success: true, url: 'https://pay.example/' + p.orderId + '?amt=' + p.amount };
-  if (p.action === 'check') return edge.paid ? { success: true, paid: true, amount: edge.amount, ref: 'REF123', id: 'id1' } : { success: true, paid: false, status: 'pending' };
+  if (p.action === 'check') return edge.paid ? { success: true, paid: true, amount: edge.amount, ref: 'REF123', id: 'id1', mode: edge.mode || edgeMode } : { success: true, paid: false, status: 'pending' };
   if (p.action === 'confirmed') return { success: true };
   return { success: false, error: 'unknown' };
 };
@@ -124,6 +125,36 @@ r = c.updateCardConfig('pin', JSON.stringify({ enabled: true }));
 ok('11) ยังไม่เชื่อมต่อธนาคาร -> เปิดใช้ไม่ได้', !r.success && /รอเอกสาร API/.test(r.error), r.error);
 r = c.updateCardConfig('pin', JSON.stringify({ enabled: false, fee: 2 }));
 ok('11b) บันทึกค่าตั้งแบบปิดได้', r.success && r.config.enabled === false && r.config.fee === 2);
+
+// 12) โหมดทดสอบ (คีย์ทดสอบของ Stripe): เห็นปุ่ม/สั่ง/จ่ายได้เฉพาะเบอร์ผู้ทดสอบ
+c.cardEdge_ = realEdge;
+edgeMode = 'test';
+c.CacheService.getScriptCache().remove('card_provider_status');
+r = c.updateCardConfig('pin', JSON.stringify({ enabled: true }));
+ok('12) โหมดทดสอบ ไม่ใส่เบอร์ผู้ทดสอบ -> เปิดไม่ได้', !r.success && /เบอร์โทรผู้ทดสอบ/.test(r.error), r.error);
+r = c.updateCardConfig('pin', JSON.stringify({ enabled: true, testerPhones: '081-111-1111, 0899999999' }));
+ok('12b) โหมดทดสอบ + เบอร์ผู้ทดสอบ -> เปิดได้แบบ testOnly', r.success && r.config.testOnly === true && r.config.testerPhones.join() === '0811111111,0899999999', JSON.stringify(r.config && r.config.testerPhones));
+o = order('card');
+ok('12c) ลูกค้าทั่วไป (0800000000) สั่งแบบบัตรไม่ได้ตอนทดสอบ', !o.success && /ระหว่างทดสอบ/.test(o.error), o.error);
+c.ensureMembersSheet_().getRange(2, 4).setValue('0811111111');
+o = order('card');
+ok('12d) ผู้ทดสอบสั่งแบบบัตรได้', o.success && o.isCard, o.error || o.orderId);
+const testerOrder = o.orderId;
+r = c.cardHandleShopAction_('startCardPayment', 't', testerOrder);
+ok('12e) ผู้ทดสอบขอลิงก์ได้', r.success && !!r.url, r.error || r.url);
+edge = { paid: true, amount: o.totalAmount, mode: 'test' };
+r = c.cardHandleShopAction_('checkCardPayment', 't', testerOrder);
+ok('12f) จ่ายทดสอบของผู้ทดสอบ -> ยืนยันออเดอร์', r.success && r.paid, JSON.stringify(r));
+c.ensureMembersSheet_().getRange(2, 4).setValue('0800000000');
+setCard({ enabled: true, fee: 0, feeType: 'percent' });
+o = order('card');
+const liveCfgOrder = o.orderId;
+c.CacheService.getScriptCache().remove('card_provider_status');
+r = c.cardHandleShopAction_('startCardPayment', 't', liveCfgOrder);
+ok('12g) ค่าตั้งเปิดแบบจริงแต่คีย์ยังเป็นทดสอบ -> ลูกค้าทั่วไปขอลิงก์ไม่ได้', !r.success && /ระหว่างทดสอบ/.test(r.error), r.error);
+const sb3 = sent.length;
+r = c.cardConfirmOrder_(liveCfgOrder, { amount: o.totalAmount, ref: 'pi_test', mode: 'test' });
+ok('12h) จ่ายแบบทดสอบกับออเดอร์ลูกค้าทั่วไป -> ไม่ยืนยัน + แจ้งแอดมิน', !r.success && !cell(liveCfgOrder, 11) && sent.slice(sb3).some((x) => x.to === c.ADMIN_GROUP_ID), r.error);
 
 console.log(fails ? `\nไม่ผ่าน ${fails} ข้อ` : '\nผ่านทั้งหมด');
 process.exit(fails ? 1 : 0);

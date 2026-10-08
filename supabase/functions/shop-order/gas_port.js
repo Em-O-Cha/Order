@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 165 รายการ (113 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 167 รายการ (115 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -303,8 +303,18 @@ function normalizeCardConfig_(src) {
     maxAmount: Math.max(0, parseFloat(src.maxAmount) || 0),   // 0 = ไม่จำกัดเพดาน
     fee: Math.max(0, parseFloat(src.fee) || 0),               // 0 = ร้านรับค่าธรรมเนียมเอง
     feeType: src.feeType === 'fixed' ? 'fixed' : 'percent',
-    note: String(src.note || CARD_CONFIG_DEFAULT_NOTE_)
+    note: String(src.note || CARD_CONFIG_DEFAULT_NOTE_),
+    // โหมดทดสอบ (คีย์ทดสอบของผู้ให้บริการ ไม่มีเงินจริง): เห็นปุ่ม/จ่ายได้เฉพาะเบอร์ผู้ทดสอบ — ตั้งให้เองตอนบันทึก
+    testOnly: src.testOnly === true || String(src.testOnly) === 'true',
+    testerPhones: (Array.isArray(src.testerPhones) ? src.testerPhones : String(src.testerPhones || '').split(/[\s,]+/))
+      .map(function (x) { return normalizeThaiPhone_(x); }).filter(Boolean)
   };
+}
+
+function isCardTesterPhone_(phone, cfg) {
+  cfg = cfg || getCardConfig_();
+  var p = normalizeThaiPhone_(phone);
+  return !!p && cfg.testerPhones.indexOf(p) !== -1;
 }
 
 function getCardConfig_() {
@@ -328,9 +338,10 @@ function calcCardFee_(amountBeforeFee, cfg) {
   return Math.round(cfg.fee);
 }
 
-function evaluateCardEligibility_(amountBeforeFee, cfg) {
+function evaluateCardEligibility_(amountBeforeFee, cfg, phone) {
   cfg = cfg || getCardConfig_();
   if (!cfg.enabled) return { allowed: false, reason: 'ขณะนี้ร้านปิดรับชำระด้วยบัตรเครดิต/เดบิต' };
+  if (cfg.testOnly && !isCardTesterPhone_(phone, cfg)) return { allowed: false, reason: 'ระบบชำระด้วยบัตรอยู่ระหว่างทดสอบ ยังไม่เปิดให้ใช้งาน' };
   var amount = parseFloat(amountBeforeFee) || 0;
   if (amount <= 0) return { allowed: true, reason: '' };
   if (cfg.minAmount && amount < cfg.minAmount) {
@@ -2069,7 +2080,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     var isCardOrder = String(paymentMethod || '') === 'card';
     var cardFee = 0;
     if (isCardOrder) {
-      var cardEligibility_ = evaluateCardEligibility_(finalAmount);
+      var cardEligibility_ = evaluateCardEligibility_(finalAmount, null, phone);
       if (!cardEligibility_.allowed) return { success: false, error: cardEligibility_.reason };
       cardFee = calcCardFee_(finalAmount);
       finalAmount = finalAmount + cardFee;
@@ -2665,6 +2676,14 @@ function findRevenueRowByOrderId_(sheet, orderId) {
     if (String(ids[j][0]) === target) return j + 2;
   }
   return -1;
+}
+
+function normalizeThaiPhone_(raw) {
+  var d = String(raw || '').replace(/[^0-9]/g, '');
+  if (!d) return '';
+  if (d.length > 10 && d.indexOf('66') === 0) d = '0' + d.substring(2);   // +66xxxxxxxxx
+  if (d.length === 9 && d.charAt(0) !== '0') d = '0' + d;                 // Sheets กินเลข 0 หน้าไป
+  return d;
 }
 
   return { createShopOrder, decodeItemsB64_, uploadShopSlip, cancelShopOrder };

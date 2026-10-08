@@ -1,4 +1,4 @@
-// card-pay: ชำระด้วยบัตรเครดิต/เดบิต (K Payment Link กสิกรไทย) — คีย์ธนาคารอยู่ที่นี่ที่เดียว (Supabase Secrets)
+// card-pay: ชำระด้วยบัตรเครดิต/เดบิต (Stripe Checkout / K Payment Link กสิกรไทย) — คีย์อยู่ที่นี่ที่เดียว (Supabase Secrets)
 //
 // เรียกด้วย x-internal-key เท่านั้น (Apps Script SupabaseCard.gs / ชุดทดสอบ) ยกเว้น action=notify (ธนาคารแจ้งผล)
 //   status                     เชื่อมต่อธนาคารแล้วหรือยัง { ready, provider, mode, message }
@@ -31,7 +31,7 @@ async function getRow(orderId: string): Promise<{ row: CardRow | null; appsScrip
 }
 
 function paidOut(row: CardRow) {
-  return { success: true, paid: true, status: "paid", orderId: row.order_id, amount: num(row.paid_amount ?? row.amount), ref: row.paid_ref || "", id: row.id };
+  return { success: true, paid: true, status: "paid", orderId: row.order_id, amount: num(row.paid_amount ?? row.amount), ref: row.paid_ref || "", id: row.id, mode: row.mode };
 }
 
 // ถามธนาคาร (เฉพาะแถวที่ยังรอจ่าย) แล้วบันทึกผล
@@ -115,7 +115,15 @@ async function check(p: P) {
 async function notify(req: Request) {
   const body = await req.text();
   let ref: { linkId?: string; orderId?: string } = {};
-  try { ref = provider.parseNotify(body, req.headers); } catch (e) { console.error("parseNotify", e); }
+  try {
+    ref = await provider.parseNotify(body, req.headers);
+  } catch (e) {
+    // ลายเซ็นไม่ถูก/ข้อความปลอม: ไม่ทำอะไรต่อ (ผู้ให้บริการจะเห็นว่าส่งไม่สำเร็จ)
+    console.error("parseNotify", e);
+    await rpc("card_pay_log", { p_provider: provider.name, p_order_id: null, p_payload: null, p_result: "ปฏิเสธ: " + String((e as Error).message || e).slice(0, 200) })
+      .catch((err) => console.error("card_pay_log", err));
+    return new Response("invalid notification", { status: 400 });
+  }
   let payload: unknown = body;
   try { payload = JSON.parse(body); } catch { /* ข้อความแบบฟอร์ม เก็บเป็นข้อความ */ }
 
@@ -157,7 +165,7 @@ Deno.serve(async (req) => {
     }
     if (action === "unconfirmed") {
       const rows: CardRow[] = await rpc("card_pay_unconfirmed", {});
-      return json({ success: true, orders: rows.map((r) => ({ orderId: r.order_id, amount: num(r.paid_amount), ref: r.paid_ref || "", id: r.id })) });
+      return json({ success: true, orders: rows.map((r) => ({ orderId: r.order_id, amount: num(r.paid_amount), ref: r.paid_ref || "", id: r.id, mode: r.mode })) });
     }
     if (action === "mockPay") {
       const { row, appsScriptUrl } = await getRow(String(p.orderId || ""));

@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 176 รายการ (124 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 178 รายการ (126 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -308,8 +308,18 @@ function normalizeCardConfig_(src) {
     maxAmount: Math.max(0, parseFloat(src.maxAmount) || 0),   // 0 = ไม่จำกัดเพดาน
     fee: Math.max(0, parseFloat(src.fee) || 0),               // 0 = ร้านรับค่าธรรมเนียมเอง
     feeType: src.feeType === 'fixed' ? 'fixed' : 'percent',
-    note: String(src.note || CARD_CONFIG_DEFAULT_NOTE_)
+    note: String(src.note || CARD_CONFIG_DEFAULT_NOTE_),
+    // โหมดทดสอบ (คีย์ทดสอบของผู้ให้บริการ ไม่มีเงินจริง): เห็นปุ่ม/จ่ายได้เฉพาะเบอร์ผู้ทดสอบ — ตั้งให้เองตอนบันทึก
+    testOnly: src.testOnly === true || String(src.testOnly) === 'true',
+    testerPhones: (Array.isArray(src.testerPhones) ? src.testerPhones : String(src.testerPhones || '').split(/[\s,]+/))
+      .map(function (x) { return normalizeThaiPhone_(x); }).filter(Boolean)
   };
+}
+
+function isCardTesterPhone_(phone, cfg) {
+  cfg = cfg || getCardConfig_();
+  var p = normalizeThaiPhone_(phone);
+  return !!p && cfg.testerPhones.indexOf(p) !== -1;
 }
 
 function getCardConfig_() {
@@ -1309,7 +1319,7 @@ function getShopBootstrap(idToken) {
       // ⚡ เพิ่ม (8/10/69) — ชำระด้วยบัตรเครดิต/เดบิต: หน้าร้านใช้ซ่อน/โชว์ปุ่มและคิดค่าธรรมเนียม (backend เช็คซ้ำตอนสั่งซื้อ)
       card: (function () {
         var cardCfg = getCardConfig_();
-        return { enabled: cardCfg.enabled, minAmount: cardCfg.minAmount, maxAmount: cardCfg.maxAmount,
+        return { enabled: cardCfg.enabled && (!cardCfg.testOnly || isCardTesterPhone_(row[3], cardCfg)), minAmount: cardCfg.minAmount, maxAmount: cardCfg.maxAmount,
                  fee: cardCfg.fee, feeType: cardCfg.feeType, note: cardCfg.note };
       })(),
       purchaseReferralEnabled: !!(referralStatus && referralStatus.enabled)
@@ -2721,6 +2731,14 @@ function getBillDataForNotify_(sheet, targetRow) {
     orderTime: mainRow[1] || '', // คอลัมน์ B: เวลาสั่งซื้อ
     lineUid: String(mainRow[31] || '') // ⚡ คอลัมน์ AF: LINE UID ที่บันทึกไว้ตอนสั่งซื้อ (ย้ายมาจากคอลัมน์ Z เดิมเมื่อ 1/9/69 กันชนกับ Revenue Spunky Online — ออเดอร์เก่าก่อนแก้จะว่าง ให้ fallback ไปหาเบอร์โทรแทน)
   };
+}
+
+function normalizeThaiPhone_(raw) {
+  var d = String(raw || '').replace(/[^0-9]/g, '');
+  if (!d) return '';
+  if (d.length > 10 && d.indexOf('66') === 0) d = '0' + d.substring(2);   // +66xxxxxxxxx
+  if (d.length === 9 && d.charAt(0) !== '0') d = '0' + d;                 // Sheets กินเลข 0 หน้าไป
+  return d;
 }
 
   return { getShopBootstrap, getPrivilegesPanelData, checkMemberStatus, getMyPrivileges, getPointsHistory, getActiveCoupons, getReferralPublicStatus, getMyShippingAddress, getMyOrderHistory, checkShopDiscounts, checkPendingOrderPromoStillValid, getPendingOrderForEdit, getTierConfig_, getSignupBonusPoints_, getSignupPrivilegeConfig_, getPointsRedeemConfig_, decodeItemsB64_ };

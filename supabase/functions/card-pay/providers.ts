@@ -2,6 +2,7 @@
 //   (ไม่ตั้ง)  ยังไม่เชื่อมต่อ: หน้าแอดมินเปิดใช้ไม่ได้
 //   mock       ทดสอบระบบโดยไม่ใช้ธนาคาร (โหมดทดสอบ ไม่มีเงินจริง) — ใช้กับชุดทดสอบภายในเท่านั้น
 //   kbank      K Payment Link ของกสิกรไทย — ⚠️ รอเอกสาร API ฉบับจริงจากธนาคาร (ดู KBankProvider ด้านล่าง)
+//   stripe     Stripe Checkout (หน้าชำระเงินของ Stripe: บัตร + ช่องทางที่เปิดใน Stripe Dashboard เช่น PromptPay)
 //
 // ทุกตัวต้องทำ 3 อย่าง: สร้างลิงก์ชำระเงิน / ถามธนาคารว่าลิงก์นี้จ่ายแล้วหรือยัง (เชื่อผลนี้เท่านั้น) /
 // อ่านข้อความที่ธนาคารแจ้งเข้ามาว่าเป็นของลิงก์ไหน (ไม่เชื่อสถานะในข้อความ ต้องถามซ้ำเสมอ)
@@ -28,9 +29,11 @@ export interface CardProvider {
   ready(): { ready: boolean; message: string };
   createLink(input: CreateLinkInput): Promise<CreateLinkResult>;
   inquire(row: CardRow): Promise<InquiryResult>;
-  parseNotify(body: string, headers: Headers): NotifyRef;
+  parseNotify(body: string, headers: Headers): NotifyRef | Promise<NotifyRef>; // throw = ข้อความปลอม/ลายเซ็นไม่ถูก
   notifyAck(): Response;
 }
+
+import Stripe from "npm:stripe@23.0.0";
 
 const env = (k: string) => (Deno.env.get(k) || "").trim();
 
@@ -100,6 +103,99 @@ class KBankProvider implements CardProvider {
   notifyAck() { return new Response("OK"); } // TODO: ตอบกลับตามรูปแบบที่ธนาคารกำหนด
 }
 
+// ---------------------------------------------------------------------------------------------
+// stripe: Stripe Checkout Sessions (ตาม best practices ของ Stripe)
+//   - 1 Checkout Session ต่อ 1 ลิงก์ (ยอดจากชีต) พากลับหน้าร้านด้วย success_url/cancel_url
+//   - ไม่ส่ง payment_method_types: ช่องทางชำระ (บัตร, PromptPay ฯลฯ) เปิด/ปิดได้ที่ Stripe Dashboard
+//   - ผลการชำระเชื่อจาก Stripe เท่านั้น: webhook ตรวจลายเซ็นทุกครั้ง แล้ว card-pay ดึง session ซ้ำ (inquire)
+//     จ่ายแล้ว = payment_status ไม่ใช่ unpaid (รองรับช่องทางที่ยืนยันทีหลังผ่าน async_payment_succeeded)
+// Secrets ใน Supabase (Edge Functions → Secrets) — ห้ามใส่ในโค้ด/แชท:
+//   CARD_PROVIDER=stripe
+//   STRIPE_API_KEY         Restricted API key (rk_test_… / rk_live_…) สิทธิ์ Checkout Sessions: Write
+//                          (ใช้ sk_ ได้แต่ไม่แนะนำ) — rk_test_/sk_test_ = โหมดทดสอบ
+//   STRIPE_WEBHOOK_SECRET  whsec_… ของ webhook endpoint ด้านล่าง
+// Webhook endpoint ใน Stripe Dashboard: https://<project>.supabase.co/functions/v1/card-pay?action=notify
+//   events: checkout.session.completed, checkout.session.async_payment_succeeded,
+//           checkout.session.async_payment_failed, checkout.session.expired
+// ---------------------------------------------------------------------------------------------
+const STRIPE_EVENTS = new Set([
+  "checkout.session.completed", "checkout.session.async_payment_succeeded",
+  "checkout.session.async_payment_failed", "checkout.session.expired",
+]);
+const randomLetters = (n: number) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => String.fromCharCode(97 + (b % 26))).join("");
+
+export class StripeProvider implements CardProvider {
+  name = "stripe";
+  mode: "live" | "test";
+  private key: string;
+  private webhookSecret: string;
+  private client: Stripe | null;
+  // client ส่งเข้ามาได้เฉพาะชุดทดสอบ (ชี้ไปเซิร์ฟเวอร์จำลอง)
+  constructor(opts: { key?: string; webhookSecret?: string; client?: Stripe } = {}) {
+    this.key = opts.key ?? env("STRIPE_API_KEY");
+    this.webhookSecret = opts.webhookSecret ?? env("STRIPE_WEBHOOK_SECRET");
+    this.mode = /^(rk|sk)_live_/.test(this.key) ? "live" : "test";
+    this.client = opts.client ?? (this.key ? new Stripe(this.key, { httpClient: Stripe.createFetchHttpClient() }) : null);
+  }
+  ready() {
+    if (!this.key) return { ready: false, message: "ยังไม่ได้ใส่ STRIPE_API_KEY ใน Supabase Secrets" };
+    if (/^pk_/.test(this.key)) return { ready: false, message: "STRIPE_API_KEY ต้องเป็น restricted key (rk_) หรือ secret key (sk_) ไม่ใช่ publishable key (pk_)" };
+    if (!this.webhookSecret) return { ready: false, message: "ยังไม่ได้ใส่ STRIPE_WEBHOOK_SECRET ใน Supabase Secrets" };
+    return { ready: true, message: this.mode === "test" ? "เชื่อมต่อ Stripe (โหมดทดสอบ)" : "เชื่อมต่อ Stripe" };
+  }
+  async createLink(input: CreateLinkInput): Promise<CreateLinkResult> {
+    if (!this.client) throw new Error("ยังไม่ได้ใส่ STRIPE_API_KEY");
+    const session = await this.client.checkout.sessions.create({
+      mode: "payment",
+      line_items: [{
+        quantity: 1,
+        price_data: { currency: "thb", unit_amount: Math.round(input.amount * 100), product_data: { name: input.description } },
+      }],
+      client_reference_id: input.orderId,
+      metadata: { orderId: input.orderId },
+      payment_intent_data: { description: input.description, metadata: { orderId: input.orderId } },
+      success_url: input.returnUrl,
+      cancel_url: input.returnUrl,
+      expires_at: Math.floor(input.expiresAt.getTime() / 1000),
+      locale: "th",
+      integration_identifier: "emocha_line_shop_" + randomLetters(8),
+    });
+    if (!session.url) throw new Error("Stripe ไม่ได้ส่งลิงก์ชำระเงินกลับมา");
+    return {
+      linkId: session.id, url: session.url,
+      expiresAt: new Date((session.expires_at || Math.floor(input.expiresAt.getTime() / 1000)) * 1000).toISOString(),
+      raw: { id: session.id, status: session.status, payment_status: session.payment_status },
+    };
+  }
+  async inquire(row: CardRow): Promise<InquiryResult> {
+    if (!this.client) throw new Error("ยังไม่ได้ใส่ STRIPE_API_KEY");
+    if (!row.link_id) return { status: "pending" };
+    const s = await this.client.checkout.sessions.retrieve(row.link_id, { expand: ["payment_intent"] });
+    const pi = s.payment_intent && typeof s.payment_intent === "object" ? s.payment_intent : null;
+    const raw = { id: s.id, status: s.status, payment_status: s.payment_status, payment_intent: pi?.id ?? s.payment_intent ?? null };
+    if (s.status === "complete" && s.payment_status !== "unpaid") {
+      return {
+        status: "paid", paidAmount: (s.amount_total ?? 0) / 100,
+        paidRef: pi?.id || (typeof s.payment_intent === "string" ? s.payment_intent : s.id),
+        paidAt: new Date().toISOString(), raw,
+      };
+    }
+    if (s.status === "expired") return { status: "expired", raw };
+    // ช่องทางยืนยันทีหลังแล้วไม่สำเร็จ (async_payment_failed) = session complete แต่ยัง unpaid และ PaymentIntent ใช้ต่อไม่ได้
+    if (s.status === "complete" && pi && (pi.status === "canceled" || pi.status === "requires_payment_method")) return { status: "failed", raw };
+    return { status: "pending", raw };
+  }
+  async parseNotify(body: string, headers: Headers): Promise<NotifyRef> {
+    const event = await Stripe.webhooks.constructEventAsync(
+      body, headers.get("stripe-signature") || "", this.webhookSecret, undefined, Stripe.createSubtleCryptoProvider(),
+    );
+    if (!STRIPE_EVENTS.has(event.type)) return {};
+    const obj = event.data.object as { id?: string; client_reference_id?: string | null };
+    return { linkId: obj.id, orderId: obj.client_reference_id || undefined };
+  }
+  notifyAck() { return new Response(JSON.stringify({ received: true }), { headers: { "Content-Type": "application/json" } }); }
+}
+
 class NoProvider implements CardProvider {
   name = "";
   mode = "test" as const;
@@ -112,6 +208,7 @@ class NoProvider implements CardProvider {
 
 export function getProvider(name = env("CARD_PROVIDER")): CardProvider {
   if (name === "kbank") return new KBankProvider();
+  if (name === "stripe") return new StripeProvider();
   if (name === "mock") return new MockProvider();
   return new NoProvider();
 }
