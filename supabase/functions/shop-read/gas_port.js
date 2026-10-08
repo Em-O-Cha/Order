@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 169 รายการ (120 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 176 รายการ (124 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -290,6 +290,47 @@ function getCodConfig_() {
   } catch (e) {
     return normalizeCodConfig_({});
   }
+}
+
+var CARD_CONFIG_PROP_ = 'CARD_CONFIG_V1';
+
+var CARD_CONFIG_CACHE_KEY_ = 'card_config_v1';
+
+var CARD_CONFIG_DEFAULT_NOTE_ = 'ชำระผ่านหน้าชำระเงินของธนาคารกสิกรไทย รองรับบัตรเครดิต บัตรเดบิต และ Thai QR';
+
+function isCardPaymentLabel_(label) { return String(label || '').indexOf('บัตรเครดิต/เดบิต') !== -1; }
+
+function normalizeCardConfig_(src) {
+  src = src || {};
+  return {
+    enabled: src.enabled === true || String(src.enabled) === 'true',
+    minAmount: Math.max(0, parseFloat(src.minAmount) || 0),
+    maxAmount: Math.max(0, parseFloat(src.maxAmount) || 0),   // 0 = ไม่จำกัดเพดาน
+    fee: Math.max(0, parseFloat(src.fee) || 0),               // 0 = ร้านรับค่าธรรมเนียมเอง
+    feeType: src.feeType === 'fixed' ? 'fixed' : 'percent',
+    note: String(src.note || CARD_CONFIG_DEFAULT_NOTE_)
+  };
+}
+
+function getCardConfig_() {
+  try {
+    var cache = CacheService.getScriptCache();
+    var cached = cache.get(CARD_CONFIG_CACHE_KEY_);
+    if (cached) return JSON.parse(cached);
+    var raw = PropertiesService.getScriptProperties().getProperty(CARD_CONFIG_PROP_);
+    var cfg = normalizeCardConfig_(raw ? JSON.parse(raw) : {});
+    try { cache.put(CARD_CONFIG_CACHE_KEY_, JSON.stringify(cfg), 300); } catch (e) {}
+    return cfg;
+  } catch (e) {
+    return normalizeCardConfig_({});
+  }
+}
+
+function calcCardFee_(amountBeforeFee, cfg) {
+  cfg = cfg || getCardConfig_();
+  if (!cfg.fee) return 0;
+  if (cfg.feeType === 'percent') return Math.round((parseFloat(amountBeforeFee) || 0) * cfg.fee / 100);
+  return Math.round(cfg.fee);
 }
 
 function getMemberCodBlock_(lineUid) {
@@ -1265,6 +1306,12 @@ function getShopBootstrap(idToken) {
           tierAllowed: !(codCfg.allowedTierKeys.length && tierInfo.key && codCfg.allowedTierKeys.indexOf(String(tierInfo.key)) === -1)
         };
       })(),
+      // ⚡ เพิ่ม (8/10/69) — ชำระด้วยบัตรเครดิต/เดบิต: หน้าร้านใช้ซ่อน/โชว์ปุ่มและคิดค่าธรรมเนียม (backend เช็คซ้ำตอนสั่งซื้อ)
+      card: (function () {
+        var cardCfg = getCardConfig_();
+        return { enabled: cardCfg.enabled, minAmount: cardCfg.minAmount, maxAmount: cardCfg.maxAmount,
+                 fee: cardCfg.fee, feeType: cardCfg.feeType, note: cardCfg.note };
+      })(),
       purchaseReferralEnabled: !!(referralStatus && referralStatus.enabled)
     };
   } catch (e) {
@@ -1460,6 +1507,7 @@ function getMyOrderHistory(idToken) {
         campaign: row[17] || '',
         hasSlip: !!row[10],
         isCod: isCodPaymentLabel_(row[9]),
+        isCard: isCardPaymentLabel_(row[9]),
         codStatus: String(row[COD_STATUS_COL_ - 1] || ''),
         cancelled: String(row[2]) === CANCELLED_ORDER_MARK_
       });
@@ -2476,7 +2524,7 @@ function getPendingOrderForEdit(idToken, orderId) {
       success: true, orderId: target.orderId,
       items: bill.items.map(function (it) { return { name: it.name, qty: it.qty }; }),
       couponCode: typedCode,
-      paymentMethod: bill.paymentLabel.indexOf('พร้อมเพย์') !== -1 ? 'promptpay' : 'bank',
+      paymentMethod: isCardPaymentLabel_(bill.paymentLabel) ? 'card' : (bill.paymentLabel.indexOf('พร้อมเพย์') !== -1 ? 'promptpay' : 'bank'),
       shippingAddress: bill.address, province: bill.province,
       pointsToRedeem: pending.points || 0, purchaseReferrerCode: bill.purchaseReferrerCode || '',
       totalAmount: bill.billTotal
@@ -2556,8 +2604,12 @@ function recalcOrderDiscounts_(lineUid, billInfo, remark, excludeOrderId) {
   var pendingPoints_ = parsePendingPointsReservation_(remark);
   if (pendingPoints_.points > 0) finalAmount = Math.max(0, finalAmount - pendingPoints_.discount);
   finalAmount = Math.floor(finalAmount);
+  // ⚡ เพิ่ม (8/10/69) — ออเดอร์ชำระด้วยบัตรรอจ่าย: ค่าธรรมเนียมบัตรคิดใหม่จากยอดใหม่ (สูตรเดียวกับตอนสั่งซื้อ)
+  var cardFee_ = isCardPaymentLabel_(billInfo.paymentLabel) && finalAmount > 0 ? calcCardFee_(finalAmount) : 0;
+  finalAmount += cardFee_;
 
   return {
+    cardFee: cardFee_,
     appliedPrivileges: appliedPrivileges, couponResults: couponResults,
     repeatConfig: repeatConfig_, repeatBonusDiscount: repeatBonusDiscount_,
     totalDiscount: totalDiscount, shippingCost: shippingCost, finalShippingCost: finalShippingCost,

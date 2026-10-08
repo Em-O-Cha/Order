@@ -364,6 +364,11 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
           <span class="payment-method-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M5.5 12h.01M18.5 12h.01"/></svg></span>
           <span class="payment-method-title">เก็บเงินปลายทาง</span><span class="payment-method-sub">จ่ายตอนรับของ</span>
         </button>
+        <!-- ⚡ เพิ่ม (8/10/69) — ปุ่มบัตรเครดิต/เดบิต (K Payment Link) ซ่อนไว้เสมอจนร้านเปิดใช้และยอดเข้าเงื่อนไข -->
+        <button type="button" class="payment-method sh" id="optCard" aria-pressed="false" onclick="selectPayment('card')">
+          <span class="payment-method-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg></span>
+          <span class="payment-method-title">บัตรเครดิต/เดบิต</span><span class="payment-method-sub">จ่ายผ่านธนาคาร</span>
+        </button>
       </div>
       <div id="paymentDetail"></div>
       <div id="checkoutErrBox" class="sh" style="background:#fff3e0;color:#e65100;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px"></div>
@@ -470,6 +475,22 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
       <div id="paymentRecallFreezeNote" style="background:#fff3e0;border-radius:10px;padding:9px 12px;font-size:11.5px;color:#7a4d12;text-align:center;margin-bottom:12px"></div>
       <div id="paymentRecallDetail"></div>
       <button type="button" class="btn btn-outline btn-block" style="margin-top:14px" onclick="closePaymentRecallModal_()">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<!-- ⚡ เพิ่ม (8/10/69) — ชำระด้วยบัตร: เปิดหน้าชำระเงินของธนาคาร / ตรวจผลหลังกลับมาจากธนาคาร -->
+<div class="mo" id="cardPayModal">
+  <div class="mo-card">
+    <div class="mo-hd">
+      <h2>💳 ชำระด้วยบัตรเครดิต/เดบิต</h2>
+      <p style="font-size:12.5px;opacity:.9;margin-top:4px">เลขที่ออเดอร์: <b id="cardPayOrderId"></b></p>
+    </div>
+    <div class="mo-bd">
+      <p id="cardPayMsg" style="font-size:14px;line-height:1.6;text-align:center;margin:6px 0 4px"></p>
+      <button type="button" class="btn btn-block sh" id="cardPayGoBtn" style="margin-top:14px" onclick="startCardPayment_(cardPayOrderId_)">💳 ไปหน้าชำระเงิน</button>
+      <button type="button" class="btn btn-outline btn-block sh" id="cardPayCheckBtn" style="margin-top:10px" onclick="checkCardPaymentNow_(cardPayOrderId_)">🔄 ตรวจสอบผลการชำระอีกครั้ง</button>
+      <button type="button" class="btn btn-outline btn-block sh" id="cardPayCloseBtn" style="margin-top:10px" onclick="closeCardPayModal_()">ปิด</button>
     </div>
   </div>
 </div>
@@ -585,6 +606,9 @@ var selectedPayment = 'promptpay';
 // ⚡ เพิ่ม (19/9/69) — เงื่อนไขเก็บเงินปลายทางที่เซิร์ฟเวอร์ส่งมาให้ตอนเปิดหน้าร้าน (getShopBootstrap.cod)
 // ใช้แค่ตัดสินใจ "แสดงผล" เท่านั้น — ตอนกดสั่งซื้อจริงฝั่งเซิร์ฟเวอร์เช็คเงื่อนไขทั้งหมดซ้ำอีกครั้งเสมอ
 var codInfo_ = null;
+// ⚡ เพิ่ม (8/10/69) — เงื่อนไขชำระด้วยบัตร (เปิดใช้/ยอดขั้นต่ำ-เพดาน/ค่าธรรมเนียม) จาก getShopBootstrap — ใช้ซ่อน/โชว์ปุ่มเท่านั้น
+var cardInfo_ = null;
+var cardOrderIds_ = {}; // ออเดอร์ที่เลือกชำระด้วยบัตร (ปุ่ม "แนบสลิป" ของออเดอร์เหล่านี้พาไปหน้าชำระเงินของธนาคารแทน)
 var appliedCouponCode = '';
 var lastDiscountInfo = null;
 var pointsToRedeemInput_ = 0; // ⚡ เพิ่ม (19/8/69) จำนวนคะแนนที่ลูกค้าพิมพ์จะแลกเป็นส่วนลดเงินสด
@@ -623,6 +647,107 @@ function setStepper(stepIdx){
   });
 }
 
+// ==================== ⚡ เพิ่ม (8/10/69) — ชำระด้วยบัตรเครดิต/เดบิต (K Payment Link) ====================
+// สั่งซื้อแล้วกด "ชำระด้วยบัตร" -> Apps Script ขอลิงก์ชำระเงิน (ยอดจากชีต) -> ไปหน้าชำระเงินของธนาคาร
+// -> ธนาคารพากลับมาที่ ?cardpay=REV -> ถาม Apps Script ว่าจ่ายแล้วหรือยัง (ยืนยันออเดอร์ให้ถ้าจ่ายแล้ว)
+var lastOrderIsCard_ = false;
+var cardPayOrderId_ = '';
+var cardPayBusy_ = false;
+var cardReturnHandled_ = false;
+function isCardOrder_(orderId){
+  return !!orderId && (!!cardOrderIds_[orderId] || (orderId === pendingSlipOrderId && lastOrderIsCard_));
+}
+function openCardPayModal_(orderId, mode, msg){
+  cardPayOrderId_ = orderId;
+  document.getElementById('cardPayOrderId').textContent = orderId;
+  document.getElementById('cardPayMsg').innerHTML = msg;
+  document.getElementById('cardPayGoBtn').classList.toggle('sh', !(mode === 'error' || mode === 'unpaid'));
+  document.getElementById('cardPayCheckBtn').classList.toggle('sh', mode !== 'unpaid');
+  document.getElementById('cardPayCloseBtn').classList.toggle('sh', mode === 'loading' || mode === 'checking');
+  document.getElementById('cardPayModal').classList.add('show');
+}
+function closeCardPayModal_(){
+  document.getElementById('cardPayModal').classList.remove('show');
+}
+function startCardPayment_(orderId){
+  if (cardPayBusy_ || !orderId) return;
+  cardPayBusy_ = true;
+  openCardPayModal_(orderId, 'loading', '⏳ กำลังเปิดหน้าชำระเงินของธนาคาร...');
+  getFreshIdToken().then(function(idToken){
+    return callApi('startCardPayment', { idToken: idToken, orderId: orderId });
+  }).then(function(r){
+    cardPayBusy_ = false;
+    if (r && r.success && r.paid) { showCardPaid_(orderId, r.amount); return; }
+    if (r && r.success && r.url) {
+      document.getElementById('cardPayMsg').innerHTML = '⏳ กำลังไปหน้าชำระเงินของธนาคาร...<br><span style="font-size:12px;color:var(--g6)">ชำระเสร็จแล้วระบบจะพากลับมาหน้านี้เอง</span>';
+      location.href = r.url;
+      return;
+    }
+    openCardPayModal_(orderId, 'error', '⚠️ ' + escHtml((r && r.error) || 'เปิดหน้าชำระเงินไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'));
+  }).catch(function(e){
+    cardPayBusy_ = false;
+    openCardPayModal_(orderId, 'error', '⚠️ ' + escHtml((e && e.message) || 'เปิดหน้าชำระเงินไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'));
+  });
+}
+function handleCardPayReturn_(){
+  if (!WANT_CARDPAY_ORDER_ || cardReturnHandled_) return;
+  cardReturnHandled_ = true;
+  cardOrderIds_[WANT_CARDPAY_ORDER_] = true;
+  try {
+    var u = new URL(location.href);
+    u.searchParams.delete('cardpay'); u.searchParams.delete('mocklink');
+    history.replaceState(null, '', u.pathname + u.search + u.hash);
+  } catch (e) {}
+  pollCardPayment_(WANT_CARDPAY_ORDER_, 0);
+}
+function checkCardPaymentNow_(orderId){ pollCardPayment_(orderId, 4); }
+// ถามผลซ้ำสูงสุด 6 ครั้ง ห่างกัน 3 วินาที (ธนาคารอาจแจ้งผลช้ากว่าที่พาลูกค้ากลับมาเล็กน้อย)
+function pollCardPayment_(orderId, attempt){
+  openCardPayModal_(orderId, 'checking', '⏳ กำลังตรวจสอบผลการชำระเงิน...');
+  getFreshIdToken().then(function(idToken){
+    return callApi('checkCardPayment', { idToken: idToken, orderId: orderId });
+  }).then(function(r){
+    if (r && r.success && r.paid) { showCardPaid_(orderId, r.amount); return; }
+    if (r && !r.success) {
+      openCardPayModal_(orderId, r.paid ? 'paid-problem' : 'error', '⚠️ ' + escHtml(r.error || 'ตรวจสอบผลการชำระเงินไม่สำเร็จ'));
+      if (r.paid) document.getElementById('cardPayCloseBtn').classList.remove('sh');
+      return;
+    }
+    if (attempt < 5) { setTimeout(function(){ pollCardPayment_(orderId, attempt + 1); }, 3000); return; }
+    openCardPayModal_(orderId, 'unpaid', 'ยังไม่ได้รับผลการชำระเงินจากธนาคาร<br><span style="font-size:12.5px;color:var(--g6)">ถ้าชำระแล้ว กด "ตรวจสอบผลการชำระอีกครั้ง" — ถ้ายังไม่ได้ชำระ กด "ไปหน้าชำระเงิน"</span>');
+  }).catch(function(){
+    openCardPayModal_(orderId, 'unpaid', 'ตรวจสอบผลการชำระเงินไม่สำเร็จ (เครือข่ายขัดข้อง) กรุณาลองใหม่อีกครั้ง');
+  });
+}
+function showCardPaid_(orderId, amount){
+  closeCardPayModal_();
+  delete cardOrderIds_[orderId];
+  orderHistoryCache_.invalidate();
+  if (pendingSlipOrderId === orderId && !document.getElementById('orderDoneState').classList.contains('sh')) {
+    handleSlipAttachedElsewhere_();
+    return;
+  }
+  stopSlipStatusPoll_();
+  pendingSlipOrderId = '';
+  document.getElementById('orderDoneIcon').textContent = '✅';
+  document.getElementById('orderDoneTitle').textContent = 'ชำระเงินด้วยบัตรสำเร็จ!';
+  document.getElementById('orderSummary').innerHTML =
+    '<div class="row"><span>เลขที่ออเดอร์</span><span><b>#' + escHtml(orderId) + '</b></span></div>'
+    + (amount ? '<div class="row"><span>ยอดชำระ</span><span><b>฿' + Number(amount).toLocaleString('th-TH') + '</b></span></div>' : '')
+    + '<div class="row"><span>วิธีชำระ</span><span>💳 บัตรเครดิต/เดบิต</span></div>';
+  var hintEl = document.getElementById('orderDoneHint');
+  if (hintEl) hintEl.textContent = 'ระบบยืนยันคำสั่งซื้อแล้ว และจะส่งรายละเอียดให้ทาง LINE ค่ะ';
+  document.getElementById('orderDoneBar').classList.add('sh');
+  var notice = document.getElementById('slipDoneNotice');
+  if (notice) {
+    notice.innerHTML = '✅ ชำระด้วยบัตรเรียบร้อยแล้ว ขอบคุณค่ะ 🙏<br>' + (isInLineClient_() ? 'กำลังปิดหน้านี้อัตโนมัติ...' : 'ปิดแท็บนี้ได้เลยค่ะ');
+    notice.classList.remove('sh');
+  }
+  showState('orderDoneState');
+  setStepper(3);
+  setTimeout(closeThisShopWindow_, 5000);
+}
+
 // ==================== Popup แนบสลิปการโอนเงิน (15/8/69) ====================
 function openSlipUploadPage(){
   if (!pendingSlipOrderId) return;
@@ -631,6 +756,7 @@ function openSlipUploadPage(){
 }
 
 function openSlipUploadModal(orderId, source){
+  if (isCardOrder_(orderId)) { startCardPayment_(orderId); return; } // ⚡ เพิ่ม (8/10/69) — ออเดอร์ชำระด้วยบัตร
   slipTargetOrderId = orderId;
   slipUploadSource_ = source || 'orderDone';
   slipUploadData = null;
@@ -734,7 +860,7 @@ function startEditOrder_(orderId, fromState, btnEl){
     beginEditMode_(d.orderId, fromState, Number(d.totalAmount) || 0, snapshot);
     appliedCouponCode = d.couponCode || '';
     document.getElementById('couponInput').value = appliedCouponCode;
-    selectPayment(d.paymentMethod === 'promptpay' ? 'promptpay' : 'bank');
+    selectPayment(d.paymentMethod === 'promptpay' ? 'promptpay' : (d.paymentMethod === 'card' ? 'card' : 'bank'));
     pointsToRedeemInput_ = Number(d.pointsToRedeem) || 0;
     excludedPrivilegeRowIndexes = [];
     savedAddress = d.shippingAddress || savedAddress;
@@ -871,11 +997,12 @@ function handleSlipAttachedElsewhere_(){
   pendingSlipOrderId = '';
   updateEditOrderBtn_();
   var hintEl = document.getElementById('orderDoneHint');
-  if (hintEl) hintEl.textContent = 'แนบสลิปเรียบร้อยแล้ว ขอบคุณค่ะ 🙏';
+  var doneText_ = lastOrderIsCard_ ? 'ชำระด้วยบัตรเรียบร้อยแล้ว ขอบคุณค่ะ 🙏' : 'แนบสลิปเรียบร้อยแล้ว ขอบคุณค่ะ 🙏';
+  if (hintEl) hintEl.textContent = doneText_;
   var notice = document.getElementById('slipDoneNotice');
   if (notice) {
     var closeMsg = isInLineClient_() ? 'กำลังปิดหน้านี้อัตโนมัติ...' : 'ปิดแท็บนี้ได้เลยค่ะ';
-    notice.innerHTML = '✅ แนบสลิปเรียบร้อยแล้ว ขอบคุณค่ะ 🙏<br>' + closeMsg;
+    notice.innerHTML = '✅ ' + doneText_ + '<br>' + closeMsg;
     notice.classList.remove('sh');
   }
   setStepper(3);
@@ -1373,6 +1500,15 @@ var WANT_SLIP_ORDER_ = (function(){
     return /^REV\d{4,}$/.test(v || '') ? v : '';
   } catch (e) { return ''; }
 })();
+// ⚡ เพิ่ม (8/10/69) — ?cardpay=REVxxxx: ธนาคารพาลูกค้ากลับมาหลังหน้าชำระเงิน -> ตรวจผลการชำระให้ทันที
+var WANT_CARDPAY_ORDER_ = (function(){
+  try {
+    var params = new URLSearchParams(location.search);
+    var v = params.get('cardpay');
+    if (!v && params.get('liff.state')) v = new URLSearchParams(String(params.get('liff.state')).split('?')[1] || '').get('cardpay');
+    return /^REV\d{4,}$/.test(v || '') ? v : '';
+  } catch (e) { return ''; }
+})();
 var WANT_CART_ON_OPEN_ = /(^|[?&])view=cart(&|$)/.test(location.search) || !!WANT_SLIP_ORDER_;
 var cartViewOpened_ = false;
 var wantSlipHandled_ = false;
@@ -1421,8 +1557,10 @@ function applyShopBootstrap_(r){
 
   if (r.paymentInfo) paymentInfo = r.paymentInfo;
   if (r.cod) codInfo_ = r.cod;
+  if (r.card) cardInfo_ = r.card;
 
   warmOrderHistory_();
+  handleCardPayReturn_();
 }
 function loadProducts(){
   var cached_ = loadCachedShopBootstrap_(currentLineUserId);
@@ -1965,15 +2103,16 @@ function renderOrderHistory(list, isStale){
   }
   var h = list.map(function(o){
     var oid = escHtml(o.orderId);
+    if (o.isCard) cardOrderIds_[o.orderId] = true;
     return '<div class="history-item">'
-      + '<div class="row"><span><b>#' + oid + '</b></span><span class="badge-pending">⏳ รอแนบสลิป</span></div>'
+      + '<div class="row"><span><b>#' + oid + '</b></span><span class="badge-pending">' + (o.isCard ? '⏳ รอชำระด้วยบัตร' : '⏳ รอแนบสลิป') + '</span></div>'
       + '<div class="row"><span>วันที่</span><span>' + escHtml(o.date) + '</span></div>'
       + '<div class="row"><span>สินค้า</span><span>' + escHtml(o.firstItemName) + '</span></div>'
       + '<div class="row"><span>ยอดชำระ</span><span>฿' + Math.round(o.totalAmount).toLocaleString('th-TH') + '</span></div>'
       + '<div class="order-acts">'
       +   '<div class="order-act"><button class="icon-btn icon-btn-danger" title="ยกเลิกคำสั่งซื้อนี้" aria-label="ยกเลิกคำสั่งซื้อนี้" onclick="askCancelOrder_(\'' + oid + '\')">' + ICON_TRASH_ + '</button><span>ยกเลิก</span></div>'
       +   '<div class="order-act"><button class="icon-btn icon-btn-edit" title="แก้ไขรายการสินค้า" aria-label="แก้ไขรายการสินค้า" onclick="startEditOrder_(\'' + oid + '\', \'historyState\', this)">' + ICON_EDIT_ + '</button><span>แก้ไขรายการ</span></div>'
-      +   '<div class="order-act"><button class="icon-btn icon-btn-success" title="ดำเนินการต่อ — แนบสลิป" aria-label="ดำเนินการต่อ แนบสลิป" onclick="continueToSlipUpload(\'' + oid + '\', this)">' + ICON_PAPERCLIP_ + '</button><span>แนบสลิป</span></div>'
+      +   '<div class="order-act"><button class="icon-btn icon-btn-success" title="ดำเนินการต่อ — แนบสลิป" aria-label="ดำเนินการต่อ แนบสลิป" onclick="continueToSlipUpload(\'' + oid + '\', this)">' + ICON_PAPERCLIP_ + '</button><span>' + (o.isCard ? 'ชำระด้วยบัตร' : 'แนบสลิป') + '</span></div>'
       + '</div>'
       + '<div class="err" id="cancelConfirm_' + oid + '" style="margin-top:8px;text-align:left">'
       +   'ยืนยันยกเลิกคำสั่งซื้อ #' + oid + ' ใช่ไหม? ข้อมูลจะถูกลบออกจากระบบถาวร แก้คืนไม่ได้'
@@ -2638,6 +2777,10 @@ function renderDiscountSummary(){
   if (codFeeRow_ > 0) {
     h += '<div class="row"><span>💵 ค่าธรรมเนียมเก็บเงินปลายทาง</span><span>฿' + codFeeRow_.toLocaleString('th-TH') + '</span></div>';
   }
+  var cardFeeRow_ = cardFeeAmount_();
+  if (cardFeeRow_ > 0) {
+    h += '<div class="row"><span>💳 ค่าธรรมเนียมชำระด้วยบัตร</span><span>฿' + cardFeeRow_.toLocaleString('th-TH') + '</span></div>';
+  }
   h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px;align-items:center"><span><b>ยอดสุทธิ</b></span><span style="font-size:22px;font-weight:700;color:#e65100">฿' + getFinalTotal().toLocaleString('th-TH') + '</span></div>';
   h += '</div>';
   wrap.innerHTML = h;
@@ -2648,7 +2791,7 @@ function renderDiscountSummary(){
 
 function selectPayment(method){
   selectedPayment = method;
-  var buttons = { promptpay: document.getElementById('optPromptpay'), bank: document.getElementById('optBank'), cod: document.getElementById('optCod') };
+  var buttons = { promptpay: document.getElementById('optPromptpay'), bank: document.getElementById('optBank'), cod: document.getElementById('optCod'), card: document.getElementById('optCard') };
   Object.keys(buttons).forEach(function(key){
     var btn = buttons[key];
     if (!btn) return;
@@ -2658,7 +2801,7 @@ function selectPayment(method){
   });
   // ⚡ เพิ่ม (19/9/69) — เก็บเงินปลายทางไม่มีขั้นตอนแนบสลิป เปลี่ยนป้ายขั้นที่ 3 ของแถบสถานะให้ตรงความจริง
   var slipStepLabel = document.querySelector('.step[data-step="2"] .step-label');
-  if (slipStepLabel) slipStepLabel.textContent = (method === 'cod') ? 'ยืนยันออเดอร์' : 'แนบสลิป';
+  if (slipStepLabel) slipStepLabel.textContent = (method === 'cod') ? 'ยืนยันออเดอร์' : (method === 'card' ? 'ชำระด้วยบัตร' : 'แนบสลิป');
   renderPaymentDetail();
   renderDiscountSummary(); // ค่าธรรมเนียม/ยอดสุทธิเปลี่ยนตามวิธีชำระที่เลือก
 }
@@ -2685,7 +2828,7 @@ function getPointsRedeemDiscount(){
 // ก่อนแก้จุดนี้ไม่มีการปัดเศษเลย ทำให้บางออเดอร์ (ที่มีส่วนลด % ของแถมแบบ bogo กับสินค้าราคาไม่ลงตัว) โชว์ทศนิยม
 // 3 ตำแหน่งแปลกๆ เช่น ฿393.833
 function getFinalTotal(){
-  return getFinalTotalBeforeCod_() + codFeeAmount_();
+  return getFinalTotalBeforeCod_() + codFeeAmount_() + cardFeeAmount_();
 }
 
 // ยอดสุทธิก่อนบวกค่าธรรมเนียมเก็บเงินปลายทาง — ใช้เป็นฐานคิดค่าธรรมเนียมและใช้เทียบเงื่อนไขยอดขั้นต่ำ/เพดาน
@@ -2702,6 +2845,24 @@ function codFeeAmount_(){
   var base = getFinalTotalBeforeCod_();
   if (codInfo_.feeType === 'percent') return Math.round(base * codInfo_.fee / 100);
   return Math.round(codInfo_.fee);
+}
+
+// ⚡ เพิ่ม (8/10/69) — ค่าธรรมเนียมชำระด้วยบัตร (ถ้าร้านตั้งให้ลูกค้าจ่าย) สูตรเดียวกับ calcCardFee_ ใน Members.gs
+function cardFeeAmount_(){
+  if (selectedPayment !== 'card' || !cardInfo_ || !cardInfo_.fee) return 0;
+  var base = getFinalTotalBeforeCod_();
+  if (base <= 0) return 0;
+  if (cardInfo_.feeType === 'fixed') return Math.round(cardInfo_.fee);
+  return Math.round(base * cardInfo_.fee / 100);
+}
+// เหตุผลที่ยังชำระด้วยบัตรกับบิลนี้ไม่ได้ ('' = ใช้ได้) — ลำดับเดียวกับ evaluateCardEligibility_
+function cardUnavailableReason_(){
+  if (!cardInfo_ || !cardInfo_.enabled) return 'ขณะนี้ร้านปิดรับชำระด้วยบัตรเครดิต/เดบิต';
+  var base = getFinalTotalBeforeCod_();
+  if (base <= 0) return 'ยอดชำระ 0 บาท ไม่ต้องชำระด้วยบัตร';
+  if (cardInfo_.minAmount && base < cardInfo_.minAmount) return 'ยอดสั่งซื้อขั้นต่ำสำหรับชำระด้วยบัตรคือ ฿' + Math.round(cardInfo_.minAmount).toLocaleString('th-TH');
+  if (cardInfo_.maxAmount && base > cardInfo_.maxAmount) return 'ยอดสั่งซื้อเกินเพดานชำระด้วยบัตร (สูงสุด ฿' + Math.round(cardInfo_.maxAmount).toLocaleString('th-TH') + ')';
+  return '';
 }
 
 // เหตุผลที่ยังใช้เก็บเงินปลายทางกับบิลนี้ไม่ได้ ('' = ใช้ได้) — ลำดับการเช็คตรงกับ evaluateCodEligibility_
@@ -2724,9 +2885,14 @@ function updatePaymentMethodsUi_(){
   if (!codBtn) return;
   var available = !codUnavailableReason_();
   codBtn.classList.toggle('sh', !available);
+  // ⚡ เพิ่ม (8/10/69) — ปุ่มบัตรเครดิต/เดบิต: 4 ปุ่มใช้ 2 คอลัมน์ 2 แถว, 3 ปุ่มใช้ 3 คอลัมน์
+  var cardBtn = document.getElementById('optCard');
+  var cardAvailable = !!cardBtn && !cardUnavailableReason_();
+  if (cardBtn) cardBtn.classList.toggle('sh', !cardAvailable);
   var wrap = document.querySelector('.payment-methods');
-  if (wrap) wrap.classList.toggle('three', available);
+  if (wrap) wrap.classList.toggle('three', (available ? 1 : 0) + (cardAvailable ? 1 : 0) === 1);
   if (!available && selectedPayment === 'cod') selectPayment('promptpay');
+  if (!cardAvailable && selectedPayment === 'card') selectPayment('promptpay');
 }
 
 // ⚡ เพิ่ม (9/9/69) — แยกส่วนแสดงข้อมูลบัญชีธนาคาร (โลโก้/เลขบัญชี+ปุ่มคัดลอก/ชื่อบัญชี) ออกมาเป็นฟังก์ชัน
@@ -2768,6 +2934,18 @@ function renderPaymentDetail(targetElId, fixedTotal, showBoth){
       + (codFeeNow_ > 0 ? '<p style="font-size:12px;color:var(--g6);margin-top:4px">(รวมค่าธรรมเนียมเก็บเงินปลายทาง ฿' + codFeeNow_.toLocaleString('th-TH') + ' แล้ว)</p>' : '')
       + '<p style="font-size:12.5px;color:var(--g6);margin-top:10px;line-height:1.6">' + escHtml((codInfo_ && codInfo_.note) || 'ชำระเงินกับพนักงานส่งของตอนได้รับสินค้า') + '</p>'
       + '<p style="font-size:12px;color:var(--g6);margin-top:6px">กดยืนยันสั่งซื้อได้เลยค่ะ</p>'
+      + '</div>';
+    return;
+  }
+  // ⚡ เพิ่ม (8/10/69) — เลือกชำระด้วยบัตร: ไม่ต้องโชว์ QR/เลขบัญชี
+  if (!showBoth && selectedPayment === 'card') {
+    var cardFeeNow_ = cardFeeAmount_();
+    wrap.innerHTML = '<div class="bank-box" style="text-align:center">'
+      + '<p style="font-weight:600;color:#1565c0;font-size:15px">💳 ชำระด้วยบัตรเครดิต/เดบิต</p>'
+      + '<p style="font-size:24px;font-weight:700;color:#1565c0;margin-top:8px">฿' + total.toLocaleString('th-TH') + '</p>'
+      + (cardFeeNow_ > 0 ? '<p style="font-size:12px;color:var(--g6);margin-top:4px">(รวมค่าธรรมเนียมชำระด้วยบัตร ฿' + cardFeeNow_.toLocaleString('th-TH') + ' แล้ว)</p>' : '')
+      + '<p style="font-size:12.5px;color:var(--g6);margin-top:10px;line-height:1.6">' + escHtml((cardInfo_ && cardInfo_.note) || 'ชำระผ่านหน้าชำระเงินของธนาคาร') + '</p>'
+      + '<p style="font-size:12px;color:var(--g6);margin-top:6px">กดยืนยันสั่งซื้อ แล้วกด "ชำระด้วยบัตร" เพื่อไปหน้าชำระเงินของธนาคารค่ะ</p>'
       + '</div>';
     return;
   }
@@ -3046,7 +3224,7 @@ function renderOrderSummary_(r, orderIdHtml, noticeHtml, shipCodes){
   var oldAmountHtml_ = (doneOldAmount_ && doneOldAmount_ !== r.totalAmount)
     ? '<span style="font-size:12px;color:#9a9a9a;text-decoration:line-through;font-weight:400;margin-right:6px">฿' + doneOldAmount_.toLocaleString('th-TH') + '</span>' : '';
   summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span>' + oldAmountHtml_ + '<b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
-    + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : (selectedPayment === 'cod' ? '💵 เก็บเงินปลายทาง' : 'โอนธนาคาร')) + '</span></div>';
+    + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : (selectedPayment === 'cod' ? '💵 เก็บเงินปลายทาง' : (selectedPayment === 'card' ? '💳 บัตรเครดิต/เดบิต' : 'โอนธนาคาร'))) + '</span></div>';
   document.getElementById('orderSummary').innerHTML = summaryHtml;
 }
 
@@ -3054,7 +3232,7 @@ function setSlipButtonWaiting_(waiting){
   var b = document.getElementById('slipMainBtn');
   if (!b) return;
   b.disabled = !!waiting;
-  b.textContent = waiting ? '⏳ รอเลขออเดอร์สักครู่...' : '📎 แนบสลิปการโอนเงิน';
+  b.textContent = waiting ? '⏳ รอเลขออเดอร์สักครู่...' : (lastOrderIsCard_ ? '💳 ชำระด้วยบัตร' : '📎 แนบสลิปการโอนเงิน');
 }
 
 // ยอด 0 บาท / เก็บเงินปลายทาง: สั่งซื้อเสร็จเลย ไม่ต้องแนบสลิป
@@ -3120,11 +3298,17 @@ function showOrderResult_(r){
   pointsToRedeemInput_ = 0; // คะแนนของออเดอร์ที่ยังรอแนบสลิปถูกกันไว้แล้ว รีเซ็ตกันใช้ซ้ำในรอบถัดไป
 
   var noSlip = r.skipSlipUpload || r.totalAmount <= 0;
+  lastOrderIsCard_ = !noSlip && (!!r.isCard || selectedPayment === 'card'); // ⚡ เพิ่ม (8/10/69)
+  if (lastOrderIsCard_ && r.orderId) cardOrderIds_[r.orderId] = true;
+  var doneHint_ = document.getElementById('orderDoneHint');
+  if (doneHint_ && !noSlip) doneHint_.textContent = lastOrderIsCard_
+    ? 'กด "ชำระด้วยบัตร" ด้านล่างเพื่อไปหน้าชำระเงินของธนาคาร — ชำระสำเร็จแล้วระบบยืนยันคำสั่งซื้อให้อัตโนมัติ'
+    : 'กดปุ่มด้านล่างเพื่อแนบสลิป — ทีมงานจะตรวจสอบและจัดส่งให้เร็วที่สุด';
   if (noSlip) {
     showOrderDoneNoSlip_(r, pending);
   } else {
     pendingSlipOrderId = r.orderId;
-    document.getElementById('backToPaymentBtn').classList.remove('sh');
+    document.getElementById('backToPaymentBtn').classList.toggle('sh', lastOrderIsCard_);
     setSlipButtonWaiting_(pending);
     updateEditOrderBtn_();
     showState('orderDoneState');
@@ -3153,6 +3337,7 @@ function showOrderResult_(r){
       return;
     }
     pendingSlipOrderId = orderId;
+    if (lastOrderIsCard_) cardOrderIds_[orderId] = true;
     setSlipButtonWaiting_(false);
     updateEditOrderBtn_();
     if (!document.getElementById('orderDoneState').classList.contains('sh')) startSlipStatusPoll_(orderId);

@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 157 รายการ (109 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 165 รายการ (113 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -283,6 +283,61 @@ function evaluateCodEligibility_(lineUid, memberTierKey, amountBeforeFee, cfg) {
   }
   if (cfg.maxAmount && amount > cfg.maxAmount) {
     return { allowed: false, reason: 'ยอดสั่งซื้อเกินเพดานเก็บเงินปลายทาง (รับสูงสุด ' + Math.round(cfg.maxAmount).toLocaleString('th-TH') + ' บาท)' };
+  }
+  return { allowed: true, reason: '' };
+}
+
+var CARD_PAYMENT_LABEL_ = 'บัตรเครดิต/เดบิต (LINE Shop)';
+
+var CARD_CONFIG_PROP_ = 'CARD_CONFIG_V1';
+
+var CARD_CONFIG_CACHE_KEY_ = 'card_config_v1';
+
+var CARD_CONFIG_DEFAULT_NOTE_ = 'ชำระผ่านหน้าชำระเงินของธนาคารกสิกรไทย รองรับบัตรเครดิต บัตรเดบิต และ Thai QR';
+
+function normalizeCardConfig_(src) {
+  src = src || {};
+  return {
+    enabled: src.enabled === true || String(src.enabled) === 'true',
+    minAmount: Math.max(0, parseFloat(src.minAmount) || 0),
+    maxAmount: Math.max(0, parseFloat(src.maxAmount) || 0),   // 0 = ไม่จำกัดเพดาน
+    fee: Math.max(0, parseFloat(src.fee) || 0),               // 0 = ร้านรับค่าธรรมเนียมเอง
+    feeType: src.feeType === 'fixed' ? 'fixed' : 'percent',
+    note: String(src.note || CARD_CONFIG_DEFAULT_NOTE_)
+  };
+}
+
+function getCardConfig_() {
+  try {
+    var cache = CacheService.getScriptCache();
+    var cached = cache.get(CARD_CONFIG_CACHE_KEY_);
+    if (cached) return JSON.parse(cached);
+    var raw = PropertiesService.getScriptProperties().getProperty(CARD_CONFIG_PROP_);
+    var cfg = normalizeCardConfig_(raw ? JSON.parse(raw) : {});
+    try { cache.put(CARD_CONFIG_CACHE_KEY_, JSON.stringify(cfg), 300); } catch (e) {}
+    return cfg;
+  } catch (e) {
+    return normalizeCardConfig_({});
+  }
+}
+
+function calcCardFee_(amountBeforeFee, cfg) {
+  cfg = cfg || getCardConfig_();
+  if (!cfg.fee) return 0;
+  if (cfg.feeType === 'percent') return Math.round((parseFloat(amountBeforeFee) || 0) * cfg.fee / 100);
+  return Math.round(cfg.fee);
+}
+
+function evaluateCardEligibility_(amountBeforeFee, cfg) {
+  cfg = cfg || getCardConfig_();
+  if (!cfg.enabled) return { allowed: false, reason: 'ขณะนี้ร้านปิดรับชำระด้วยบัตรเครดิต/เดบิต' };
+  var amount = parseFloat(amountBeforeFee) || 0;
+  if (amount <= 0) return { allowed: true, reason: '' };
+  if (cfg.minAmount && amount < cfg.minAmount) {
+    return { allowed: false, reason: 'ยอดสั่งซื้อขั้นต่ำสำหรับชำระด้วยบัตรคือ ' + Math.round(cfg.minAmount).toLocaleString('th-TH') + ' บาท' };
+  }
+  if (cfg.maxAmount && amount > cfg.maxAmount) {
+    return { allowed: false, reason: 'ยอดสั่งซื้อเกินเพดานชำระด้วยบัตร (รับสูงสุด ' + Math.round(cfg.maxAmount).toLocaleString('th-TH') + ' บาท)' };
   }
   return { allowed: true, reason: '' };
 }
@@ -2010,6 +2065,15 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       codFee = calcCodFee_(finalAmount);
       finalAmount = finalAmount + codFee;
     }
+    // ⚡ เพิ่ม (8/10/69) — ชำระด้วยบัตร: เช็คซ้ำฝั่ง backend เหมือนเก็บเงินปลายทาง แล้วบวกค่าธรรมเนียม (ถ้าตั้งไว้)
+    var isCardOrder = String(paymentMethod || '') === 'card';
+    var cardFee = 0;
+    if (isCardOrder) {
+      var cardEligibility_ = evaluateCardEligibility_(finalAmount);
+      if (!cardEligibility_.allowed) return { success: false, error: cardEligibility_.reason };
+      cardFee = calcCardFee_(finalAmount);
+      finalAmount = finalAmount + cardFee;
+    }
 
     var sheet = ensureRevenueSheet_();
     // เรียกทุกออเดอร์ (ไม่ใช่เฉพาะ COD) เพราะแถวที่เขียนลงชีตกว้าง 34 คอลัมน์เท่ากันหมดแล้ว
@@ -2042,6 +2106,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     applyGiftChoices_(appliedPrivileges, couponResults, giftChoices); // ⚡ เพิ่ม (1/10/69) — รสของแถมที่ลูกค้าเลือก
     var paymentLabel = isCodOrder
       ? COD_PAYMENT_LABEL_
+      : isCardOrder ? CARD_PAYMENT_LABEL_
       : (paymentMethod === 'promptpay' ? 'พร้อมเพย์ (LINE Shop)' : 'โอนเงินธนาคาร (LINE Shop)');
     var discountNoteParts = [];
     var freebieNoteParts = [];
@@ -2075,7 +2140,8 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     // ค่าธรรมเนียมเก็บเงินปลายทางบวกรวมไปกับค่าจัดส่งในคอลัมน์ H เพื่อให้ยอดในชีตบวกกันได้ลงตัวเหมือนเดิม
     // (Amount + Delivery = Bill Total) แต่เขียนแยกไว้ในหมายเหตุให้เห็นชัดว่ามาจากค่าธรรมเนียมเท่าไร
     if (codFee > 0) shippingLine += ' + ค่าธรรมเนียมเก็บเงินปลายทาง ' + Math.round(codFee) + ' บาท';
-    var deliveryColValue_ = finalShippingCost + codFee;
+    if (cardFee > 0) shippingLine += ' + ค่าธรรมเนียมชำระด้วยบัตร ' + Math.round(cardFee) + ' บาท';
+    var deliveryColValue_ = finalShippingCost + codFee + cardFee;
     var purchaseReferrerCodeClean_ = String(purchaseReferrerCode || '').trim();
     var remark = shippingLine + ' (น้ำหนักรวม ' + totalWeightG + ' กรัม) | ' + (isCodOrder ? COD_REMARK_PENDING_ : 'รอแนบสลิป - LINE Shop')
       + (discountNoteParts.length ? ' | ' + discountNoteParts.join(', ') : '')
@@ -2250,7 +2316,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     }
 
     invalidatePendingPointsCache_(phone); // เพิ่งจองคะแนนก้อนใหม่ลงชีต ตัวเลขที่แคชไว้ใช้ไม่ได้แล้ว
-    var finalReturnPayload_ = { success: true, orderId: revenueId, subtotal: subtotal, discount: totalDiscount, cashDiscount: cashDiscountOnly_, shippingCost: deliveryColValue_, codFee: codFee, isCod: isCodOrder, totalAmount: finalAmount, pointsEarned: pointsEarned, skipSlipUpload: skipSlipUpload, freebieItems: freebieNoteParts, physicalFreebieItems: physicalFreebieNoteParts, discountDetail: discountNoteParts, pointsRedeemed: pointsRedeemResult_.pointsUsed, pointsRedeemDiscount: pointsRedeemResult_.discount, isEdit: isEditingExistingOrder, editChanges: editChanges_ };
+    var finalReturnPayload_ = { success: true, orderId: revenueId, subtotal: subtotal, discount: totalDiscount, cashDiscount: cashDiscountOnly_, shippingCost: deliveryColValue_, codFee: codFee, isCod: isCodOrder, cardFee: cardFee, isCard: isCardOrder, totalAmount: finalAmount, pointsEarned: pointsEarned, skipSlipUpload: skipSlipUpload, freebieItems: freebieNoteParts, physicalFreebieItems: physicalFreebieNoteParts, discountDetail: discountNoteParts, pointsRedeemed: pointsRedeemResult_.pointsUsed, pointsRedeemDiscount: pointsRedeemResult_.discount, isEdit: isEditingExistingOrder, editChanges: editChanges_ };
   } catch (e) {
     return { success: false, error: e.toString() };
   } finally {
