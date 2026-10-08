@@ -367,7 +367,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
         <!-- ⚡ เพิ่ม (8/10/69) — ปุ่มบัตรเครดิต/เดบิต (K Payment Link) ซ่อนไว้เสมอจนร้านเปิดใช้และยอดเข้าเงื่อนไข -->
         <button type="button" class="payment-method sh" id="optCard" aria-pressed="false" onclick="selectPayment('card')">
           <span class="payment-method-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg></span>
-          <span class="payment-method-title">บัตรเครดิต/เดบิต</span><span class="payment-method-sub">จ่ายผ่านธนาคาร</span>
+          <span class="payment-method-title">บัตรเครดิต/เดบิต</span><span class="payment-method-sub">Visa / Mastercard</span>
         </button>
       </div>
       <div id="paymentDetail"></div>
@@ -479,7 +479,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
   </div>
 </div>
 
-<!-- ⚡ เพิ่ม (8/10/69) — ชำระด้วยบัตร: เปิดหน้าชำระเงินของธนาคาร / ตรวจผลหลังกลับมาจากธนาคาร -->
+<!-- ⚡ เพิ่ม (8/10/69) — ชำระด้วยบัตร: เปิดหน้าชำระเงิน (Stripe) / ตรวจผลหลังกลับมาจากหน้าชำระเงิน -->
 <div class="mo" id="cardPayModal">
   <div class="mo-card">
     <div class="mo-hd">
@@ -672,14 +672,14 @@ function closeCardPayModal_(){
 function startCardPayment_(orderId){
   if (cardPayBusy_ || !orderId) return;
   cardPayBusy_ = true;
-  openCardPayModal_(orderId, 'loading', '⏳ กำลังเปิดหน้าชำระเงินของธนาคาร...');
+  openCardPayModal_(orderId, 'loading', '⏳ กำลังเปิดหน้าชำระเงิน...');
   getFreshIdToken().then(function(idToken){
     return callApi('startCardPayment', { idToken: idToken, orderId: orderId });
   }).then(function(r){
     cardPayBusy_ = false;
     if (r && r.success && r.paid) { showCardPaid_(orderId, r.amount); return; }
     if (r && r.success && r.url) {
-      document.getElementById('cardPayMsg').innerHTML = '⏳ กำลังไปหน้าชำระเงินของธนาคาร...<br><span style="font-size:12px;color:var(--g6)">ชำระเสร็จแล้วระบบจะพากลับมาหน้านี้เอง</span>';
+      document.getElementById('cardPayMsg').innerHTML = '⏳ กำลังไปหน้าชำระเงิน...<br><span style="font-size:12px;color:var(--g6)">ชำระเสร็จแล้วระบบจะพากลับมาหน้านี้เอง</span>';
       location.href = r.url;
       return;
     }
@@ -714,7 +714,7 @@ function pollCardPayment_(orderId, attempt){
       return;
     }
     if (attempt < 5) { setTimeout(function(){ pollCardPayment_(orderId, attempt + 1); }, 3000); return; }
-    openCardPayModal_(orderId, 'unpaid', 'ยังไม่ได้รับผลการชำระเงินจากธนาคาร<br><span style="font-size:12.5px;color:var(--g6)">ถ้าชำระแล้ว กด "ตรวจสอบผลการชำระอีกครั้ง" — ถ้ายังไม่ได้ชำระ กด "ไปหน้าชำระเงิน"</span>');
+    openCardPayModal_(orderId, 'unpaid', 'ยังไม่ได้รับผลการชำระเงิน<br><span style="font-size:12.5px;color:var(--g6)">ถ้าชำระแล้ว กด "ตรวจสอบผลการชำระอีกครั้ง" — ถ้ายังไม่ได้ชำระ กด "ไปหน้าชำระเงิน"</span>');
   }).catch(function(){
     openCardPayModal_(orderId, 'unpaid', 'ตรวจสอบผลการชำระเงินไม่สำเร็จ (เครือข่ายขัดข้อง) กรุณาลองใหม่อีกครั้ง');
   });
@@ -2944,8 +2944,8 @@ function renderPaymentDetail(targetElId, fixedTotal, showBoth){
       + '<p style="font-weight:600;color:#1565c0;font-size:15px">💳 ชำระด้วยบัตรเครดิต/เดบิต</p>'
       + '<p style="font-size:24px;font-weight:700;color:#1565c0;margin-top:8px">฿' + total.toLocaleString('th-TH') + '</p>'
       + (cardFeeNow_ > 0 ? '<p style="font-size:12px;color:var(--g6);margin-top:4px">(รวมค่าธรรมเนียมชำระด้วยบัตร ฿' + cardFeeNow_.toLocaleString('th-TH') + ' แล้ว)</p>' : '')
-      + '<p style="font-size:12.5px;color:var(--g6);margin-top:10px;line-height:1.6">' + escHtml((cardInfo_ && cardInfo_.note) || 'ชำระผ่านหน้าชำระเงินของธนาคาร') + '</p>'
-      + '<p style="font-size:12px;color:var(--g6);margin-top:6px">กดยืนยันสั่งซื้อ แล้วกด "ชำระด้วยบัตร" เพื่อไปหน้าชำระเงินของธนาคารค่ะ</p>'
+      + '<p style="font-size:12.5px;color:var(--g6);margin-top:10px;line-height:1.6">' + escHtml((cardInfo_ && cardInfo_.note) || 'ชำระผ่านหน้าชำระเงินที่ปลอดภัยของ Stripe') + '</p>'
+      + '<p style="font-size:12px;color:var(--g6);margin-top:6px">กดยืนยันสั่งซื้อ แล้วกด "ชำระด้วยบัตร" เพื่อไปหน้าชำระเงินค่ะ</p>'
       + '</div>';
     return;
   }
@@ -3302,7 +3302,7 @@ function showOrderResult_(r){
   if (lastOrderIsCard_ && r.orderId) cardOrderIds_[r.orderId] = true;
   var doneHint_ = document.getElementById('orderDoneHint');
   if (doneHint_ && !noSlip) doneHint_.textContent = lastOrderIsCard_
-    ? 'กด "ชำระด้วยบัตร" ด้านล่างเพื่อไปหน้าชำระเงินของธนาคาร — ชำระสำเร็จแล้วระบบยืนยันคำสั่งซื้อให้อัตโนมัติ'
+    ? 'กด "ชำระด้วยบัตร" ด้านล่างเพื่อไปหน้าชำระเงิน — ชำระสำเร็จแล้วระบบยืนยันคำสั่งซื้อให้อัตโนมัติ'
     : 'กดปุ่มด้านล่างเพื่อแนบสลิป — ทีมงานจะตรวจสอบและจัดส่งให้เร็วที่สุด';
   if (noSlip) {
     showOrderDoneNoSlip_(r, pending);
