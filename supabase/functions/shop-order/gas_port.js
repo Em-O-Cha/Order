@@ -2525,8 +2525,14 @@ function getBillDataForNotify_(sheet, targetRow) {
   }
 
   var subtotal = items.reduce(function (s, it) { return s + it.qty * it.price; }, 0);
+  // จ่ายด้วยบัตรแล้ว: วิธีชำระที่ cardConfirmOrder_ บันทึกไว้คอลัมน์ AI (SupabaseCard.gs)
+  var cardMethod = '';
+  if (String(mainRow[10] || '').indexOf('ชำระด้วยบัตรแล้ว') === 0 && typeof CARD_METHOD_COL_ !== 'undefined') {
+    try { if (sheet.getMaxColumns() >= CARD_METHOD_COL_) cardMethod = String(sheet.getRange(targetRow, CARD_METHOD_COL_).getValue() || ''); } catch (e) {}
+  }
   return {
     items: items,
+    cardMethod: cardMethod,
     customerName: String(mainRow[13] || ''),
     phone: String(mainRow[14] || ''),
     paymentLabel: String(mainRow[9] || ''),

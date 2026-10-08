@@ -113,6 +113,11 @@ ok('9c) ยืนยันซ้ำพร้อมวิธีชำระ/ค�
   cell(cardId, 35) + ' / ' + cell(cardId, 36));
 r = c.cardConfirmOrder_(cardId, { amount: base + fee, ref: 'REF123', method: '', fee: null });
 ok('9d) ข้อมูลว่างทีหลัง -> ไม่เขียนทับค่าเดิม', cell(cardId, 35) === 'Visa •••• 4242 · เครดิต' && cell(cardId, 36) === 10.77);
+const sb9 = sent.length;
+c.finalizeSlipNotifications_(cardId);
+const adminCard = sent.slice(sb9).find((x) => x.to === c.ADMIN_GROUP_ID && x.msgs[0].type === 'flex');
+const cardJson = JSON.stringify(adminCard ? adminCard.msgs[0] : {});
+ok('9e) การ์ดแอดมิน: ไฮไลต์จ่ายด้วยบัตร + วิธีชำระ + เลขอ้างอิง', cardJson.includes('💳 ชำระด้วยบัตรเครดิต/เดบิตแล้ว') && cardJson.includes('Visa •••• 4242 · เครดิต · อ้างอิง REF123') && cardJson.includes('#e3f2fd') && /จ่ายด้วยบัตรแล้ว/.test(adminCard.msgs[0].altText), adminCard ? adminCard.msgs[0].altText : 'ไม่มีการ์ด');
 r = c.cardHandleShopAction_('startCardPayment', 't', cardId);
 ok('9b) ขอลิงก์หลังจ่ายแล้ว -> paid', r.success && r.paid === true);
 
