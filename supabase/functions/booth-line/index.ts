@@ -117,8 +117,11 @@ async function sheetOnce(action: string, args: Json): Promise<SheetReply> {
   const text = await res.text();
   let j: Json;
   try { j = JSON.parse(text); } catch {
-    console.error("booth-line sheet", action, res.status, res.url.replace(/\?.*/, ""), text.slice(0, 200));
-    return { ok: false, error: `Google Sheet ตอบไม่ถูกรูปแบบ (HTTP ${res.status})`, retry: true };
+    // Apps Script reports an uncaught error (e.g. a lock timeout) as an HTML page; keep its readable text.
+    const plain = text.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    console.error("booth-line sheet", action, res.status, res.url.replace(/\?.*/, ""), plain.slice(0, 500));
+    const why = plain.match(/(Exception|Error|ข้อผิดพลาด)[^.]{0,120}/)?.[0];
+    return { ok: false, error: `Google Sheet ตอบไม่ถูกรูปแบบ (HTTP ${res.status}${why ? `: ${why}` : ""})`, retry: true };
   }
   if (!j.success) return { ok: false, error: `Google Sheet: ${j.error}`, retry: false };
   // doGet's reply (no "result") means the POST was turned into a GET somewhere along the redirect.
@@ -210,13 +213,27 @@ async function appendTo(source: Json, uid: string, addition: string): Promise<st
   return card("✏️ อัปเดตลูกค้าแล้ว", await sheet("update", { id: latest.id, lead }));
 }
 
+// LINE prepares audio after it is sent: until then the content URL answers 202 with an empty body,
+// which is what longer clips hit. Wait for it (up to ~40 s) rather than passing an empty file on.
+async function lineAudio(id: string): Promise<Blob> {
+  for (let i = 0; i < 20; i++) {
+    const res = await fetch(`https://api-data.line.me/v2/bot/message/${id}/content`, {
+      headers: { Authorization: `Bearer ${LINE_TOKEN}` },
+    });
+    if (res.status === 200) {
+      const audio = await res.blob();
+      if (audio.size) return audio;
+    } else if (res.status !== 202) {
+      throw new Error(`ดึงคลิปเสียงจาก LINE ไม่ได้ (HTTP ${res.status})`);
+    } else await res.body?.cancel();
+    await new Promise((ok) => setTimeout(ok, 2000));
+  }
+  throw new Error("LINE ยังเตรียมคลิปเสียงไม่เสร็จ");
+}
+
 // A voice clip sent to the OA: fetch it from LINE, transcribe with speakers separated, then file it like a note.
 async function audioLead(ev: Json, uid: string): Promise<string> {
-  const res = await fetch(`https://api-data.line.me/v2/bot/message/${ev.message.id}/content`, {
-    headers: { Authorization: `Bearer ${LINE_TOKEN}` },
-  });
-  if (!res.ok) throw new Error(`ดึงคลิปเสียงจาก LINE ไม่ได้ (HTTP ${res.status})`);
-  const audio = await res.blob();
+  const audio = await lineAudio(ev.message.id);
   if (audio.size > MAX_AUDIO_BYTES) return "🎧 คลิปยาวเกินไป (เกิน 25 MB) — แบ่งส่งเป็นช่วงสั้น ๆ นะคะ";
   const stt = await transcribe(ELEVENLABS_API_KEY, audio, `line-${ev.message.id}.m4a`, BRAND_KEYTERMS);
   if (!stt.ok) throw new Error(stt.error);
