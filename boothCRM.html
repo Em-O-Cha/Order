@@ -196,7 +196,8 @@ textarea.fc.sv-open{min-height:64px;}
       </div>
 
       <div class="field" data-f="details">
-        <div class="f-hd"><label for="f-details">บทสนทนา / รายละเอียดที่พูดคุย</label></div>
+        <div class="f-hd"><label for="f-details">บทสนทนา / รายละเอียดที่พูดคุย</label>
+          <button class="mini" id="btnReparse" type="button">🔄 ดึงข้อมูลอีกครั้ง</button></div>
         <textarea class="fc" id="f-details" placeholder="บทสนทนาจะมาอยู่ที่นี่ ลบส่วนที่ไม่เกี่ยวหรือพิมพ์สรุปเพิ่มได้"></textarea>
         <div class="heard" id="h-details"></div>
       </div>
@@ -293,12 +294,12 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
 
 /* ---------- Thai text parsing ---------- */
 var PARTICLES = /(\s*(ครับผม|ครับ|คับ|ค่ะ|คะ|จ้ะ|จ้า|นะ|น่ะ|จ๊ะ))+\s*$/;
-var WORD_DIGIT = [['ศูนย์','0'],['หนึ่ง','1'],['เอ็ด','1'],['สอง','2'],['สาม','3'],['สี่','4'],['ห้า','5'],['หก','6'],['เจ็ด','7'],['แปด','8'],['เก้า','9']];
+var WORD_DIGIT = [['ศูนย์','0'],['สูญ','0'],['หนึ่ง','1'],['นึง','1'],['เอ็ด','1'],['สอง','2'],['สาม','3'],['สี่','4'],['ห้า','5'],['หก','6'],['เจ็ด','7'],['แปด','8'],['เก้า','9']];
 var DIGIT_WORD = ['ศูนย์','หนึ่ง','สอง','สาม','สี่','ห้า','หก','เจ็ด','แปด','เก้า'];
 
 function toDigits(s){
   s = String(s || '').replace(/[๐-๙]/g, function(d){ return String('๐๑๒๓๔๕๖๗๘๙'.indexOf(d)); });
-  s = s.replace(/โทรศัพท์|โทร|เบอร์/g, ' ');
+  s = s.replace(/โทรศัพท์|โทร|เบอร์|ขีด/g, ' ');
   WORD_DIGIT.forEach(function(p){ s = s.split(p[0]).join(p[1]); });
   return s;
 }
@@ -354,6 +355,10 @@ function findNameIn(lines){
     if (ASK_NAME.test(lines[i])) continue;
     re.lastIndex = 0;
     while ((m = re.exec(lines[i]))){ var n = nameToken(m[1]); if (n) return n; }
+  }
+  for (i = 0; i < lines.length; i++){
+    var c = lines[i].match(/เรียก(?:ผม|หนู|พี่|ฉัน|ดิฉัน)?\s*(?:ว่า)?\s*(\S+?)\s*(?:ก็ได้|ได้เลย)/);
+    if (c && !ASK_NAME.test(lines[i])){ var n3 = nameToken(c[1]); if (n3) return n3; }
   }
   for (i = 0; i < lines.length; i++){
     var q = lines[i].match(ASK_NAME); if (!q) continue;
@@ -605,7 +610,8 @@ var ERR_MSG = {
   'audio-capture':'ไม่พบไมโครโฟน',
   'network':'แปลงเสียงต้องใช้อินเทอร์เน็ต — ตรวจสัญญาณ หรือพิมพ์แทน',
   'no-speech':'ไม่ได้ยินเสียงพูด ลองพูดใกล้ไมค์อีกครั้ง',
-  'language-not-supported':'เครื่องนี้ไม่รองรับการฟังภาษาไทย'
+  'language-not-supported':'เครื่องนี้ไม่รองรับการฟังภาษาไทย',
+  'restart-loop':'ไมค์เริ่มฟังต่อไม่ได้'
 };
 var active = null, pendingStart = null;
 
@@ -678,7 +684,8 @@ function renderGot(lines){
     return '<span class="' + (done ? 'yes' : '') + '">' + (done ? '✓ ' : '') + esc(Q.short) + '</span>';
   }).join('');
 }
-function refreshGot(){ var st = convoState(); renderGot(st ? segLines(st.segs.concat(st.sessionFinals)) : []); }
+function liveLines(st){ var l = segLines(st.segs.concat(st.sessionFinals)); if (st.interim) l.push(st.interim); return l; }
+function refreshGot(){ var st = convoState(); renderGot(st ? liveLines(st) : []); }
 
 function setMicUI(f, on){
   if (f === 'convo'){ renderConvoBtn(); return; }
@@ -692,7 +699,7 @@ function renderLive(st){
     box.innerHTML = lines.map(esc).join('<br>') + (st.interim ? (lines.length ? '<br>' : '') + '<span class="interim">' + esc(st.interim) + '</span>' : '');
     box.scrollTop = box.scrollHeight;
     // Re-scan at most every ~1s, but always catch up after the latest words.
-    if (!st.gotT) st.gotT = setTimeout(function(){ st.gotT = null; if (!st.done) renderGot(segLines(st.segs.concat(st.sessionFinals))); }, 800);
+    if (!st.gotT) st.gotT = setTimeout(function(){ st.gotT = null; if (!st.done) renderGot(liveLines(st)); }, 800);
     return;
   }
   setHeard(st.field, '<span class="live">● กำลังฟัง…</span> ' + esc(lines.join(' ')) + ' <span class="interim">' + esc(st.interim) + '</span>');
@@ -711,17 +718,15 @@ function keepAwake(on){
   } catch(e){}
 }
 
-function startRec(field){
-  if (!SR){ toast('เบราว์เซอร์นี้ไม่รองรับเสียง — พิมพ์แทน หรือเปิดด้วย Chrome'); return null; }
-  if (active){ pendingStart = field; stopRec(); return null; }
-  if (noiseBusy) return null;
-  var st = { field:field, segs:[], sessionFinals:[], interim:'', stopping:false, done:false, error:null, t0:Date.now(), restarts:[] };
-  st.lastSpeech = st.t0; st.lastHeard = '';
-  var rec = new SR();
+// One recognizer session. Android Chrome ends a session after almost every sentence, so a
+// conversation is a chain of sessions; each gets a fresh recognizer (re-starting an ended one can throw).
+function openSession(st){
+  var field = st.field, rec = new SR(), began = Date.now(), gotResult = false;
   rec.lang = 'th-TH'; rec.interimResults = true; rec.maxAlternatives = 3; rec.continuous = true;
-  st.rec = rec;
+  st.rec = rec; st.live = true;
   rec.onresult = function(e){
-    if (st.done) return;
+    if (st.done || st.rec !== rec) return;
+    gotResult = true;
     var finals = [], interims = [];
     for (var i = 0; i < e.results.length; i++){
       var r = e.results[i], alts = [];
@@ -733,28 +738,47 @@ function startRec(field){
     var heardNow = segLines(st.segs.concat(st.sessionFinals)).join(' ') + '|' + st.interim;
     if (heardNow !== st.lastHeard){ st.lastHeard = heardNow; st.lastSpeech = Date.now(); }
     renderLive(st);
-    // A single field (re-dictating just the name/phone/branch) stops by itself after a pause.
+    // A single field (re-dictating just one answer) stops by itself after a pause.
     clearTimeout(st.silenceT);
     if (field !== 'convo' && !st.interim && st.sessionFinals.length){
       st.silenceT = setTimeout(stopRec, field === 'phone' ? 2500 : 1800);
     }
   };
-  rec.onerror = function(e){ st.error = e.error; };
+  rec.onerror = function(e){ if (st.rec === rec) st.error = e.error; };
   rec.onend = function(){
-    if (st.done) return;
+    if (st.done || st.rec !== rec) return;
+    st.live = false;
     collect(st);
-    // Browsers end recognition after a pause or a time limit; a conversation keeps listening until staff tap stop.
     if (field === 'convo' && !st.stopping && !FATAL[st.error]){
-      var now = Date.now();
-      st.restarts = st.restarts.filter(function(t){ return now - t < 10000; }).concat(now);
-      if (st.restarts.length <= 5){
-        st.error = null;
-        try { rec.start(); return; } catch(err){}
-      } else st.error = 'restart-loop';
+      // Only a run of sessions that die instantly without hearing anything means something is broken.
+      st.emptyRuns = (!gotResult && Date.now() - began < 1500) ? (st.emptyRuns || 0) + 1 : 0;
+      if (st.emptyRuns < 8){ st.error = null; scheduleRestart(st, st.emptyRuns ? 400 : 120); return; }
+      st.error = 'restart-loop';
     }
     finish(st);
   };
-  try { rec.start(); } catch(err){ toast('เริ่มฟังไม่ได้ ลองอีกครั้ง'); return null; }
+  rec.start();
+}
+function scheduleRestart(st, ms){
+  st.restartT = setTimeout(function(){
+    st.restartT = null;
+    if (st.done || st.stopping) return;
+    try { openSession(st); st.startFails = 0; }
+    catch(err){
+      st.live = false;
+      if ((st.startFails = (st.startFails || 0) + 1) < 5) scheduleRestart(st, 500);
+      else { st.error = 'restart-loop'; finish(st); }
+    }
+  }, ms);
+}
+
+function startRec(field){
+  if (!SR){ toast('เบราว์เซอร์นี้ไม่รองรับเสียง — พิมพ์แทน หรือเปิดด้วย Chrome'); return null; }
+  if (active){ pendingStart = field; stopRec(); return null; }
+  if (noiseBusy) return null;
+  var st = { field:field, segs:[], sessionFinals:[], interim:'', stopping:false, done:false, error:null, t0:Date.now() };
+  st.lastSpeech = st.t0; st.lastHeard = '';
+  try { openSession(st); } catch(err){ toast('เริ่มฟังไม่ได้ ลองอีกครั้ง'); return null; }
   active = st;
   setMicUI(field, true);
   renderLive(st);
@@ -770,13 +794,15 @@ function stopRec(){
   var st = active; if (!st || st.stopping) return;
   st.stopping = true; clearTimeout(st.silenceT);
   if (st.field === 'convo') renderConvoBtn();
+  // Between two sessions there is nothing to stop; wrap up right away.
+  if (!st.live){ clearTimeout(st.restartT); finish(st); return; }
   try { st.rec.stop(); } catch(e){}
   // Some browsers never fire onend after stop(); don't leave the UI stuck.
   st.forceT = setTimeout(function(){ if (!st.done){ try{ st.rec.abort(); }catch(e){} collect(st); finish(st); } }, 2000);
 }
 function finish(st){
   if (st.done) return;
-  st.done = true; clearTimeout(st.silenceT); clearTimeout(st.forceT); clearTimeout(st.gotT); clearInterval(st.tick);
+  st.done = true; clearTimeout(st.silenceT); clearTimeout(st.forceT); clearTimeout(st.gotT); clearTimeout(st.restartT); clearInterval(st.tick);
   if (active === st) active = null;
   if (st.field === 'convo'){ keepAwake(false); $('#convoLive').innerHTML = ''; }
   setMicUI(st.field, false);
@@ -792,11 +818,16 @@ function finish(st){
     if (st.error && FATAL[st.error]) setHeard(hk, $('#h-' + hk).innerHTML + ' · <b style="color:var(--warn)">หยุดฟังเพราะ: ' + esc(ERR_MSG[st.error] || st.error) + '</b>');
     saveDraft();
   }
+  if (st.field === 'convo' && !st.stopping){
+    toast('⚠ ไมค์หยุดฟังเอง' + (st.error ? ' (' + (ERR_MSG[st.error] || st.error) + ')' : '') + ' — แตะ “บันทึกบทสนทนาต่อ” เพื่อฟังต่อ', 5000);
+    if (navigator.vibrate) try{ navigator.vibrate([200, 100, 200]); }catch(e){}
+  }
   if (st.autoStopped){
     toast('จบการสนทนาแล้ว (เงียบ ' + cfg.autoStop + ' วิ) — ตรวจข้อมูลแล้วกดบันทึก');
     if (navigator.vibrate) try{ navigator.vibrate([60, 80, 60]); }catch(e){}
   }
   refreshGot(); renderConvoBtn();
+  if (saveAfterStop){ saveAfterStop = false; saveLead(); return; }
   if (pendingStart){ var f = pendingStart; pendingStart = null; startRec(f); }
 }
 
@@ -870,6 +901,13 @@ function autoExtract(lines, texts){
   return { filled:filled, otherPhones:phones.filter(function(p){ return p !== cur; }) };
 }
 
+$('#btnReparse').addEventListener('click', function(){
+  var lines = F.details.value.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+  if (!lines.length){ toast('ยังไม่มีบทสนทนาให้ดึงข้อมูล'); return; }
+  var r = autoExtract(lines);
+  refreshGot(); saveDraft();
+  toast(r.filled.length ? 'เติมให้: ' + r.filled.join(', ') + ' — ตรวจช่องสีเหลือง' : 'ไม่พบข้อมูลเพิ่ม (เติมเฉพาะช่องที่ยังว่าง)');
+});
 function toggleRec(f){ if (active && active.field === f) stopRec(); else startRec(f); }
 $('#btnConvo').addEventListener('click', function(){ toggleRec('convo'); });
 document.querySelectorAll('[data-mic]').forEach(function(btn){
@@ -916,25 +954,25 @@ function persistLeads(){
   if (!store(LS_LEADS, leads)){ alert('บันทึกลงเครื่องไม่สำเร็จ (พื้นที่เต็ม หรือเปิดโหมดไม่ระบุตัวตน) — กรุณาส่งออก CSV ทันที'); return false; }
   return true;
 }
+// Saving never blocks at the booth: anything missing or unchecked is saved as a flag to follow up later.
+var saveAfterStop = false;
 $('#btnSave').addEventListener('click', function(){
-  if (active){ toast('หยุดฟังแล้ว — ตรวจข้อมูลอีกครั้งแล้วกดบันทึก'); stopRec(); return; }
+  if (active){ saveAfterStop = true; toast('กำลังหยุดไมค์แล้วบันทึก…'); stopRec(); return; }
+  saveLead();
+});
+function saveLead(){
   var name = F.name.value.trim(), d = normPhone(digitsOf(F.phone.value)), branch = F.branch.value.trim(), details = F.details.value.trim();
-  if (!name && !d){ toast('ใส่ชื่อหรือเบอร์โทรอย่างน้อย 1 อย่าง'); F.name.focus(); return; }
-  var warns = [];
+  if (!formDirty()){ toast('ยังไม่มีข้อมูลให้บันทึก'); return; }
   var GUESS_LABEL = { name:'ชื่อ', phone:'เบอร์', branch:'สาขา' };
   SURVEY.forEach(function(Q){ GUESS_LABEL['sv_' + Q.k] = Q.short; });
   var g = Object.keys(guessed).map(function(f){ return GUESS_LABEL[f]; });
-  if (g.length) warns.push('ช่องที่ AI เดายังไม่ได้ยืนยัน: ' + g.join(', '));
-  if (d && !isValidPhone(d)) warns.push('เบอร์โทรไม่ครบ/ไม่ถูกรูปแบบ (' + d.length + ' หลัก)');
-  if (!d) warns.push('ยังไม่มีเบอร์โทร');
   var dup = d && leads.filter(function(l){ return l.id !== editingId && digitsOf(l.phone) === d; })[0];
-  if (dup) warns.push('เบอร์นี้เคยบันทึกแล้ว (' + (dup.name || 'ไม่มีชื่อ') + ')');
-  if (warns.length && !confirm('⚠ ' + warns.join('\n⚠ ') + '\n\nบันทึกต่อเลยไหม?')) return;
-
   var now = Date.now(), flags = [];
-  if (d && !isValidPhone(d)) flags.push('เบอร์ไม่ครบ');
-  if (g.length) flags.push('AI เดา: ' + g.join(', ') + ' (ไม่ได้ยืนยัน)');
-  if (dup) flags.push('เบอร์ซ้ำ');
+  if (!name) flags.push('ยังไม่มีชื่อ');
+  if (!d) flags.push('ยังไม่มีเบอร์');
+  else if (!isValidPhone(d)) flags.push('เบอร์ไม่ครบ');
+  if (g.length) flags.push('AI เดา ยังไม่ได้ตรวจ: ' + g.join(', '));
+  if (dup) flags.push('เบอร์ซ้ำกับ ' + (dup.name || 'รายการเดิม'));
   var rec = { name:name, phone:d ? (isValidPhone(d) ? fmtPhone(d) : d) : '', branch:branch, details:details, survey:getSurvey(),
     heard:heard, flags:flags, updatedAt:now };
   if (editingId){
@@ -944,11 +982,13 @@ $('#btnSave').addEventListener('click', function(){
     leads.unshift(Object.assign({ id:uid(), createdAt:now, event:cfg.event, staff:cfg.staff }, rec));
   }
   if (!persistLeads()) return;
-  toast(editingId ? '✓ แก้ไขแล้ว' : '✓ บันทึก ' + (name || fmtPhone(d)) + ' แล้ว');
+  var missing = !name || !d;
+  toast((editingId ? '✓ แก้ไขแล้ว' : '✓ บันทึก' + (name ? ' ' + name : '') + 'แล้ว') +
+    (missing ? ' — ยังขาด' + (!name ? 'ชื่อ' : '') + (!name && !d ? '/' : '') + (!d ? 'เบอร์' : '') + ' เติมภายหลังได้ที่ 📋 รายชื่อ' : ''), missing ? 4500 : 2600);
   var wasEditing = !!editingId;
   clearForm(); renderList();
   if (wasEditing) showTab('list');
-});
+}
 $('#btnClear').addEventListener('click', function(){
   if (formDirty() && !confirm('ล้างข้อมูลในฟอร์ม?')) return;
   if (active) stopRec();
