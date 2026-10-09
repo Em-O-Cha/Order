@@ -192,7 +192,7 @@ textarea.fc{height:auto;min-height:110px;padding:10px 12px;resize:vertical;line-
       <details id="tipBox">
         <summary>💡 วิธีใช้ให้แม่น แม้บูธเสียงดัง</summary>
         <ol>
-          <li><b>แตะ “เริ่มบันทึกบทสนทนา” ครั้งเดียว</b> แล้วคุยกับลูกค้าตามปกติ คุยจบแตะ “จบการสนทนา” ระบบจะดึงชื่อ เบอร์ และสาขาจากบทสนทนาให้</li>
+          <li><b>แตะ “เริ่มบันทึกบทสนทนา” ครั้งเดียว</b> แล้วคุยกับลูกค้าตามปกติ คุยจบแล้วไมค์จะหยุดเองเมื่อเงียบ (ตั้งเวลาได้ที่ ⚙️) หรือแตะ “จบการสนทนา” ก็ได้ ระบบจะดึงชื่อ เบอร์ และสาขาจากบทสนทนาให้</li>
           <li><b>วางมือถือไว้ใกล้ ๆ ระหว่างพนักงานกับลูกค้า</b> (ห่างไม่เกิน 30 ซม.) หันไมค์ออกจากลำโพงบูธ</li>
           <li><b>ทวนข้อมูลแบบเป็นธรรมชาติ</b> เช่น “คุณสมชายนะคะ เบอร์ 081-234-5678 ถูกไหมคะ” ได้ทั้งยืนยันกับลูกค้า และให้ระบบได้ยินชัดอีกรอบ</li>
           <li>ระหว่างคุย ดูช่อง <b>ชื่อ / เบอร์ / สาขา</b> ใต้ปุ่ม ถ้าช่องไหนยังเทา ค่อยชวนคุยเรื่องนั้นต่อ ไม่ต้องถามเรียงข้อ</li>
@@ -228,6 +228,15 @@ textarea.fc{height:auto;min-height:110px;padding:10px 12px;resize:vertical;line-
       <input class="fc" id="cfgEvent" placeholder="เช่น งานแฟรนไชส์ ไบเทค ต.ค. 69"></div>
     <div class="fg"><label for="cfgStaff">ชื่อผู้บันทึก</label>
       <input class="fc" id="cfgStaff" placeholder="ชื่อพนักงานที่ใช้เครื่องนี้"></div>
+    <div class="fg"><label for="cfgAutoStop">หยุดฟังเองเมื่อเงียบ</label>
+      <select class="fc" id="cfgAutoStop">
+        <option value="10">10 วินาที</option>
+        <option value="15">15 วินาที</option>
+        <option value="20">20 วินาที</option>
+        <option value="30">30 วินาที</option>
+        <option value="0">ไม่หยุดเอง (แตะ “จบการสนทนา” เท่านั้น)</option>
+      </select>
+      <span class="hint">ถ้าบูธมีคนพูดรอบข้างตลอด ระบบอาจไม่เงียบพอให้หยุดเอง แตะ “จบการสนทนา” ได้ทุกเมื่อ</span></div>
     <div class="fg"><label for="cfgBranches">รายชื่อสาขา (บรรทัดละ 1 สาขา)</label>
       <textarea class="fc" id="cfgBranches" style="min-height:140px" placeholder="สาขาลาดพร้าว&#10;สาขาบางนา&#10;สาขาเชียงใหม่"></textarea>
       <span class="hint">ใส่ไว้แล้วระบบจะจับคู่เสียงที่ได้ยินกับชื่อสาขาที่ถูกต้อง ลดการสะกดผิด</span></div>
@@ -254,7 +263,7 @@ function store(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); return tr
 try{ if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
 
 var leads = load(LS_LEADS, []);
-var cfg = load(LS_CFG, { event:'', staff:'', branches:[] });
+var cfg = Object.assign({ event:'', staff:'', branches:[], autoStop:15 }, load(LS_CFG, {}));
 
 /* ---------- helpers ---------- */
 function $(s){ return document.querySelector(s); }
@@ -503,13 +512,23 @@ function mmss(ms){ var x = Math.floor(ms / 1000); return Math.floor(x / 60) + ':
 function segLines(segs){ return segs.map(function(a){ return a[0].t; }).filter(Boolean); }
 function convoState(){ return active && active.field === 'convo' ? active : null; }
 
+var QUIET_SHOW_MS = 3000;
 function renderConvoBtn(){
-  var b = $('#btnConvo'), st = convoState();
+  var b = $('#btnConvo'), st = convoState(), stopHint = cfg.autoStop ? 'หยุดเองเมื่อเงียบ ' + cfg.autoStop + ' วิ หรือแตะเพื่อจบ' : 'แตะอีกครั้งเมื่อคุยจบ';
   b.classList.toggle('on', !!st);
-  if (st) b.innerHTML = st.stopping ? '⏳ กำลังสรุปข้อมูล…<small>รอสักครู่</small>'
-    : '⏹ จบการสนทนา · ' + mmss(Date.now() - st.t0) + '<small>กำลังฟัง… คุยกับลูกค้าตามปกติได้เลย</small>';
-  else b.innerHTML = F.details.value.trim() ? '🎙️ บันทึกบทสนทนาต่อ<small>ต่อท้ายบทสนทนาเดิมของลูกค้าคนนี้</small>'
-    : '🎙️ เริ่มบันทึกบทสนทนา<small>แตะครั้งเดียว แล้วคุยตามปกติ</small>';
+  if (st){
+    var quiet = Date.now() - st.lastSpeech, sub = 'กำลังฟัง… คุยกับลูกค้าตามปกติได้เลย';
+    if (cfg.autoStop && quiet >= QUIET_SHOW_MS) sub = 'เงียบอยู่… จะหยุดเองใน ' + Math.max(0, Math.ceil(cfg.autoStop - quiet / 1000)) + ' วิ';
+    b.innerHTML = st.stopping ? '⏳ กำลังสรุปข้อมูล…<small>รอสักครู่</small>'
+      : '⏹ จบการสนทนา · ' + mmss(Date.now() - st.t0) + '<small>' + sub + '</small>';
+  } else b.innerHTML = F.details.value.trim() ? '🎙️ บันทึกบทสนทนาต่อ<small>ต่อท้ายบทสนทนาเดิมของลูกค้าคนนี้</small>'
+    : '🎙️ เริ่มบันทึกบทสนทนา<small>แตะครั้งเดียว แล้วคุยตามปกติ · ' + stopHint + '</small>';
+}
+// Every half second: refresh the timer, and end the conversation once nobody has spoken for cfg.autoStop seconds.
+function convoTick(st){
+  if (st.done || st.stopping) return;
+  if (cfg.autoStop && Date.now() - st.lastSpeech >= cfg.autoStop * 1000){ st.autoStopped = true; stopRec(); return; }
+  renderConvoBtn();
 }
 // What the system has picked up so far, so staff can steer the chat toward what's missing.
 function renderGot(lines){
@@ -560,6 +579,7 @@ function startRec(field){
   if (active){ pendingStart = field; stopRec(); return null; }
   if (noiseBusy) return null;
   var st = { field:field, segs:[], sessionFinals:[], interim:'', stopping:false, done:false, error:null, t0:Date.now(), restarts:[] };
+  st.lastSpeech = st.t0; st.lastHeard = '';
   var rec = new SR();
   rec.lang = 'th-TH'; rec.interimResults = true; rec.maxAlternatives = 3; rec.continuous = true;
   st.rec = rec;
@@ -573,6 +593,8 @@ function startRec(field){
     }
     st.sessionFinals = dedupe(finals);
     st.interim = interims.map(function(a){ return a[0].t; }).join(' ');
+    var heardNow = segLines(st.segs.concat(st.sessionFinals)).join(' ') + '|' + st.interim;
+    if (heardNow !== st.lastHeard){ st.lastHeard = heardNow; st.lastSpeech = Date.now(); }
     renderLive(st);
     // A single field (re-dictating just the name/phone/branch) stops by itself after a pause.
     clearTimeout(st.silenceT);
@@ -601,7 +623,7 @@ function startRec(field){
   renderLive(st);
   if (field === 'convo'){
     keepAwake(true);
-    st.tick = setInterval(renderConvoBtn, 1000);
+    st.tick = setInterval(function(){ convoTick(st); }, 500);
     setHeard('details', '');
   }
   if (navigator.vibrate) try{ navigator.vibrate(30); }catch(e){}
@@ -632,6 +654,10 @@ function finish(st){
     APPLY[st.field](text, texts, low, st);
     if (st.error && FATAL[st.error]) setHeard(hk, $('#h-' + hk).innerHTML + ' · <b style="color:var(--warn)">หยุดฟังเพราะ: ' + esc(ERR_MSG[st.error] || st.error) + '</b>');
     saveDraft();
+  }
+  if (st.autoStopped){
+    toast('จบการสนทนาแล้ว (เงียบ ' + cfg.autoStop + ' วิ) — ตรวจข้อมูลแล้วกดบันทึก');
+    if (navigator.vibrate) try{ navigator.vibrate([60, 80, 60]); }catch(e){}
   }
   refreshGot(); renderConvoBtn();
   if (pendingStart){ var f = pendingStart; pendingStart = null; startRec(f); }
@@ -674,7 +700,8 @@ var APPLY = {
     F.details.value = (cur ? cur + '\n' : '') + lines.join('\n');
     heard.details = heard.details ? heard.details + ' / ' + text : text;
     var r = autoExtract(lines, texts);
-    var msg = '✓ บันทึกบทสนทนา ' + mmss(Date.now() - st.t0) + ' นาที · ' +
+    var msg = '✓ บันทึกบทสนทนา ' + mmss((st.autoStopped ? st.lastSpeech : Date.now()) - st.t0) + ' นาที' +
+      (st.autoStopped ? ' (หยุดเองเพราะเงียบ)' : '') + ' · ' +
       (r.filled.length ? 'เติมให้: <b>' + r.filled.join(', ') + '</b> — ตรวจช่องสีเหลือง' : 'ไม่พบชื่อ/เบอร์/สาขาใหม่ในบทสนทนา');
     if (r.otherPhones.length) msg += ' · <b style="color:var(--warn)">พบเบอร์อื่นด้วย: ' + esc(r.otherPhones.map(fmtPhone).join(', ')) + '</b>';
     setHeard('details', msg + (low ? LOW_NOTE : ''));
@@ -846,6 +873,7 @@ function applyCfg(){
   $('#evtLine').textContent = 'งาน: ' + (cfg.event || '— (ตั้งค่าที่ ⚙️)') + ' · ผู้บันทึก: ' + (cfg.staff || '—');
   $('#branchList').innerHTML = cfg.branches.map(function(b){ return '<option value="' + esc(b) + '">'; }).join('');
   $('#branchChips').innerHTML = '<button type="button" data-chip="' + esc(NO_BRANCH) + '">' + esc(NO_BRANCH) + '</button>';
+  renderConvoBtn();
 }
 $('#branchChips').addEventListener('click', function(e){
   var b = e.target.closest('[data-chip]'); if (!b) return;
@@ -853,13 +881,15 @@ $('#branchChips').addEventListener('click', function(e){
 });
 $('#btnSettings').addEventListener('click', function(){
   $('#cfgEvent').value = cfg.event; $('#cfgStaff').value = cfg.staff; $('#cfgBranches').value = cfg.branches.join('\n');
+  $('#cfgAutoStop').value = String(cfg.autoStop);
   $('#ovlSettings').classList.add('show');
 });
 $('#btnCfgClose').addEventListener('click', function(){ $('#ovlSettings').classList.remove('show'); });
 $('#ovlSettings').addEventListener('click', function(e){ if (e.target.id === 'ovlSettings') e.target.classList.remove('show'); });
 $('#btnCfgSave').addEventListener('click', function(){
   cfg = { event:$('#cfgEvent').value.trim(), staff:$('#cfgStaff').value.trim(),
-    branches:$('#cfgBranches').value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean) };
+    branches:$('#cfgBranches').value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean),
+    autoStop:+$('#cfgAutoStop').value || 0 };
   store(LS_CFG, cfg); applyCfg();
   $('#ovlSettings').classList.remove('show'); toast('✓ บันทึกการตั้งค่าแล้ว');
 });
