@@ -37,6 +37,8 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--td);min-h
 .field.guess{background:var(--guess);border-color:var(--guessbd);}
 .f-hd{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;min-height:24px;}
 .f-hd label{font-size:14px;font-weight:700;color:var(--g8);}
+.f-hd label{flex:1;min-width:0;line-height:1.4;}
+.f-hd .badge{flex-shrink:0;white-space:nowrap;}
 .badge{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#8a6100;}
 .field.guess .badge{display:inline-flex;}
 .badge button{height:24px;padding:0 10px;border-radius:999px;border:none;background:#f2c94c;color:#4d3800;font-family:inherit;font-weight:700;font-size:12px;cursor:pointer;}
@@ -61,6 +63,16 @@ textarea.fc{height:auto;min-height:110px;padding:10px 12px;resize:vertical;line-
 .got div{border-radius:10px;padding:6px 8px;font-size:12px;background:#f1f3f5;color:#868e96;line-height:1.35;min-width:0;}
 .got div b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .got div.yes{background:var(--gp);color:var(--gd);}
+.sv-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
+.sv-tags span{font-size:11.5px;padding:2px 9px;border-radius:999px;background:#f1f3f5;color:#868e96;}
+.sv-tags span.yes{background:var(--gp);color:var(--gd);font-weight:600;}
+.sv-box{border-top:1px dashed #ddd;margin:6px 0 12px;padding-top:12px;}
+.sv-hd{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;}
+.sv-hd b{font-size:15px;color:var(--gd);}
+textarea.fc.sv-open{min-height:64px;}
+.chips button.on{border-color:var(--gm);background:var(--gp);color:var(--gd);font-weight:700;}
+.lead .sv{font-size:13px;color:var(--g8);margin-top:6px;background:#f7f7f8;border-radius:10px;padding:6px 10px;line-height:1.55;}
+.lead .sv span{color:var(--g6);}
 .sec-t{font-size:13px;font-weight:700;color:var(--g6);margin:2px 0 10px;}
 .side-btns{display:flex;flex-direction:column;gap:6px;}
 .speak{width:52px;height:34px;border-radius:10px;border:1.5px solid #ddd;background:#fff;font-size:16px;cursor:pointer;}
@@ -134,6 +146,7 @@ textarea.fc{height:auto;min-height:110px;padding:10px 12px;resize:vertical;line-
     <div class="card"><div class="bd">
       <button class="rec-btn" id="btnConvo">🎙️ เริ่มบันทึกบทสนทนา<small>แตะครั้งเดียว แล้วคุยตามปกติ</small></button>
       <div class="got" id="got"></div>
+      <div class="sv-tags" id="svTags"></div>
       <div class="live-box" id="convoLive"></div>
     </div></div>
 
@@ -177,8 +190,13 @@ textarea.fc{height:auto;min-height:110px;padding:10px 12px;resize:vertical;line-
         <div class="heard" id="h-branch"></div>
       </div>
 
+      <div class="sv-box">
+        <div class="sv-hd"><b>📝 แบบสอบถาม</b><button class="mini" id="btnSvOk" hidden>✓ ถูกต้องทั้งหมด</button></div>
+        <div id="svFields"></div>
+      </div>
+
       <div class="field" data-f="details">
-        <div class="f-hd"><label for="f-details">4. รายละเอียดที่พูดคุย</label></div>
+        <div class="f-hd"><label for="f-details">บทสนทนา / รายละเอียดที่พูดคุย</label></div>
         <textarea class="fc" id="f-details" placeholder="บทสนทนาจะมาอยู่ที่นี่ ลบส่วนที่ไม่เกี่ยวหรือพิมพ์สรุปเพิ่มได้"></textarea>
         <div class="heard" id="h-details"></div>
       </div>
@@ -195,7 +213,7 @@ textarea.fc{height:auto;min-height:110px;padding:10px 12px;resize:vertical;line-
           <li><b>แตะ “เริ่มบันทึกบทสนทนา” ครั้งเดียว</b> แล้วคุยกับลูกค้าตามปกติ คุยจบแล้วไมค์จะหยุดเองเมื่อเงียบ (ตั้งเวลาได้ที่ ⚙️) หรือแตะ “จบการสนทนา” ก็ได้ ระบบจะดึงชื่อ เบอร์ และสาขาจากบทสนทนาให้</li>
           <li><b>วางมือถือไว้ใกล้ ๆ ระหว่างพนักงานกับลูกค้า</b> (ห่างไม่เกิน 30 ซม.) หันไมค์ออกจากลำโพงบูธ</li>
           <li><b>ทวนข้อมูลแบบเป็นธรรมชาติ</b> เช่น “คุณสมชายนะคะ เบอร์ 081-234-5678 ถูกไหมคะ” ได้ทั้งยืนยันกับลูกค้า และให้ระบบได้ยินชัดอีกรอบ</li>
-          <li>ระหว่างคุย ดูช่อง <b>ชื่อ / เบอร์ / สาขา</b> ใต้ปุ่ม ถ้าช่องไหนยังเทา ค่อยชวนคุยเรื่องนั้นต่อ ไม่ต้องถามเรียงข้อ</li>
+          <li>ระหว่างคุย ดูช่อง <b>ชื่อ / เบอร์ / สาขา</b> และป้าย<b>แบบสอบถาม</b>ใต้ปุ่ม เรื่องไหนยังเทา ค่อยชวนคุยเรื่องนั้นต่อ ไม่ต้องถามเรียงข้อ ป้ายจะเป็นสีเขียวเมื่อระบบจับคำตอบได้</li>
           <li>ช่อง<b style="background:var(--guess)">สีเหลือง</b> = ระบบเดาจากบทสนทนา ตรวจแล้วกด “ถูกต้อง” ก่อนบันทึก ถ้าผิดพิมพ์แก้ หรือแตะ 🎤 ข้างช่องเพื่อพูดใหม่เฉพาะช่องนั้น</li>
           <li>ใส่รายชื่อสาขาไว้ที่ ⚙️ ระบบจะจับชื่อสาขาได้แม่นขึ้นมาก</li>
         </ol>
@@ -390,14 +408,111 @@ function findBranchIn(text){
   return s.length >= 2 ? s : '';
 }
 
+/* ---------- survey ---------- */
+var BRAND = '(?:เอ็?ม\\s*-?\\s*โอ\\s*-?\\s*ช่?า|em\\s*-?\\s*o\\s*-?\\s*cha)';
+var SURVEY = [
+  { k:'type', short:'คอร์ปอเรท/แฟรนไชส์', q:'ลูกค้าเป็นคอร์ปอเรท หรือ แฟรนไชส์', chips:['คอร์ปอเรท','แฟรนไชส์'],
+    topic:/คอร์ปอเรท|คอปอเรท|คอร์ปอเรต|corporate|แฟรนไชส์|แฟนไชส์|แฟรนไชน์|franchise/i,
+    statement:/(เป็น|ซื้อ|ทำ|เปิด).{0,6}(แฟรนไชส์|แฟนไชส์|แฟรนไชน์|คอร์ปอเรท|คอปอเรท|คอร์ปอเรต)|ของบริษัท|บริษัทแม่|corporate|franchise/i,
+    pick:function(a){
+      var f = /แฟรนไชส์|แฟนไชส์|แฟรนไชน์|franchise/i.test(a), c = /คอร์ปอเรท|คอปอเรท|คอร์ปอเรต|corporate|ของบริษัท|บริษัทแม่/i.test(a);
+      return f && !c ? 'แฟรนไชส์' : c && !f ? 'คอร์ปอเรท' : '';
+    } },
+  { k:'hasProduct', short:'มีสินค้าเอมโอชา', q:'ที่สาขามีสินค้าของเอมโอชาหรือไม่', chips:['มี','ไม่มี'],
+    topic:new RegExp(BRAND + '|สินค้า(ของ)?เรา', 'i'),
+    statement:new RegExp('(ร้าน|สาขา|ผม|ดิฉัน|หนู|เรา).{0,25}(มี|ขาย|วาง|สั่ง).{0,15}' + BRAND + '|' + BRAND + '.{0,10}(ขายอยู่|มีอยู่|วางอยู่)', 'i'),
+    pick:function(a){ return /ไม่มี|ไม่ได้(มี|ขาย|เอา|สั่ง|ลง|วาง)/.test(a) ? 'ไม่มี' : /มี|ขาย|วาง|ใช่|สั่ง/.test(a) ? 'มี' : ''; } },
+  { k:'refill', short:'เติมสินค้าบ่อยไหม', q:'ถ้ามีสินค้าเอมโอชา ขอเติมสินค้าบ่อยหรือไม่', chips:['บ่อย','นาน ๆ ครั้ง','ไม่ค่อยเติม'],
+    topic:/เติม|สั่งเพิ่ม|สั่งของ|รีสต็อก|สต็อก|สต๊อก|restock/i,
+    pick:function(a){
+      return /ไม่ค่อย|ไม่บ่อย|ไม่เคย|น้อย/.test(a) ? 'ไม่ค่อยเติม'
+        : /นาน\s*ๆ|เดือนละ|ทุกเดือน|บางที|บางครั้ง/.test(a) ? 'นาน ๆ ครั้ง'
+        : /บ่อย|ทุก\s*(วัน|อาทิตย์|สัปดาห์)|หมดเร็ว|ขายดี|ประจำ|เรื่อย/.test(a) ? 'บ่อย' : '';
+    } },
+  { k:'inquiry', short:'มีคนมาถามไหม', q:'มีคนมาสอบถามสินค้าของเอมโอชาบ้างหรือไม่', chips:['ถามบ่อย','มีบ้าง','ไม่มีคนถาม'],
+    topic:/(คน|ลูกค้า).{0,15}(ถาม|หา|สอบถาม)|สอบถาม|ถามหา/,
+    pick:function(a){
+      return /ไม่ค่อย|นาน\s*ๆ|บางที|บางคน|นิดหน่อย|มีบ้าง/.test(a) ? 'มีบ้าง'
+        : /ไม่มี|ไม่เคย/.test(a) ? 'ไม่มีคนถาม'
+        : /บ่อย|เยอะ|ประจำ|ทุกวัน|เรื่อย|หลายคน/.test(a) ? 'ถามบ่อย'
+        : /มี|ถาม/.test(a) ? 'มีบ้าง' : '';
+    } },
+  { k:'promoWish', short:'อยากให้ช่วยโปรโมต', q:'อยากให้เอมโอชาช่วยโปรโมตอะไรได้บ้าง', open:true,
+    topic:/โปรโมต|โปรโมท|ประชาสัมพันธ์|สนับสนุน|อยากให้.{0,20}ช่วย|ช่วย.{0,20}(อะไร|หน่อย)/ },
+  { k:'pastPromo', short:'โปรที่เคยทำ', q:'โปรที่เคยทำเป็นอย่างไรบ้าง', open:true,
+    topic:/เคย.{0,15}โปร|โปร.{0,20}(ที่ผ่านมา|ที่เคย|ก่อนหน้า|ครั้งก่อน|เมื่อก่อน)/ },
+  { k:'goodPromo', short:'โปรที่ได้ผลดี', q:'ที่สาขาทำโปรอะไรแล้วได้ผลดีกับยอดขาย', open:true,
+    topic:/ได้ผล|ยอดขาย|ขายดี|ยอดขึ้น|ยอดดี|เวิร์ก|เวิร์ค|ปัง/,
+    statement:/โปร.{0,30}(ได้ผล|ขายดี|ยอดขึ้น|ยอดดี|เวิร์ก|เวิร์ค|ปัง)|(ได้ผล|ยอดขึ้น|ยอดดี).{0,20}โปร/ }
+];
+var QMARK = /ไหม|มั้ย|หรือเปล่า|รึเปล่า|หรือยัง|หรือไม่|หรือ|อะไร|ยังไง|อย่างไร|เป็นไง|ไหน|เท่าไ/;
+// Where a question sentence ends: a yes/no word, or a wh-word/บ้าง closed by a polite particle
+// (a bare "อะไร" is usually mid-sentence, e.g. "โปรอะไรที่ได้ผลดี…").
+var QTAIL = /(ไหม|มั้ย|หรือเปล่า|รึเปล่า|หรือยัง|หรือไม่)\s*(ครับ|คับ|คะ|ค่ะ|นะ|จ๊ะ)*|(อะไร|ยังไง|อย่างไร|เป็นไง|ไหน|บ้าง)\s*(ครับ|คับ|คะ|ค่ะ|นะ|จ๊ะ)+/g;
+function isQuestion(l){ return QMARK.test(l); }
+// Text after the last question word, for when question and answer land in the same utterance.
+function afterQuestion(l){
+  var m, end = -1; QTAIL.lastIndex = 0;
+  while ((m = QTAIL.exec(l))) end = m.index + m[0].length;
+  return end < 0 ? '' : l.slice(end).trim();
+}
+function cleanAnswer(s){ return String(s || '').replace(/^(ครับ|คับ|ค่ะ|คะ|นะ|\s)+/, '').replace(PARTICLES, '').trim(); }
+// Staff ask a question on the topic -> the customer's reply is the next utterance(s).
+// If the topic was never asked, fall back to the customer stating it on their own.
+function surveyAnswer(Q, lines){
+  var i, a;
+  for (i = 0; i < lines.length; i++){
+    if (!Q.topic.test(lines[i]) || !isQuestion(lines[i])) continue;
+    var parts = [afterQuestion(lines[i])];
+    for (var j = i + 1; j < lines.length && j <= i + (Q.open ? 2 : 1) && !isQuestion(lines[j]); j++) parts.push(lines[j]);
+    if (Q.open){
+      a = parts.map(cleanAnswer).filter(Boolean);
+      if (a.length) return a.join(' ').slice(0, 300);
+    } else {
+      for (var p = 0; p < parts.length; p++){ a = Q.pick(parts[p]); if (a) return a; }
+    }
+  }
+  var st = Q.statement || Q.topic;
+  for (i = 0; i < lines.length; i++){
+    if (isQuestion(lines[i]) || !st.test(lines[i])) continue;
+    a = Q.open ? cleanAnswer(lines[i]).slice(0, 300) : Q.pick(lines[i]);
+    if (a) return a;
+  }
+  return '';
+}
+
 /* ---------- form ---------- */
 var F = { name:$('#f-name'), phone:$('#f-phone'), branch:$('#f-branch'), details:$('#f-details') };
 var heard = { name:'', phone:'', branch:'', details:'' };
 var guessed = {};
 var editingId = null;
 
+$('#svFields').innerHTML = SURVEY.map(function(Q, i){
+  var f = 'sv_' + Q.k;
+  return '<div class="field" data-f="' + f + '">' +
+    '<div class="f-hd"><label for="sv-' + Q.k + '">' + (i + 1) + '. ' + esc(Q.q) + '</label>' +
+      '<span class="badge">AI เดา <button data-ok="' + f + '">✓ ถูกต้อง</button></span></div>' +
+    (Q.open
+      ? '<div class="f-row"><textarea class="fc sv-open" id="sv-' + Q.k + '" placeholder="ระบบเติมจากบทสนทนา หรือพิมพ์ / แตะ 🎤"></textarea>' +
+        '<button class="mic" data-mic="' + f + '" aria-label="พูดคำตอบ">🎤</button></div>'
+      : '<input class="fc" id="sv-' + Q.k + '" autocomplete="off" placeholder="เลือกด้านล่าง หรือพิมพ์">' +
+        '<div class="chips">' + Q.chips.map(function(c){ return '<button type="button" data-sv="' + Q.k + '" data-v="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div>') +
+    '<div class="heard" id="h-' + f + '"></div></div>';
+}).join('');
+function svEl(k){ return $('#sv-' + k); }
+function getSurvey(){ var o = {}; SURVEY.forEach(function(Q){ o[Q.k] = svEl(Q.k).value.trim(); }); return o; }
+function syncChips(k){
+  var v = svEl(k).value.trim();
+  document.querySelectorAll('[data-sv="' + k + '"]').forEach(function(b){ b.classList.toggle('on', b.dataset.v === v); });
+}
+function updateSvOk(){ $('#btnSvOk').hidden = !SURVEY.some(function(Q){ return guessed['sv_' + Q.k]; }); }
+
 function fieldEl(f){ return document.querySelector('.field[data-f="' + f + '"]'); }
-function setGuess(f, on){ if (on) guessed[f] = 1; else delete guessed[f]; fieldEl(f).classList.toggle('guess', !!on); }
+function setGuess(f, on){
+  if (on) guessed[f] = 1; else delete guessed[f];
+  fieldEl(f).classList.toggle('guess', !!on);
+  if (f.indexOf('sv_') === 0) updateSvOk();
+}
 function setHeard(f, html, warn){ var el = $('#h-' + f); el.innerHTML = html || ''; el.classList.toggle('warn-t', !!warn); }
 
 function updatePhoneStatus(){
@@ -420,13 +535,16 @@ function updatePhoneStatus(){
 
 function saveDraft(){
   store(LS_DRAFT, { name:F.name.value, phone:F.phone.value, branch:F.branch.value, details:F.details.value,
-    heard:heard, guessed:Object.keys(guessed), editingId:editingId });
+    survey:getSurvey(), heard:heard, guessed:Object.keys(guessed), editingId:editingId });
 }
 function fillForm(o){
   F.name.value = o.name || ''; F.phone.value = o.phone || ''; F.branch.value = o.branch || ''; F.details.value = o.details || '';
   heard = Object.assign({ name:'', phone:'', branch:'', details:'' }, o.heard || {});
   ['name','phone','branch','details'].forEach(function(f){ setHeard(f, heard[f] ? 'ได้ยิน: “' + esc(heard[f]) + '”' : ''); });
-  guessed = {}; ['name','phone','branch'].forEach(function(f){ setGuess(f, (o.guessed || []).indexOf(f) >= 0); });
+  var sv = o.survey || {};
+  SURVEY.forEach(function(Q){ svEl(Q.k).value = sv[Q.k] || ''; syncChips(Q.k); setHeard('sv_' + Q.k, ''); });
+  guessed = {};
+  ['name','phone','branch'].concat(SURVEY.map(function(Q){ return 'sv_' + Q.k; })).forEach(function(f){ setGuess(f, (o.guessed || []).indexOf(f) >= 0); });
   editingId = o.editingId || null;
   $('#editNote').hidden = !editingId;
   $('#btnSave').textContent = editingId ? '💾 บันทึกการแก้ไข' : '💾 บันทึกลูกค้า';
@@ -446,6 +564,21 @@ function clearForm(){ fillForm({}); store(LS_DRAFT, null); }
 F.phone.addEventListener('blur', function(){
   var d = normPhone(digitsOf(F.phone.value));
   if (isValidPhone(d)){ F.phone.value = fmtPhone(d); saveDraft(); }
+});
+SURVEY.forEach(function(Q){
+  svEl(Q.k).addEventListener('input', function(){
+    if (guessed['sv_' + Q.k]) setGuess('sv_' + Q.k, false);
+    syncChips(Q.k); refreshGot(); saveDraft();
+  });
+});
+$('#svFields').addEventListener('click', function(e){
+  var b = e.target.closest('[data-sv]'); if (!b) return;
+  var k = b.dataset.sv, el = svEl(k);
+  el.value = el.value.trim() === b.dataset.v ? '' : b.dataset.v;
+  setGuess('sv_' + k, false); syncChips(k); refreshGot(); saveDraft();
+});
+$('#btnSvOk').addEventListener('click', function(){
+  SURVEY.forEach(function(Q){ setGuess('sv_' + Q.k, false); }); saveDraft();
 });
 document.querySelectorAll('[data-ok]').forEach(function(b){
   b.addEventListener('click', function(){ setGuess(b.dataset.ok, false); saveDraft(); });
@@ -539,6 +672,10 @@ function renderGot(lines){
   var br = F.branch.value.trim() || (lines.length ? findBranchIn(all) : '');
   $('#got').innerHTML = [['👤 ชื่อ', name], ['📞 เบอร์', ph ? fmtPhone(ph) : ''], ['🏪 สาขา', br]].map(function(x){
     return '<div class="' + (x[1] ? 'yes' : '') + '">' + x[0] + '<b>' + esc(x[1] || 'ยังไม่พบ') + '</b></div>';
+  }).join('');
+  $('#svTags').innerHTML = SURVEY.map(function(Q){
+    var done = svEl(Q.k).value.trim() || (lines.length ? surveyAnswer(Q, lines) : '');
+    return '<span class="' + (done ? 'yes' : '') + '">' + (done ? '✓ ' : '') + esc(Q.short) + '</span>';
   }).join('');
 }
 function refreshGot(){ var st = convoState(); renderGot(st ? segLines(st.segs.concat(st.sessionFinals)) : []); }
@@ -651,7 +788,7 @@ function finish(st){
     setHeard(hk, msg, true);
   } else {
     var low = st.segs.some(function(a){ return a[0].c > 0 && a[0].c < LOW_CONF; });
-    APPLY[st.field](text, texts, low, st);
+    (APPLY[st.field] || applySurveyMic)(text, texts, low, st);
     if (st.error && FATAL[st.error]) setHeard(hk, $('#h-' + hk).innerHTML + ' · <b style="color:var(--warn)">หยุดฟังเพราะ: ' + esc(ERR_MSG[st.error] || st.error) + '</b>');
     saveDraft();
   }
@@ -702,11 +839,17 @@ var APPLY = {
     var r = autoExtract(lines, texts);
     var msg = '✓ บันทึกบทสนทนา ' + mmss((st.autoStopped ? st.lastSpeech : Date.now()) - st.t0) + ' นาที' +
       (st.autoStopped ? ' (หยุดเองเพราะเงียบ)' : '') + ' · ' +
-      (r.filled.length ? 'เติมให้: <b>' + r.filled.join(', ') + '</b> — ตรวจช่องสีเหลือง' : 'ไม่พบชื่อ/เบอร์/สาขาใหม่ในบทสนทนา');
+      (r.filled.length ? 'เติมให้: <b>' + r.filled.join(', ') + '</b> — ตรวจช่องสีเหลือง' : 'ไม่พบข้อมูลใหม่ในบทสนทนา');
     if (r.otherPhones.length) msg += ' · <b style="color:var(--warn)">พบเบอร์อื่นด้วย: ' + esc(r.otherPhones.map(fmtPhone).join(', ')) + '</b>';
     setHeard('details', msg + (low ? LOW_NOTE : ''));
   }
 };
+function applySurveyMic(text, texts, low, st){
+  var k = st.field.slice(3), el = svEl(k), cur = el.value.trim();
+  el.value = (cur ? cur + ' ' : '') + cleanAnswer(text);
+  setGuess(st.field, false); syncChips(k);
+  setHeard(st.field, heardLine(text, low));
+}
 // Fill only the fields that are still empty; anything filled here stays yellow until confirmed.
 function autoExtract(lines, texts){
   var filled = [], all = lines.join(' ');
@@ -717,6 +860,13 @@ function autoExtract(lines, texts){
   var cur = normPhone(digitsOf(F.phone.value));
   updatePhoneStatus();
   if (!F.branch.value.trim()){ var b = findBranchIn(all); if (b){ F.branch.value = b; setGuess('branch', true); filled.push('สาขา'); } }
+  var nsv = 0;
+  SURVEY.forEach(function(Q){
+    if (svEl(Q.k).value.trim()) return;
+    var a = surveyAnswer(Q, lines);
+    if (a){ svEl(Q.k).value = a; syncChips(Q.k); setGuess('sv_' + Q.k, true); nsv++; }
+  });
+  if (nsv) filled.push('แบบสอบถาม ' + nsv + ' ข้อ');
   return { filled:filled, otherPhones:phones.filter(function(p){ return p !== cur; }) };
 }
 
@@ -771,7 +921,9 @@ $('#btnSave').addEventListener('click', function(){
   var name = F.name.value.trim(), d = normPhone(digitsOf(F.phone.value)), branch = F.branch.value.trim(), details = F.details.value.trim();
   if (!name && !d){ toast('ใส่ชื่อหรือเบอร์โทรอย่างน้อย 1 อย่าง'); F.name.focus(); return; }
   var warns = [];
-  var g = Object.keys(guessed).map(function(f){ return { name:'ชื่อ', phone:'เบอร์', branch:'สาขา' }[f]; });
+  var GUESS_LABEL = { name:'ชื่อ', phone:'เบอร์', branch:'สาขา' };
+  SURVEY.forEach(function(Q){ GUESS_LABEL['sv_' + Q.k] = Q.short; });
+  var g = Object.keys(guessed).map(function(f){ return GUESS_LABEL[f]; });
   if (g.length) warns.push('ช่องที่ AI เดายังไม่ได้ยืนยัน: ' + g.join(', '));
   if (d && !isValidPhone(d)) warns.push('เบอร์โทรไม่ครบ/ไม่ถูกรูปแบบ (' + d.length + ' หลัก)');
   if (!d) warns.push('ยังไม่มีเบอร์โทร');
@@ -783,7 +935,7 @@ $('#btnSave').addEventListener('click', function(){
   if (d && !isValidPhone(d)) flags.push('เบอร์ไม่ครบ');
   if (g.length) flags.push('AI เดา: ' + g.join(', ') + ' (ไม่ได้ยืนยัน)');
   if (dup) flags.push('เบอร์ซ้ำ');
-  var rec = { name:name, phone:d ? (isValidPhone(d) ? fmtPhone(d) : d) : '', branch:branch, details:details,
+  var rec = { name:name, phone:d ? (isValidPhone(d) ? fmtPhone(d) : d) : '', branch:branch, details:details, survey:getSurvey(),
     heard:heard, flags:flags, updatedAt:now };
   if (editingId){
     var i = leads.findIndex(function(l){ return l.id === editingId; });
@@ -798,19 +950,28 @@ $('#btnSave').addEventListener('click', function(){
   if (wasEditing) showTab('list');
 });
 $('#btnClear').addEventListener('click', function(){
-  var dirty = F.name.value || F.phone.value || F.branch.value || F.details.value;
-  if (dirty && !confirm('ล้างข้อมูลในฟอร์ม?')) return;
+  if (formDirty() && !confirm('ล้างข้อมูลในฟอร์ม?')) return;
   if (active) stopRec();
   clearForm();
 });
 
+function formDirty(){
+  var sv = getSurvey();
+  return !!(F.name.value || F.phone.value || F.branch.value || F.details.value || SURVEY.some(function(Q){ return sv[Q.k]; }));
+}
 var HEARD_LABEL = { name:'ชื่อ', phone:'เบอร์', branch:'สาขา', details:'รายละเอียด' };
+function surveyHtml(sv){
+  sv = sv || {};
+  var rows = SURVEY.filter(function(Q){ return sv[Q.k]; });
+  return rows.length ? '<div class="sv">' + rows.map(function(Q){ return '<span>' + esc(Q.short) + ':</span> ' + esc(sv[Q.k]); }).join('<br>') + '</div>' : '';
+}
 function renderList(){
   $('#cnt').textContent = leads.length;
   var q = $('#q').value.trim().toLowerCase(), qd = digitsOf(q);
   var rows = leads.filter(function(l){
     if (!q) return true;
-    return [l.name, l.branch, l.details, l.event].join(' ').toLowerCase().indexOf(q) >= 0 || (qd && digitsOf(l.phone).indexOf(qd) >= 0);
+    var sv = l.survey || {};
+    return [l.name, l.branch, l.details, l.event].concat(SURVEY.map(function(Q){ return sv[Q.k] || ''; })).join(' ').toLowerCase().indexOf(q) >= 0 || (qd && digitsOf(l.phone).indexOf(qd) >= 0);
   });
   if (!rows.length){ $('#leadList').innerHTML = '<div class="empty">' + (leads.length ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีลูกค้าที่บันทึก') + '</div>'; return; }
   $('#leadList').innerHTML = rows.map(function(l){
@@ -819,6 +980,7 @@ function renderList(){
       '<div class="lead-hd"><b>' + esc(l.name || '(ไม่มีชื่อ)') + '</b><small>' + esc(fmtDate(l.createdAt)) + '</small></div>' +
       '<div class="meta">📞 ' + (l.phone ? '<a href="tel:' + esc(digitsOf(l.phone)) + '">' + esc(l.phone) + '</a>' : '—') +
         ' · 🏪 ' + esc(l.branch || '—') + '</div>' +
+      surveyHtml(l.survey) +
       (l.details ? '<div class="det">' + esc(l.details) + '</div>' : '') +
       (l.flags || []).map(function(f){ return '<span class="flag">⚠ ' + esc(f) + '</span>'; }).join('') +
       (raw.length ? '<details><summary>ข้อความที่ระบบได้ยิน</summary>' + raw.map(function(f){
@@ -836,20 +998,22 @@ $('#leadList').addEventListener('click', function(e){
     if (!confirm('ลบ ' + (l.name || l.phone || 'รายการนี้') + '?')) return;
     leads = leads.filter(function(x){ return x.id !== id; }); persistLeads(); renderList(); return;
   }
-  var dirty = F.name.value || F.phone.value || F.branch.value || F.details.value;
-  if (dirty && !confirm('ฟอร์มมีข้อมูลค้างอยู่ จะแทนที่ด้วยรายการนี้?')) return;
-  fillForm({ name:l.name, phone:l.phone, branch:l.branch, details:l.details, heard:l.heard, editingId:l.id });
+  if (formDirty() && !confirm('ฟอร์มมีข้อมูลค้างอยู่ จะแทนที่ด้วยรายการนี้?')) return;
+  fillForm({ name:l.name, phone:l.phone, branch:l.branch, details:l.details, survey:l.survey, heard:l.heard, editingId:l.id });
   saveDraft(); showTab('capture'); window.scrollTo(0, 0);
 });
 
 function csvCell(v){ return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
 $('#btnExport').addEventListener('click', function(){
   if (!leads.length){ toast('ยังไม่มีข้อมูล'); return; }
-  var head = ['วันที่เวลา','งาน/บูธ','ผู้บันทึก','ชื่อ','เบอร์โทร','เจ้าของสาขา','รายละเอียดที่พูดคุย','หมายเหตุ','ข้อความที่ระบบได้ยิน'];
+  var head = ['วันที่เวลา','งาน/บูธ','ผู้บันทึก','ชื่อ','เบอร์โทร','เจ้าของสาขา']
+    .concat(SURVEY.map(function(Q){ return Q.q; }), ['รายละเอียดที่พูดคุย','หมายเหตุ','ข้อความที่ระบบได้ยิน']);
   var rows = leads.slice().reverse().map(function(l){
     var h = l.heard || {};
     var raw = ['name','phone','branch','details'].filter(function(f){ return h[f]; }).map(function(f){ return HEARD_LABEL[f] + ': ' + h[f]; }).join(' | ');
-    return [new Date(l.createdAt).toLocaleString('th-TH'), l.event, l.staff, l.name, l.phone, l.branch, l.details, (l.flags || []).join('; '), raw];
+    var sv = l.survey || {};
+    return [new Date(l.createdAt).toLocaleString('th-TH'), l.event, l.staff, l.name, l.phone, l.branch]
+      .concat(SURVEY.map(function(Q){ return sv[Q.k] || ''; }), [l.details, (l.flags || []).join('; '), raw]);
   });
   var csv = '﻿' + [head].concat(rows).map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
   var a = document.createElement('a');
