@@ -195,13 +195,14 @@ function card(title: string, lead: Json): string {
 
 async function newLead(source: Json, uid: string, text: string): Promise<string> {
   const [name, ai] = await Promise.all([displayName(source), extractLead(ANTHROPIC_API_KEY, text, [])]);
-  const staff = await sheet("staff", { lineUserId: uid, displayName: name, event: null });
   const lead = {
-    lineUserId: uid, staffName: staff.displayName || name, event: staff.event || "",
+    lineUserId: uid, staffName: name, event: "",
     rawText: ai.ok ? relabel(text, ai.data.speakerRoles) : text,
     ...(ai.ok ? fieldsFrom(ai.data) : {}), note: ai.ok ? "" : `AI อ่านไม่สำเร็จ (${ai.error}) — เก็บข้อความไว้แล้ว`,
   };
-  return card("✅ บันทึกลูกค้าแล้ว", await sheet("append", { lead }));
+  // One call: the sheet (Apps Script v2) updates the staff tab and fills in the staff name and event itself.
+  // The original script ignores `staff` and keeps the LINE name given here.
+  return card("✅ บันทึกลูกค้าแล้ว", await sheet("append", { lead, staff: { lineUserId: uid, displayName: name } }));
 }
 
 async function appendTo(source: Json, uid: string, addition: string): Promise<string> {
