@@ -101,17 +101,51 @@ async function displayName(source: Json): Promise<string> {
   } catch { return ""; }
 }
 
-async function sheet(action: string, args: Json = {}): Promise<any> {
-  if (!SHEET_URL) throw new Error("ยังไม่ได้ตั้งค่า BOOTH_SHEET_URL");
-  const res = await fetch(SHEET_URL, {
-    method: "POST", headers: { "Content-Type": "application/json" }, redirect: "follow",
-    body: JSON.stringify({ action, secret: SHEET_SECRET, ...args }),
-  });
+type SheetReply = { ok: true; result: any } | { ok: false; error: string; retry: boolean };
+
+async function sheetOnce(action: string, args: Json): Promise<SheetReply> {
+  let res: Response;
+  try {
+    res = await fetch(SHEET_URL, {
+      method: "POST", headers: { "Content-Type": "application/json" }, redirect: "follow", signal: AbortSignal.timeout(45_000),
+      body: JSON.stringify({ action, secret: SHEET_SECRET, ...args }),
+    });
+  } catch (e) {
+    console.error("booth-line sheet", action, e);
+    return { ok: false, error: "ติดต่อ Google Sheet ไม่ได้", retry: true };
+  }
   const text = await res.text();
   let j: Json;
-  try { j = JSON.parse(text); } catch { throw new Error(`Google Sheet ตอบไม่ถูกรูปแบบ (HTTP ${res.status})`); }
-  if (!j.success) throw new Error(`Google Sheet: ${j.error}`);
-  return j.result;
+  try { j = JSON.parse(text); } catch {
+    console.error("booth-line sheet", action, res.status, res.url.replace(/\?.*/, ""), text.slice(0, 200));
+    return { ok: false, error: `Google Sheet ตอบไม่ถูกรูปแบบ (HTTP ${res.status})`, retry: true };
+  }
+  if (!j.success) return { ok: false, error: `Google Sheet: ${j.error}`, retry: false };
+  // doGet's reply (no "result") means the POST was turned into a GET somewhere along the redirect.
+  if (!("result" in j)) {
+    console.error("booth-line sheet", action, "reply without result", text.slice(0, 200));
+    return { ok: false, error: "Google Sheet ตอบผิดคำสั่ง", retry: true };
+  }
+  return { ok: true, result: j.result };
+}
+
+// Apps Script answers a POST with a redirect to a one-time result page, and now and then that hop fails
+// (HTTP 404, an HTML page, or doGet's reply), so a failed call is tried once more. An append is retried only
+// after checking the first attempt didn't land, so a slow sheet doesn't get the same customer twice.
+async function sheet(action: string, args: Json = {}): Promise<any> {
+  if (!SHEET_URL) throw new Error("ยังไม่ได้ตั้งค่า BOOTH_SHEET_URL");
+  let r = await sheetOnce(action, args);
+  if (!r.ok && r.retry && action !== "delete") {
+    await new Promise((ok) => setTimeout(ok, 1500));
+    if (action === "append" && args.lead?.lineUserId) {
+      const got = await sheetOnce("latest", { lineUserId: args.lead.lineUserId, withinMinutes: 5 });
+      if (got.ok && got.result && got.result.rawText === args.lead.rawText) return got.result;
+    }
+    r = await sheetOnce(action, args);
+    console.warn("booth-line sheet retry", action, r.ok ? "ok" : r.error);
+  }
+  if (!r.ok) throw new Error(r.error);
+  return r.result;
 }
 
 const digits = (s: unknown) => String(s ?? "").replace(/\D/g, "");
@@ -191,7 +225,13 @@ async function audioLead(ev: Json, uid: string): Promise<string> {
   const many = new Set(stt.lines.map((l) => l.speaker)).size > 1;
   const text = stt.lines.map((l) => (many ? `${l.speaker}: ${l.text}` : l.text)).join("\n");
   const secs = Math.round(stt.duration ?? (Number(ev.message.duration) || 0) / 1000);
-  return `🎧 ถอดเสียง ${secs} วินาทีแล้ว${many ? " (แยกคนพูดให้แล้ว)" : ""}\n\n` + await newLead(ev.source, uid, text);
+  try {
+    return `🎧 ถอดเสียง ${secs} วินาทีแล้ว${many ? " (แยกคนพูดให้แล้ว)" : ""}\n\n` + await newLead(ev.source, uid, text);
+  } catch (e) {
+    // Hand the transcript back so staff can resend it as text instead of transcribing the clip again.
+    console.error("booth-line audio save", e);
+    return `⚠ ${String((e as Error)?.message || e).slice(0, 200)}\nถอดเสียงได้แล้ว แต่ยังไม่ได้บันทึกลงชีต — คัดลอกข้อความด้านล่าง แล้วส่งกลับมาเป็นข้อความได้เลย\n\n${text.slice(0, 4500)}`;
+  }
 }
 
 async function handle(ev: Json) {
