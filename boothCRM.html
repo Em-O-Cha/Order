@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>บันทึกลูกค้าหน้าบูธ</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
+:root{
+  --gd:#1a5c2a; --gm:#2e7d32; --gp:#e8f5e9; --gb:#c8e6c9;
+  --g6:#757575; --g8:#424242; --td:#1b2e1c; --bg:#f3f4f6;
+  --rec:#e03131; --warn:#b54708; --warnbg:#fff4e5; --guess:#fff8db; --guessbd:#f2c94c;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--td);min-height:100vh;padding:16px;}
+.wrap{max-width:560px;margin:0 auto;}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
+.top h1{font-size:20px;font-weight:700;color:var(--gd);}
+.top p{font-size:13px;color:var(--g6);}
+.icon-btn{width:42px;height:42px;border-radius:12px;border:1.5px solid #ddd;background:#fff;font-size:19px;cursor:pointer;flex-shrink:0;}
+.card{background:#fff;border-radius:16px;box-shadow:0 2px 14px rgba(0,0,0,.07);margin-bottom:14px;}
+.bd{padding:16px 18px;}
+.warn{background:var(--warnbg);color:var(--warn);border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:12px;line-height:1.5;}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+.tabs button{height:42px;border-radius:12px;border:1.5px solid #ddd;background:#fff;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;color:var(--g8);}
+.tabs button.on{border-color:var(--gm);background:var(--gp);color:var(--gd);}
+.tip summary{font-size:14px;font-weight:600;color:var(--gd);cursor:pointer;}
+.tip ol{font-size:13px;color:var(--g8);line-height:1.6;margin:8px 0 0 18px;}
+.tip-row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;}
+.mini{height:34px;padding:0 12px;border-radius:9px;border:1.5px solid #ddd;background:#fff;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color:var(--g8);}
+.meter{height:8px;border-radius:4px;background:#eee;overflow:hidden;flex:1;min-width:80px;}
+.meter i{display:block;height:100%;width:0;background:var(--gm);transition:width .08s;}
+.noise-res{font-size:13px;line-height:1.5;margin-top:8px;}
+
+.field{border:1.5px solid transparent;border-radius:12px;padding:8px;margin:0 -8px 10px;}
+.field.guess{background:var(--guess);border-color:var(--guessbd);}
+.f-hd{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;min-height:24px;}
+.f-hd label{font-size:14px;font-weight:700;color:var(--g8);}
+.badge{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#8a6100;}
+.field.guess .badge{display:inline-flex;}
+.badge button{height:24px;padding:0 10px;border-radius:999px;border:none;background:#f2c94c;color:#4d3800;font-family:inherit;font-weight:700;font-size:12px;cursor:pointer;}
+.f-row{display:flex;gap:8px;align-items:flex-start;}
+.fc{height:46px;padding:0 12px;border:1.5px solid #e3e3e3;border-radius:10px;font-size:16px;font-family:inherit;width:100%;background:#fff;color:var(--td);}
+textarea.fc{height:auto;min-height:110px;padding:10px 12px;resize:vertical;line-height:1.5;}
+.fc:focus{outline:none;border-color:var(--gm);}
+.field.bad .fc{border-color:var(--rec);}
+.mic{width:52px;height:46px;border-radius:12px;border:none;background:linear-gradient(135deg,#00b894,#00796b);color:#fff;font-size:21px;cursor:pointer;flex-shrink:0;
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
+.mic.on{background:var(--rec);animation:pulse 1s infinite;}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(224,49,49,.5)}70%{box-shadow:0 0 0 12px rgba(224,49,49,0)}100%{box-shadow:0 0 0 0 rgba(224,49,49,0)}}
+.rec-btn{width:100%;min-height:64px;border:none;border-radius:16px;color:#fff;font-family:inherit;font-size:18px;font-weight:700;cursor:pointer;
+  background:linear-gradient(135deg,#00b894,#00796b);}
+.rec-btn.on{background:var(--rec);animation:pulse 1.2s infinite;}
+.rec-btn small{display:block;font-size:12.5px;font-weight:500;opacity:.9;}
+.live-box{margin-top:12px;background:#f7f7f8;border-radius:12px;padding:10px 12px;font-size:14px;line-height:1.55;color:var(--g8);
+  max-height:170px;overflow:auto;word-break:break-word;}
+.live-box:empty{display:none;}
+.live-box .interim{color:#aaa;}
+.got{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px;}
+.got div{border-radius:10px;padding:6px 8px;font-size:12px;background:#f1f3f5;color:#868e96;line-height:1.35;min-width:0;}
+.got div b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.got div.yes{background:var(--gp);color:var(--gd);}
+.sec-t{font-size:13px;font-weight:700;color:var(--g6);margin:2px 0 10px;}
+.side-btns{display:flex;flex-direction:column;gap:6px;}
+.speak{width:52px;height:34px;border-radius:10px;border:1.5px solid #ddd;background:#fff;font-size:16px;cursor:pointer;}
+.heard{font-size:12.5px;color:var(--g6);margin-top:5px;line-height:1.45;word-break:break-word;}
+.heard .live{color:var(--rec);font-weight:600;}
+.heard .interim{color:#aaa;}
+.heard.warn-t{color:var(--warn);}
+.status{font-size:13px;margin-top:5px;line-height:1.4;}
+.status.ok{color:var(--gm);}
+.status.ok b{font-size:20px;letter-spacing:.04em;}
+.status.bad{color:var(--rec);font-weight:600;}
+.status.dup{color:var(--warn);font-weight:600;}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.chips button{height:28px;padding:0 10px;border-radius:999px;border:1.5px solid #ddd;background:#fff;font-family:inherit;font-size:12.5px;cursor:pointer;color:var(--g8);}
+
+.btn{width:100%;height:50px;border:none;border-radius:12px;color:#fff;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;
+  background:linear-gradient(135deg,#00b894,#00796b);}
+.btn.gray{background:#fff;color:var(--g8);border:1.5px solid #ddd;}
+.btn.red{background:linear-gradient(135deg,#cb2d3e,#ef473a);}
+.btns{display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-top:6px;}
+.edit-note{font-size:13px;color:#1a4b8c;background:#e3edf9;border-radius:10px;padding:8px 12px;margin-bottom:10px;}
+
+.list-tools{display:flex;gap:8px;margin-bottom:12px;}
+.list-tools .fc{height:42px;font-size:15px;}
+.list-tools .mini{height:42px;white-space:nowrap;}
+.lead{padding:14px 16px;border-bottom:1px solid #f1f1f1;}
+.lead:last-child{border-bottom:none;}
+.lead-hd{display:flex;justify-content:space-between;gap:8px;align-items:baseline;}
+.lead-hd b{font-size:16px;}
+.lead-hd small{font-size:12px;color:var(--g6);white-space:nowrap;}
+.lead .meta{font-size:13.5px;color:var(--g8);margin-top:3px;}
+.lead .meta a{color:var(--gm);font-weight:600;text-decoration:none;}
+.lead .det{font-size:13.5px;color:var(--g8);margin-top:6px;white-space:pre-wrap;line-height:1.5;}
+.lead .flag{display:inline-block;font-size:11.5px;font-weight:600;color:var(--warn);background:var(--warnbg);border-radius:999px;padding:1px 8px;margin:4px 4px 0 0;}
+.lead details{margin-top:6px;font-size:12.5px;color:var(--g6);}
+.lead details div{margin-top:3px;word-break:break-word;}
+.lead-act{display:flex;gap:6px;margin-top:8px;}
+.empty{padding:28px 18px;text-align:center;color:var(--g6);font-size:14px;}
+
+.ovl{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:flex-end;justify-content:center;z-index:50;}
+.ovl.show{display:flex;}
+.sheet{background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:560px;max-height:90vh;overflow:auto;padding:18px;}
+.sheet h2{font-size:18px;margin-bottom:12px;color:var(--gd);}
+.fg{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+.fg label{font-size:13px;font-weight:600;color:var(--g8);}
+.hint{font-size:12px;color:var(--g6);}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#263238;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;
+  max-width:calc(100% - 32px);opacity:0;pointer-events:none;transition:opacity .2s;z-index:60;text-align:center;}
+.toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>🎙️ บันทึกลูกค้าหน้าบูธ</h1>
+      <p id="evtLine"></p>
+    </div>
+    <button class="icon-btn" id="btnSettings" aria-label="ตั้งค่า">⚙️</button>
+  </header>
+
+  <div id="srWarn" class="warn" hidden></div>
+
+  <div class="tabs">
+    <button data-tab="capture" class="on">➕ บันทึกลูกค้า</button>
+    <button data-tab="list">📋 รายชื่อ (<span id="cnt">0</span>)</button>
+  </div>
+
+  <!-- ===== บันทึก ===== -->
+  <section id="tab-capture">
+    <div class="card"><div class="bd">
+      <button class="rec-btn" id="btnConvo">🎙️ เริ่มบันทึกบทสนทนา<small>แตะครั้งเดียว แล้วคุยตามปกติ</small></button>
+      <div class="got" id="got"></div>
+      <div class="live-box" id="convoLive"></div>
+    </div></div>
+
+    <div class="card"><div class="bd">
+      <div class="edit-note" id="editNote" hidden>✏️ กำลังแก้ไขรายการเดิม</div>
+      <div class="sec-t">ตรวจข้อมูลก่อนบันทึก</div>
+
+      <div class="field" data-f="name">
+        <div class="f-hd"><label for="f-name">1. ชื่อลูกค้า</label>
+          <span class="badge">AI เดา <button data-ok="name">✓ ถูกต้อง</button></span></div>
+        <div class="f-row">
+          <input class="fc" id="f-name" autocomplete="off" placeholder="ระบบเติมให้จากบทสนทนา หรือพิมพ์">
+          <button class="mic" data-mic="name" aria-label="พูดชื่อ">🎤</button>
+        </div>
+        <div class="heard" id="h-name"></div>
+      </div>
+
+      <div class="field" data-f="phone">
+        <div class="f-hd"><label for="f-phone">2. เบอร์โทร</label>
+          <span class="badge">AI เดา <button data-ok="phone">✓ ถูกต้อง</button></span></div>
+        <div class="f-row">
+          <input class="fc" id="f-phone" type="tel" inputmode="tel" autocomplete="off" placeholder="0xx-xxx-xxxx">
+          <div class="side-btns">
+            <button class="mic" data-mic="phone" aria-label="พูดเบอร์โทร">🎤</button>
+            <button class="speak" id="btnSpeakPhone" title="อ่านทวนเบอร์ให้ลูกค้าฟัง" aria-label="อ่านทวนเบอร์">🔊</button>
+          </div>
+        </div>
+        <div class="status" id="s-phone"></div>
+        <div class="heard" id="h-phone"></div>
+      </div>
+
+      <div class="field" data-f="branch">
+        <div class="f-hd"><label for="f-branch">3. เป็นเจ้าของสาขา</label>
+          <span class="badge">AI เดา <button data-ok="branch">✓ ถูกต้อง</button></span></div>
+        <div class="f-row">
+          <input class="fc" id="f-branch" list="branchList" autocomplete="off" placeholder="พูด/พิมพ์ชื่อสาขา">
+          <button class="mic" data-mic="branch" aria-label="พูดชื่อสาขา">🎤</button>
+        </div>
+        <datalist id="branchList"></datalist>
+        <div class="chips" id="branchChips"></div>
+        <div class="heard" id="h-branch"></div>
+      </div>
+
+      <div class="field" data-f="details">
+        <div class="f-hd"><label for="f-details">4. รายละเอียดที่พูดคุย</label></div>
+        <textarea class="fc" id="f-details" placeholder="บทสนทนาจะมาอยู่ที่นี่ ลบส่วนที่ไม่เกี่ยวหรือพิมพ์สรุปเพิ่มได้"></textarea>
+        <div class="heard" id="h-details"></div>
+      </div>
+
+      <div class="btns">
+        <button class="btn gray" id="btnClear">ล้างฟอร์ม</button>
+        <button class="btn" id="btnSave">💾 บันทึกลูกค้า</button>
+      </div>
+    </div></div>
+    <div class="card"><div class="bd tip">
+      <details id="tipBox">
+        <summary>💡 วิธีใช้ให้แม่น แม้บูธเสียงดัง</summary>
+        <ol>
+          <li><b>แตะ “เริ่มบันทึกบทสนทนา” ครั้งเดียว</b> แล้วคุยกับลูกค้าตามปกติ คุยจบแตะ “จบการสนทนา” ระบบจะดึงชื่อ เบอร์ และสาขาจากบทสนทนาให้</li>
+          <li><b>วางมือถือไว้ใกล้ ๆ ระหว่างพนักงานกับลูกค้า</b> (ห่างไม่เกิน 30 ซม.) หันไมค์ออกจากลำโพงบูธ</li>
+          <li><b>ทวนข้อมูลแบบเป็นธรรมชาติ</b> เช่น “คุณสมชายนะคะ เบอร์ 081-234-5678 ถูกไหมคะ” ได้ทั้งยืนยันกับลูกค้า และให้ระบบได้ยินชัดอีกรอบ</li>
+          <li>ระหว่างคุย ดูช่อง <b>ชื่อ / เบอร์ / สาขา</b> ใต้ปุ่ม ถ้าช่องไหนยังเทา ค่อยชวนคุยเรื่องนั้นต่อ ไม่ต้องถามเรียงข้อ</li>
+          <li>ช่อง<b style="background:var(--guess)">สีเหลือง</b> = ระบบเดาจากบทสนทนา ตรวจแล้วกด “ถูกต้อง” ก่อนบันทึก ถ้าผิดพิมพ์แก้ หรือแตะ 🎤 ข้างช่องเพื่อพูดใหม่เฉพาะช่องนั้น</li>
+          <li>ใส่รายชื่อสาขาไว้ที่ ⚙️ ระบบจะจับชื่อสาขาได้แม่นขึ้นมาก</li>
+        </ol>
+      </details>
+      <div class="tip-row">
+        <button class="mini" id="btnNoise">🔊 วัดเสียงรอบข้าง</button>
+        <div class="meter"><i id="noiseBar"></i></div>
+      </div>
+      <div class="noise-res" id="noiseRes"></div>
+    </div></div>
+
+  </section>
+
+  <!-- ===== รายชื่อ ===== -->
+  <section id="tab-list" hidden>
+    <div class="list-tools">
+      <input class="fc" id="q" placeholder="ค้นหา ชื่อ / เบอร์ / สาขา / รายละเอียด">
+      <button class="mini" id="btnExport">⬇️ CSV</button>
+    </div>
+    <div class="card" id="leadList"></div>
+    <p class="hint" style="text-align:center">ข้อมูลเก็บอยู่ในเครื่องนี้เท่านั้น — กด ⬇️ CSV ส่งออกเป็นระยะ (เปิดด้วย Excel / Google Sheets ได้)</p>
+  </section>
+</div>
+
+<!-- ===== ตั้งค่า ===== -->
+<div class="ovl" id="ovlSettings">
+  <div class="sheet">
+    <h2>⚙️ ตั้งค่า</h2>
+    <div class="fg"><label for="cfgEvent">ชื่องาน / บูธ</label>
+      <input class="fc" id="cfgEvent" placeholder="เช่น งานแฟรนไชส์ ไบเทค ต.ค. 69"></div>
+    <div class="fg"><label for="cfgStaff">ชื่อผู้บันทึก</label>
+      <input class="fc" id="cfgStaff" placeholder="ชื่อพนักงานที่ใช้เครื่องนี้"></div>
+    <div class="fg"><label for="cfgBranches">รายชื่อสาขา (บรรทัดละ 1 สาขา)</label>
+      <textarea class="fc" id="cfgBranches" style="min-height:140px" placeholder="สาขาลาดพร้าว&#10;สาขาบางนา&#10;สาขาเชียงใหม่"></textarea>
+      <span class="hint">ใส่ไว้แล้วระบบจะจับคู่เสียงที่ได้ยินกับชื่อสาขาที่ถูกต้อง ลดการสะกดผิด</span></div>
+    <div class="btns">
+      <button class="btn gray" id="btnCfgClose">ปิด</button>
+      <button class="btn" id="btnCfgSave">บันทึกการตั้งค่า</button>
+    </div>
+    <hr style="border:none;border-top:1px solid #eee;margin:18px 0">
+    <button class="btn red" id="btnWipe">🗑️ ลบรายชื่อลูกค้าทั้งหมดในเครื่องนี้</button>
+    <p class="hint" style="margin-top:6px">ควรส่งออก CSV ก่อนลบ</p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- storage ---------- */
+var LS_LEADS = 'boothCRM.leads.v1', LS_CFG = 'boothCRM.cfg.v1', LS_DRAFT = 'boothCRM.draft.v1';
+function load(k, def){ try{ var v = localStorage.getItem(k); return v ? JSON.parse(v) : def; }catch(e){ return def; } }
+function store(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch(e){ return false; } }
+try{ if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+
+var leads = load(LS_LEADS, []);
+var cfg = load(LS_CFG, { event:'', staff:'', branches:[] });
+
+/* ---------- helpers ---------- */
+function $(s){ return document.querySelector(s); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+var toastT;
+function toast(msg, ms){ var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function(){ t.classList.remove('show'); }, ms || 2600); }
+function fmtDate(ts){ var d = new Date(ts); return d.toLocaleDateString('th-TH', {day:'numeric', month:'short'}) + ' ' + d.toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'}); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+/* ---------- Thai text parsing ---------- */
+var PARTICLES = /(\s*(ครับผม|ครับ|คับ|ค่ะ|คะ|จ้ะ|จ้า|นะ|น่ะ|จ๊ะ))+\s*$/;
+var WORD_DIGIT = [['ศูนย์','0'],['หนึ่ง','1'],['เอ็ด','1'],['สอง','2'],['สาม','3'],['สี่','4'],['ห้า','5'],['หก','6'],['เจ็ด','7'],['แปด','8'],['เก้า','9']];
+var DIGIT_WORD = ['ศูนย์','หนึ่ง','สอง','สาม','สี่','ห้า','หก','เจ็ด','แปด','เก้า'];
+
+function toDigits(s){
+  s = String(s || '').replace(/[๐-๙]/g, function(d){ return String('๐๑๒๓๔๕๖๗๘๙'.indexOf(d)); });
+  s = s.replace(/โทรศัพท์|โทร|เบอร์/g, ' ');
+  WORD_DIGIT.forEach(function(p){ s = s.split(p[0]).join(p[1]); });
+  return s;
+}
+function digitsOf(s){ return String(s || '').replace(/\D/g, ''); }
+function normPhone(d){ if (/^66\d{9}$/.test(d)) return '0' + d.slice(2); return d; }
+function isValidPhone(d){ return /^0[689]\d{8}$/.test(d) || /^0[2-7]\d{7}$/.test(d); }
+function fmtPhone(d){
+  if (/^0\d{9}$/.test(d)) return d.slice(0,3) + '-' + d.slice(3,6) + '-' + d.slice(6);
+  if (/^02\d{7}$/.test(d)) return d.slice(0,2) + '-' + d.slice(2,5) + '-' + d.slice(5);
+  if (/^0\d{8}$/.test(d)) return d.slice(0,3) + '-' + d.slice(3,5) + '-' + d.slice(5);
+  return d;
+}
+// The phone field only ever hears a number, so every digit spoken counts.
+function parsePhoneSpoken(text){
+  var d = normPhone(digitsOf(toDigits(text)));
+  return { digits:d, valid:isValidPhone(d) };
+}
+// In free conversation, collect every valid number. Prices or other numbers spoken next to
+// the phone can merge into one digit run, so also scan inside long runs for a mobile number.
+function findPhonesIn(text){
+  var out = [], runs = toDigits(text).match(/\+?\d[\d\s\-.]{7,40}\d/g) || [];
+  function add(d){ if (out.indexOf(d) < 0) out.push(d); }
+  runs.forEach(function(r){
+    var d = normPhone(digitsOf(r));
+    if (isValidPhone(d)){ add(d); return; }
+    for (var i = 0; i + 10 <= d.length; i++){
+      var w = d.substr(i, 10);
+      if (/^0[689]\d{8}$/.test(w)){ add(w); i += 9; }
+    }
+  });
+  return out;
+}
+
+function cleanName(text){
+  var s = String(text || '').trim();
+  s = s.replace(/^สวัสดี(ครับ|ค่ะ|คะ)?\s*/, '');
+  s = s.replace(/^(ลูกค้า|ผม|ดิฉัน|ฉัน|หนู|พี่|เรา)?\s*ชื่อ(เล่น)?\s*(ว่า)?\s*/, '');
+  s = s.replace(/^คุณ\s*/, '');
+  s = s.replace(PARTICLES, '');
+  return s.trim();
+}
+var NAME_STOP = /(ครับ|คับ|ค่ะ|คะ|นะ|เบอร์|โทร|สาขา|อยู่|เป็น|มาจาก|และ|แล้ว|ตอนนี้|สนใจ|\d)/;
+var ASK_NAME = /ชื่อ(?:เล่น|จริง|เต็ม)?\s*(?:อะไร|ไร|หน่อย|ด้วย)|ขอ(?:ทราบ)?ชื่อ|เรียก(?:ว่า)?(?:อะไร|ยังไง)/;
+var NOT_NAME = /^(ได้|ใช่|ไม่|โอเค|อะไร|หน่อย|ด้วย)/;
+function nameToken(s){
+  s = cleanName(String(s || '').replace(/^(ครับ|คับ|ค่ะ|คะ|นะ|\s)+/, '')).split(NAME_STOP)[0].trim();
+  return s.length >= 2 && s.length <= 30 && !NOT_NAME.test(s) ? s : '';
+}
+// lines = one entry per utterance, so a question ("ขอทราบชื่อหน่อยค่ะ") can be paired with the answer that follows.
+function findNameIn(lines){
+  var re = /ชื่อ(?:เล่น|จริง|เต็ม)?\s*(?:ว่า)?\s*(?!อะไร|ไร|หน่อย|ด้วย|ร้าน|สาขา|บริษัท|เสียง)(?:คุณ\s*)?(\S+(?:\s+\S+)?)/g, m, i;
+  for (i = 0; i < lines.length; i++){
+    if (ASK_NAME.test(lines[i])) continue;
+    re.lastIndex = 0;
+    while ((m = re.exec(lines[i]))){ var n = nameToken(m[1]); if (n) return n; }
+  }
+  for (i = 0; i < lines.length; i++){
+    var q = lines[i].match(ASK_NAME); if (!q) continue;
+    var rest = lines[i].slice(q.index + q[0].length).replace(/^(\s|อะไร|ไร|หน่อย|ด้วย|ครับ|คับ|ค่ะ|คะ|นะ|ได้ไหม|ได้มั้ย)+/, '');
+    var n2 = nameToken(rest) || nameToken(lines[i + 1]);
+    if (n2) return n2;
+  }
+  return '';
+}
+
+var SOUND_ALIKE = { 'ศ':'ส','ษ':'ส','ซ':'ส','ฬ':'ล','ร':'ล','ฏ':'ต','ฎ':'ด','ธ':'ท','ฑ':'ท','ฒ':'ท','ภ':'พ','ฆ':'ค','ฅ':'ค','ณ':'น','ญ':'ย','ฐ':'ถ' };
+function normBranch(s){
+  return String(s || '').toLowerCase().replace(/สาขา|ครับ|คับ|ค่ะ|คะ|นะ|เป็นเจ้าของ|เจ้าของ|[\s\-_.(),]/g, '')
+    .replace(/[่้๊๋์็]/g, '').replace(/[ศษซฬรฏฎธฑฒภฆฅณญฐ]/g, function(c){ return SOUND_ALIKE[c]; });
+}
+function bigrams(s){ var a = []; for (var i = 0; i < s.length - 1; i++) a.push(s.substr(i, 2)); return a; }
+function dice(a, b){
+  if (!a || !b) return 0; if (a === b) return 1;
+  var x = bigrams(a), y = bigrams(b); if (!x.length || !y.length) return 0;
+  var hit = 0, pool = y.slice();
+  x.forEach(function(g){ var k = pool.indexOf(g); if (k >= 0){ hit++; pool.splice(k, 1); } });
+  return 2 * hit / (x.length + y.length);
+}
+function matchBranch(heard){
+  var n = normBranch(heard), best = null;
+  if (!n) return null;
+  cfg.branches.forEach(function(b){
+    var nb = normBranch(b); if (!nb) return;
+    var sc = n === nb ? 1 : ((n.indexOf(nb) >= 0 || nb.indexOf(n) >= 0) && Math.min(n.length, nb.length) >= 2 ? 0.9 : dice(n, nb));
+    if (!best || sc > best.score) best = { name:b, score:sc };
+  });
+  return best && best.score >= 0.5 ? best : null;
+}
+var NO_BRANCH = 'ยังไม่มีสาขา';
+var NO_BRANCH_RE = /ยังไม่มีสาขา|ไม่มีสาขา|ไม่ได้เป็นเจ้าของ/;
+// Exact mention of a configured branch wins; otherwise slide over the conversation for a close (misheard) spelling.
+function findBranchIn(text){
+  if (NO_BRANCH_RE.test(text)) return NO_BRANCH;
+  var n = normBranch(text), best = null;
+  cfg.branches.forEach(function(b){
+    var nb = normBranch(b); if (nb.length < 2) return;
+    var sc = n.indexOf(nb) >= 0 ? 1 : 0;
+    if (!sc && nb.length >= 3){
+      for (var i = 0; i + nb.length <= n.length + 1; i++){ var d = dice(n.substr(i, nb.length + 1), nb); if (d > sc) sc = d; }
+    }
+    if (sc >= 0.75 && (!best || sc > best.score || (sc === best.score && nb.length > best.len))) best = { name:b, score:sc, len:nb.length };
+  });
+  if (best) return best.name;
+  var m = String(text).match(/สาขา\s*(?!อะไร|ไหน)([^\s]+)/);
+  if (!m) return '';
+  var s = m[1].split(NAME_STOP)[0].trim();
+  return s.length >= 2 ? s : '';
+}
+
+/* ---------- form ---------- */
+var F = { name:$('#f-name'), phone:$('#f-phone'), branch:$('#f-branch'), details:$('#f-details') };
+var heard = { name:'', phone:'', branch:'', details:'' };
+var guessed = {};
+var editingId = null;
+
+function fieldEl(f){ return document.querySelector('.field[data-f="' + f + '"]'); }
+function setGuess(f, on){ if (on) guessed[f] = 1; else delete guessed[f]; fieldEl(f).classList.toggle('guess', !!on); }
+function setHeard(f, html, warn){ var el = $('#h-' + f); el.innerHTML = html || ''; el.classList.toggle('warn-t', !!warn); }
+
+function updatePhoneStatus(){
+  var d = normPhone(digitsOf(F.phone.value)), el = $('#s-phone'), fe = fieldEl('phone');
+  fe.classList.remove('bad');
+  if (!d){ el.className = 'status'; el.innerHTML = ''; return; }
+  var dup = leads.filter(function(l){ return l.id !== editingId && digitsOf(l.phone) === d; })[0];
+  if (!isValidPhone(d)){
+    fe.classList.add('bad');
+    el.className = 'status bad';
+    el.textContent = '⚠ มี ' + d.length + ' หลัก — เบอร์มือถือต้องมี 10 หลัก ขึ้นต้น 06 / 08 / 09';
+  } else if (dup){
+    el.className = 'status dup';
+    el.textContent = '⚠ เบอร์นี้บันทึกไว้แล้ว: ' + (dup.name || '(ไม่มีชื่อ)') + ' · ' + fmtDate(dup.createdAt);
+  } else {
+    el.className = 'status ok';
+    el.innerHTML = '✓ <b>' + esc(fmtPhone(d)) + '</b>';
+  }
+}
+
+function saveDraft(){
+  store(LS_DRAFT, { name:F.name.value, phone:F.phone.value, branch:F.branch.value, details:F.details.value,
+    heard:heard, guessed:Object.keys(guessed), editingId:editingId });
+}
+function fillForm(o){
+  F.name.value = o.name || ''; F.phone.value = o.phone || ''; F.branch.value = o.branch || ''; F.details.value = o.details || '';
+  heard = Object.assign({ name:'', phone:'', branch:'', details:'' }, o.heard || {});
+  ['name','phone','branch','details'].forEach(function(f){ setHeard(f, heard[f] ? 'ได้ยิน: “' + esc(heard[f]) + '”' : ''); });
+  guessed = {}; ['name','phone','branch'].forEach(function(f){ setGuess(f, (o.guessed || []).indexOf(f) >= 0); });
+  editingId = o.editingId || null;
+  $('#editNote').hidden = !editingId;
+  $('#btnSave').textContent = editingId ? '💾 บันทึกการแก้ไข' : '💾 บันทึกลูกค้า';
+  updatePhoneStatus();
+  refreshGot(); renderConvoBtn();
+}
+function clearForm(){ fillForm({}); store(LS_DRAFT, null); }
+
+['name','phone','branch','details'].forEach(function(f){
+  F[f].addEventListener('input', function(){
+    if (guessed[f]) setGuess(f, false);
+    if (f === 'phone') updatePhoneStatus();
+    refreshGot(); if (f === 'details') renderConvoBtn();
+    saveDraft();
+  });
+});
+F.phone.addEventListener('blur', function(){
+  var d = normPhone(digitsOf(F.phone.value));
+  if (isValidPhone(d)){ F.phone.value = fmtPhone(d); saveDraft(); }
+});
+document.querySelectorAll('[data-ok]').forEach(function(b){
+  b.addEventListener('click', function(){ setGuess(b.dataset.ok, false); saveDraft(); });
+});
+
+/* read the number back so the customer can confirm it */
+$('#btnSpeakPhone').addEventListener('click', function(){
+  var d = normPhone(digitsOf(F.phone.value));
+  if (!d){ toast('ยังไม่มีเบอร์ให้อ่าน'); return; }
+  if (!('speechSynthesis' in window)){ toast('เครื่องนี้อ่านออกเสียงไม่ได้ — ให้ลูกค้าดูหน้าจอแทน'); return; }
+  var groups = fmtPhone(d).split('-').map(function(g){ return g.split('').map(function(c){ return DIGIT_WORD[+c]; }).join(' '); });
+  var u = new SpeechSynthesisUtterance(groups.join(', '));
+  u.lang = 'th-TH'; u.rate = 0.85;
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+});
+
+/* ---------- speech recognition ---------- */
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+var LOW_CONF = 0.6;
+var FATAL = { 'not-allowed':1, 'service-not-allowed':1, 'audio-capture':1, 'network':1, 'language-not-supported':1 };
+var ERR_MSG = {
+  'not-allowed':'ไม่ได้รับอนุญาตใช้ไมโครโฟน — กดอนุญาตที่แถบที่อยู่ของเบราว์เซอร์',
+  'service-not-allowed':'เบราว์เซอร์ไม่อนุญาตบริการแปลงเสียง — ลองใช้ Chrome',
+  'audio-capture':'ไม่พบไมโครโฟน',
+  'network':'แปลงเสียงต้องใช้อินเทอร์เน็ต — ตรวจสัญญาณ หรือพิมพ์แทน',
+  'no-speech':'ไม่ได้ยินเสียงพูด ลองพูดใกล้ไมค์อีกครั้ง',
+  'language-not-supported':'เครื่องนี้ไม่รองรับการฟังภาษาไทย'
+};
+var active = null, pendingStart = null;
+
+if (!SR){
+  var w = $('#srWarn'); w.hidden = false;
+  w.innerHTML = '⚠ เบราว์เซอร์นี้ยังไม่รองรับการพูดแทนพิมพ์ — แนะนำเปิดด้วย <b>Google Chrome</b> (Android / คอมพิวเตอร์) หรือใช้ปุ่มไมค์บนคีย์บอร์ดมือถือพิมพ์ด้วยเสียงแทน';
+} else if (!window.isSecureContext){
+  var w2 = $('#srWarn'); w2.hidden = false;
+  w2.textContent = '⚠ ต้องเปิดหน้านี้ผ่าน https:// จึงจะใช้ไมโครโฟนได้';
+}
+
+// Android Chrome sometimes repeats earlier text inside later results; keep the longest version.
+function dedupe(finals){
+  var out = [];
+  finals.forEach(function(alts){
+    var t = alts[0].t, prev = out[out.length - 1];
+    if (prev && t.indexOf(prev[0].t) === 0) out[out.length - 1] = alts;
+    else if (prev && prev[0].t.indexOf(t) >= 0) return;
+    else out.push(alts);
+  });
+  return out;
+}
+function collect(st){
+  st.segs = st.segs.concat(st.sessionFinals); st.sessionFinals = [];
+  if (st.interim){ st.segs.push([{ t:st.interim, c:0 }]); st.interim = ''; }
+}
+// Joined text for the 1st, 2nd and 3rd recognizer guesses, so a wrong top guess can fall back.
+function altTexts(segs){
+  var out = [];
+  for (var k = 0; k < 3; k++){
+    var s = segs.map(function(a){ return (a[k] || a[0]).t; }).join(' ').replace(/\s+/g, ' ').trim();
+    if (s && out.indexOf(s) < 0) out.push(s);
+  }
+  return out;
+}
+function mmss(ms){ var x = Math.floor(ms / 1000); return Math.floor(x / 60) + ':' + ('0' + x % 60).slice(-2); }
+function segLines(segs){ return segs.map(function(a){ return a[0].t; }).filter(Boolean); }
+function convoState(){ return active && active.field === 'convo' ? active : null; }
+
+function renderConvoBtn(){
+  var b = $('#btnConvo'), st = convoState();
+  b.classList.toggle('on', !!st);
+  if (st) b.innerHTML = st.stopping ? '⏳ กำลังสรุปข้อมูล…<small>รอสักครู่</small>'
+    : '⏹ จบการสนทนา · ' + mmss(Date.now() - st.t0) + '<small>กำลังฟัง… คุยกับลูกค้าตามปกติได้เลย</small>';
+  else b.innerHTML = F.details.value.trim() ? '🎙️ บันทึกบทสนทนาต่อ<small>ต่อท้ายบทสนทนาเดิมของลูกค้าคนนี้</small>'
+    : '🎙️ เริ่มบันทึกบทสนทนา<small>แตะครั้งเดียว แล้วคุยตามปกติ</small>';
+}
+// What the system has picked up so far, so staff can steer the chat toward what's missing.
+function renderGot(lines){
+  lines = lines || [];
+  var all = lines.join(' '), d = normPhone(digitsOf(F.phone.value));
+  var name = F.name.value.trim() || (lines.length ? findNameIn(lines) : '');
+  var ph = d || (lines.length ? findPhonesIn(all)[0] || '' : '');
+  var br = F.branch.value.trim() || (lines.length ? findBranchIn(all) : '');
+  $('#got').innerHTML = [['👤 ชื่อ', name], ['📞 เบอร์', ph ? fmtPhone(ph) : ''], ['🏪 สาขา', br]].map(function(x){
+    return '<div class="' + (x[1] ? 'yes' : '') + '">' + x[0] + '<b>' + esc(x[1] || 'ยังไม่พบ') + '</b></div>';
+  }).join('');
+}
+function refreshGot(){ var st = convoState(); renderGot(st ? segLines(st.segs.concat(st.sessionFinals)) : []); }
+
+function setMicUI(f, on){
+  if (f === 'convo'){ renderConvoBtn(); return; }
+  var b = document.querySelector('[data-mic="' + f + '"]');
+  b.classList.toggle('on', on); b.textContent = on ? '⏹' : '🎤';
+}
+function renderLive(st){
+  var lines = segLines(st.segs.concat(st.sessionFinals));
+  if (st.field === 'convo'){
+    var box = $('#convoLive');
+    box.innerHTML = lines.map(esc).join('<br>') + (st.interim ? (lines.length ? '<br>' : '') + '<span class="interim">' + esc(st.interim) + '</span>' : '');
+    box.scrollTop = box.scrollHeight;
+    // Re-scan at most every ~1s, but always catch up after the latest words.
+    if (!st.gotT) st.gotT = setTimeout(function(){ st.gotT = null; if (!st.done) renderGot(segLines(st.segs.concat(st.sessionFinals))); }, 800);
+    return;
+  }
+  setHeard(st.field, '<span class="live">● กำลังฟัง…</span> ' + esc(lines.join(' ')) + ' <span class="interim">' + esc(st.interim) + '</span>');
+}
+
+// Keep the screen on while a conversation is recorded; a locked screen ends recognition.
+var wakeLock = null;
+function keepAwake(on){
+  try {
+    if (on && navigator.wakeLock && !wakeLock){
+      navigator.wakeLock.request('screen').then(function(l){
+        if (!convoState()){ l.release(); return; }
+        wakeLock = l; l.addEventListener('release', function(){ wakeLock = null; });
+      }).catch(function(){});
+    } else if (!on && wakeLock){ wakeLock.release(); wakeLock = null; }
+  } catch(e){}
+}
+
+function startRec(field){
+  if (!SR){ toast('เบราว์เซอร์นี้ไม่รองรับเสียง — พิมพ์แทน หรือเปิดด้วย Chrome'); return null; }
+  if (active){ pendingStart = field; stopRec(); return null; }
+  if (noiseBusy) return null;
+  var st = { field:field, segs:[], sessionFinals:[], interim:'', stopping:false, done:false, error:null, t0:Date.now(), restarts:[] };
+  var rec = new SR();
+  rec.lang = 'th-TH'; rec.interimResults = true; rec.maxAlternatives = 3; rec.continuous = true;
+  st.rec = rec;
+  rec.onresult = function(e){
+    if (st.done) return;
+    var finals = [], interims = [];
+    for (var i = 0; i < e.results.length; i++){
+      var r = e.results[i], alts = [];
+      for (var j = 0; j < r.length; j++) alts.push({ t:r[j].transcript.trim(), c:r[j].confidence });
+      (r.isFinal ? finals : interims).push(alts);
+    }
+    st.sessionFinals = dedupe(finals);
+    st.interim = interims.map(function(a){ return a[0].t; }).join(' ');
+    renderLive(st);
+    // A single field (re-dictating just the name/phone/branch) stops by itself after a pause.
+    clearTimeout(st.silenceT);
+    if (field !== 'convo' && !st.interim && st.sessionFinals.length){
+      st.silenceT = setTimeout(stopRec, field === 'phone' ? 2500 : 1800);
+    }
+  };
+  rec.onerror = function(e){ st.error = e.error; };
+  rec.onend = function(){
+    if (st.done) return;
+    collect(st);
+    // Browsers end recognition after a pause or a time limit; a conversation keeps listening until staff tap stop.
+    if (field === 'convo' && !st.stopping && !FATAL[st.error]){
+      var now = Date.now();
+      st.restarts = st.restarts.filter(function(t){ return now - t < 10000; }).concat(now);
+      if (st.restarts.length <= 5){
+        st.error = null;
+        try { rec.start(); return; } catch(err){}
+      } else st.error = 'restart-loop';
+    }
+    finish(st);
+  };
+  try { rec.start(); } catch(err){ toast('เริ่มฟังไม่ได้ ลองอีกครั้ง'); return null; }
+  active = st;
+  setMicUI(field, true);
+  renderLive(st);
+  if (field === 'convo'){
+    keepAwake(true);
+    st.tick = setInterval(renderConvoBtn, 1000);
+    setHeard('details', '');
+  }
+  if (navigator.vibrate) try{ navigator.vibrate(30); }catch(e){}
+  return st;
+}
+function stopRec(){
+  var st = active; if (!st || st.stopping) return;
+  st.stopping = true; clearTimeout(st.silenceT);
+  if (st.field === 'convo') renderConvoBtn();
+  try { st.rec.stop(); } catch(e){}
+  // Some browsers never fire onend after stop(); don't leave the UI stuck.
+  st.forceT = setTimeout(function(){ if (!st.done){ try{ st.rec.abort(); }catch(e){} collect(st); finish(st); } }, 2000);
+}
+function finish(st){
+  if (st.done) return;
+  st.done = true; clearTimeout(st.silenceT); clearTimeout(st.forceT); clearTimeout(st.gotT); clearInterval(st.tick);
+  if (active === st) active = null;
+  if (st.field === 'convo'){ keepAwake(false); $('#convoLive').innerHTML = ''; }
+  setMicUI(st.field, false);
+  var texts = altTexts(st.segs), text = texts[0] || '', hk = st.field === 'convo' ? 'details' : st.field;
+  if (!text){
+    var msg = st.error === 'restart-loop' ? 'ไมค์หยุดฟังซ้ำหลายครั้ง — แตะเริ่มใหม่อีกครั้ง'
+      : st.error && st.error !== 'aborted' && st.error !== 'no-speech' ? (ERR_MSG[st.error] || ('เกิดข้อผิดพลาด: ' + st.error))
+      : 'ไม่ได้ยินเสียงพูด ลองใหม่อีกครั้ง';
+    setHeard(hk, msg, true);
+  } else {
+    var low = st.segs.some(function(a){ return a[0].c > 0 && a[0].c < LOW_CONF; });
+    APPLY[st.field](text, texts, low, st);
+    if (st.error && FATAL[st.error]) setHeard(hk, $('#h-' + hk).innerHTML + ' · <b style="color:var(--warn)">หยุดฟังเพราะ: ' + esc(ERR_MSG[st.error] || st.error) + '</b>');
+    saveDraft();
+  }
+  refreshGot(); renderConvoBtn();
+  if (pendingStart){ var f = pendingStart; pendingStart = null; startRec(f); }
+}
+
+function heardLine(text, low, extra){
+  return 'ได้ยิน: “' + esc(text) + '”' + (extra || '') + (low ? ' · <b style="color:var(--warn)">⚠ ความมั่นใจต่ำ ตรวจอีกครั้ง</b>' : '');
+}
+var LOW_NOTE = ' · <b style="color:var(--warn)">⚠ บางช่วงระบบไม่แน่ใจว่าได้ยินถูก</b>';
+var APPLY = {
+  name: function(text, texts, low){
+    F.name.value = cleanName(text); heard.name = text; setGuess('name', false);
+    setHeard('name', heardLine(text, low));
+  },
+  phone: function(text, texts, low){
+    var pick = null, idx = 0;
+    texts.forEach(function(t, i){ var p = parsePhoneSpoken(t); if (!pick || (!pick.valid && p.valid)){ pick = p; idx = i; } });
+    F.phone.value = pick.valid ? fmtPhone(pick.digits) : pick.digits;
+    heard.phone = text; setGuess('phone', false);
+    setHeard('phone', heardLine(text, low, idx > 0 ? ' · ใช้คำที่ระบบได้ยินใกล้เคียงอันดับ ' + (idx + 1) : ''));
+    updatePhoneStatus();
+  },
+  branch: function(text, texts, low){
+    heard.branch = text; setGuess('branch', false);
+    if (NO_BRANCH_RE.test(text)){
+      F.branch.value = NO_BRANCH; setHeard('branch', heardLine(text, low)); return;
+    }
+    var best = null;
+    texts.forEach(function(t){ var m = matchBranch(t); if (m && (!best || m.score > best.score)) best = m; });
+    if (best){
+      F.branch.value = best.name;
+      setHeard('branch', heardLine(text, low, ' → ตรงกับ “' + esc(best.name) + '” (' + Math.round(best.score * 100) + '%)'));
+    } else {
+      F.branch.value = text.replace(/^(เป็น)?(เจ้าของ)?\s*สาขา\s*/, '').replace(PARTICLES, '').trim();
+      setHeard('branch', heardLine(text, low, cfg.branches.length ? ' · <b>ไม่ตรงกับรายชื่อสาขาที่ตั้งไว้ — ตรวจตัวสะกด</b>' : ''), !!cfg.branches.length);
+    }
+  },
+  convo: function(text, texts, low, st){
+    var lines = segLines(st.segs), cur = F.details.value.trim();
+    F.details.value = (cur ? cur + '\n' : '') + lines.join('\n');
+    heard.details = heard.details ? heard.details + ' / ' + text : text;
+    var r = autoExtract(lines, texts);
+    var msg = '✓ บันทึกบทสนทนา ' + mmss(Date.now() - st.t0) + ' นาที · ' +
+      (r.filled.length ? 'เติมให้: <b>' + r.filled.join(', ') + '</b> — ตรวจช่องสีเหลือง' : 'ไม่พบชื่อ/เบอร์/สาขาใหม่ในบทสนทนา');
+    if (r.otherPhones.length) msg += ' · <b style="color:var(--warn)">พบเบอร์อื่นด้วย: ' + esc(r.otherPhones.map(fmtPhone).join(', ')) + '</b>';
+    setHeard('details', msg + (low ? LOW_NOTE : ''));
+  }
+};
+// Fill only the fields that are still empty; anything filled here stays yellow until confirmed.
+function autoExtract(lines, texts){
+  var filled = [], all = lines.join(' ');
+  if (!F.name.value.trim()){ var n = findNameIn(lines); if (n){ F.name.value = n; setGuess('name', true); filled.push('ชื่อ'); } }
+  var phones = findPhonesIn(all);
+  for (var k = 1; !phones.length && texts && k < texts.length; k++) phones = findPhonesIn(texts[k]);
+  if (!digitsOf(F.phone.value) && phones.length){ F.phone.value = fmtPhone(phones[0]); setGuess('phone', true); filled.push('เบอร์'); }
+  var cur = normPhone(digitsOf(F.phone.value));
+  updatePhoneStatus();
+  if (!F.branch.value.trim()){ var b = findBranchIn(all); if (b){ F.branch.value = b; setGuess('branch', true); filled.push('สาขา'); } }
+  return { filled:filled, otherPhones:phones.filter(function(p){ return p !== cur; }) };
+}
+
+function toggleRec(f){ if (active && active.field === f) stopRec(); else startRec(f); }
+$('#btnConvo').addEventListener('click', function(){ toggleRec('convo'); });
+document.querySelectorAll('[data-mic]').forEach(function(btn){
+  btn.addEventListener('click', function(){ toggleRec(btn.dataset.mic); });
+});
+
+/* ---------- ambient noise check ---------- */
+var noiseBusy = false;
+$('#btnNoise').addEventListener('click', function(){
+  if (noiseBusy) return;
+  if (active) stopRec();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ toast('เครื่องนี้วัดเสียงไม่ได้'); return; }
+  noiseBusy = true;
+  var res = $('#noiseRes'), bar = $('#noiseBar');
+  res.textContent = 'กำลังวัด 3 วินาที… อย่าพูดใส่ไมค์';
+  navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } }).then(function(stream){
+    var Ctx = window.AudioContext || window.webkitAudioContext, ctx = new Ctx();
+    var an = ctx.createAnalyser(); an.fftSize = 2048;
+    ctx.createMediaStreamSource(stream).connect(an);
+    var buf = new Float32Array(an.fftSize), samples = [], t0 = performance.now();
+    (function tick(){
+      an.getFloatTimeDomainData(buf);
+      var sum = 0; for (var i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      var db = 20 * Math.log10(Math.sqrt(sum / buf.length) || 1e-8);
+      samples.push(db);
+      bar.style.width = Math.max(0, Math.min(100, (db + 70) * 2)) + '%';
+      if (performance.now() - t0 < 3000){ requestAnimationFrame(tick); return; }
+      stream.getTracks().forEach(function(t){ t.stop(); }); try{ ctx.close(); }catch(e){}
+      samples.sort(function(a, b){ return a - b; });
+      var med = samples[Math.floor(samples.length / 2)];
+      var lvl, color, tip;
+      if (med < -48){ lvl = 'เงียบ'; color = 'var(--gm)'; tip = 'บันทึกทั้งบทสนทนาได้สบาย แต่ยังควรตรวจเบอร์ก่อนบันทึกทุกครั้ง'; }
+      else if (med < -36){ lvl = 'ปานกลาง'; color = '#e8590c'; tip = 'วางมือถือใกล้ลูกค้าไม่เกิน 30 ซม. และระหว่างคุยทวนชื่อ/เบอร์ให้ชัดอีกครั้ง'; }
+      else { lvl = 'ดังมาก'; color = 'var(--rec)'; tip = 'ใช้ไมค์หนีบปกเสื้อหรือหูฟังมีไมค์ และตอนจบให้ลูกค้าดูหน้าจอหรือพิมพ์เบอร์เองจะแม่นที่สุด'; }
+      res.innerHTML = 'เสียงรอบข้าง: <b style="color:' + color + '">' + lvl + '</b> (≈' + Math.round(med) + ' dB, ค่าประมาณ) — ' + tip;
+      setTimeout(function(){ bar.style.width = '0'; }, 800);
+      noiseBusy = false;
+    })();
+  }).catch(function(){ res.textContent = 'ไม่ได้รับอนุญาตใช้ไมโครโฟน'; noiseBusy = false; });
+});
+
+/* ---------- save / list ---------- */
+function persistLeads(){
+  if (!store(LS_LEADS, leads)){ alert('บันทึกลงเครื่องไม่สำเร็จ (พื้นที่เต็ม หรือเปิดโหมดไม่ระบุตัวตน) — กรุณาส่งออก CSV ทันที'); return false; }
+  return true;
+}
+$('#btnSave').addEventListener('click', function(){
+  if (active){ toast('หยุดฟังแล้ว — ตรวจข้อมูลอีกครั้งแล้วกดบันทึก'); stopRec(); return; }
+  var name = F.name.value.trim(), d = normPhone(digitsOf(F.phone.value)), branch = F.branch.value.trim(), details = F.details.value.trim();
+  if (!name && !d){ toast('ใส่ชื่อหรือเบอร์โทรอย่างน้อย 1 อย่าง'); F.name.focus(); return; }
+  var warns = [];
+  var g = Object.keys(guessed).map(function(f){ return { name:'ชื่อ', phone:'เบอร์', branch:'สาขา' }[f]; });
+  if (g.length) warns.push('ช่องที่ AI เดายังไม่ได้ยืนยัน: ' + g.join(', '));
+  if (d && !isValidPhone(d)) warns.push('เบอร์โทรไม่ครบ/ไม่ถูกรูปแบบ (' + d.length + ' หลัก)');
+  if (!d) warns.push('ยังไม่มีเบอร์โทร');
+  var dup = d && leads.filter(function(l){ return l.id !== editingId && digitsOf(l.phone) === d; })[0];
+  if (dup) warns.push('เบอร์นี้เคยบันทึกแล้ว (' + (dup.name || 'ไม่มีชื่อ') + ')');
+  if (warns.length && !confirm('⚠ ' + warns.join('\n⚠ ') + '\n\nบันทึกต่อเลยไหม?')) return;
+
+  var now = Date.now(), flags = [];
+  if (d && !isValidPhone(d)) flags.push('เบอร์ไม่ครบ');
+  if (g.length) flags.push('AI เดา: ' + g.join(', ') + ' (ไม่ได้ยืนยัน)');
+  if (dup) flags.push('เบอร์ซ้ำ');
+  var rec = { name:name, phone:d ? (isValidPhone(d) ? fmtPhone(d) : d) : '', branch:branch, details:details,
+    heard:heard, flags:flags, updatedAt:now };
+  if (editingId){
+    var i = leads.findIndex(function(l){ return l.id === editingId; });
+    if (i >= 0) leads[i] = Object.assign({}, leads[i], rec);
+  } else {
+    leads.unshift(Object.assign({ id:uid(), createdAt:now, event:cfg.event, staff:cfg.staff }, rec));
+  }
+  if (!persistLeads()) return;
+  toast(editingId ? '✓ แก้ไขแล้ว' : '✓ บันทึก ' + (name || fmtPhone(d)) + ' แล้ว');
+  var wasEditing = !!editingId;
+  clearForm(); renderList();
+  if (wasEditing) showTab('list');
+});
+$('#btnClear').addEventListener('click', function(){
+  var dirty = F.name.value || F.phone.value || F.branch.value || F.details.value;
+  if (dirty && !confirm('ล้างข้อมูลในฟอร์ม?')) return;
+  if (active) stopRec();
+  clearForm();
+});
+
+var HEARD_LABEL = { name:'ชื่อ', phone:'เบอร์', branch:'สาขา', details:'รายละเอียด' };
+function renderList(){
+  $('#cnt').textContent = leads.length;
+  var q = $('#q').value.trim().toLowerCase(), qd = digitsOf(q);
+  var rows = leads.filter(function(l){
+    if (!q) return true;
+    return [l.name, l.branch, l.details, l.event].join(' ').toLowerCase().indexOf(q) >= 0 || (qd && digitsOf(l.phone).indexOf(qd) >= 0);
+  });
+  if (!rows.length){ $('#leadList').innerHTML = '<div class="empty">' + (leads.length ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีลูกค้าที่บันทึก') + '</div>'; return; }
+  $('#leadList').innerHTML = rows.map(function(l){
+    var h = l.heard || {}, raw = ['name','phone','branch','details'].filter(function(f){ return h[f]; });
+    return '<div class="lead">' +
+      '<div class="lead-hd"><b>' + esc(l.name || '(ไม่มีชื่อ)') + '</b><small>' + esc(fmtDate(l.createdAt)) + '</small></div>' +
+      '<div class="meta">📞 ' + (l.phone ? '<a href="tel:' + esc(digitsOf(l.phone)) + '">' + esc(l.phone) + '</a>' : '—') +
+        ' · 🏪 ' + esc(l.branch || '—') + '</div>' +
+      (l.details ? '<div class="det">' + esc(l.details) + '</div>' : '') +
+      (l.flags || []).map(function(f){ return '<span class="flag">⚠ ' + esc(f) + '</span>'; }).join('') +
+      (raw.length ? '<details><summary>ข้อความที่ระบบได้ยิน</summary>' + raw.map(function(f){
+        return '<div>' + HEARD_LABEL[f] + ': “' + esc(h[f]) + '”</div>'; }).join('') + '</details>' : '') +
+      '<div class="lead-act"><button class="mini" data-edit="' + l.id + '">✏️ แก้ไข</button><button class="mini" data-del="' + l.id + '">🗑️ ลบ</button></div>' +
+    '</div>';
+  }).join('');
+}
+$('#q').addEventListener('input', renderList);
+$('#leadList').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if (!b) return;
+  var id = b.dataset.edit || b.dataset.del, l = leads.filter(function(x){ return x.id === id; })[0];
+  if (!l) return;
+  if (b.dataset.del){
+    if (!confirm('ลบ ' + (l.name || l.phone || 'รายการนี้') + '?')) return;
+    leads = leads.filter(function(x){ return x.id !== id; }); persistLeads(); renderList(); return;
+  }
+  var dirty = F.name.value || F.phone.value || F.branch.value || F.details.value;
+  if (dirty && !confirm('ฟอร์มมีข้อมูลค้างอยู่ จะแทนที่ด้วยรายการนี้?')) return;
+  fillForm({ name:l.name, phone:l.phone, branch:l.branch, details:l.details, heard:l.heard, editingId:l.id });
+  saveDraft(); showTab('capture'); window.scrollTo(0, 0);
+});
+
+function csvCell(v){ return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
+$('#btnExport').addEventListener('click', function(){
+  if (!leads.length){ toast('ยังไม่มีข้อมูล'); return; }
+  var head = ['วันที่เวลา','งาน/บูธ','ผู้บันทึก','ชื่อ','เบอร์โทร','เจ้าของสาขา','รายละเอียดที่พูดคุย','หมายเหตุ','ข้อความที่ระบบได้ยิน'];
+  var rows = leads.slice().reverse().map(function(l){
+    var h = l.heard || {};
+    var raw = ['name','phone','branch','details'].filter(function(f){ return h[f]; }).map(function(f){ return HEARD_LABEL[f] + ': ' + h[f]; }).join(' | ');
+    return [new Date(l.createdAt).toLocaleString('th-TH'), l.event, l.staff, l.name, l.phone, l.branch, l.details, (l.flags || []).join('; '), raw];
+  });
+  var csv = '﻿' + [head].concat(rows).map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+  var day = new Date().toISOString().slice(0, 10);
+  a.download = 'booth-leads-' + (cfg.event ? cfg.event.replace(/[\\/:*?"<>|\s]+/g, '_') + '-' : '') + day + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+});
+
+/* ---------- tabs / settings ---------- */
+function showTab(t){
+  document.querySelectorAll('.tabs button').forEach(function(b){ b.classList.toggle('on', b.dataset.tab === t); });
+  $('#tab-capture').hidden = t !== 'capture';
+  $('#tab-list').hidden = t !== 'list';
+  if (t === 'list'){ if (active) stopRec(); renderList(); }
+}
+document.querySelectorAll('.tabs button').forEach(function(b){ b.addEventListener('click', function(){ showTab(b.dataset.tab); }); });
+
+function applyCfg(){
+  $('#evtLine').textContent = 'งาน: ' + (cfg.event || '— (ตั้งค่าที่ ⚙️)') + ' · ผู้บันทึก: ' + (cfg.staff || '—');
+  $('#branchList').innerHTML = cfg.branches.map(function(b){ return '<option value="' + esc(b) + '">'; }).join('');
+  $('#branchChips').innerHTML = '<button type="button" data-chip="' + esc(NO_BRANCH) + '">' + esc(NO_BRANCH) + '</button>';
+}
+$('#branchChips').addEventListener('click', function(e){
+  var b = e.target.closest('[data-chip]'); if (!b) return;
+  F.branch.value = b.dataset.chip; setGuess('branch', false); refreshGot(); saveDraft();
+});
+$('#btnSettings').addEventListener('click', function(){
+  $('#cfgEvent').value = cfg.event; $('#cfgStaff').value = cfg.staff; $('#cfgBranches').value = cfg.branches.join('\n');
+  $('#ovlSettings').classList.add('show');
+});
+$('#btnCfgClose').addEventListener('click', function(){ $('#ovlSettings').classList.remove('show'); });
+$('#ovlSettings').addEventListener('click', function(e){ if (e.target.id === 'ovlSettings') e.target.classList.remove('show'); });
+$('#btnCfgSave').addEventListener('click', function(){
+  cfg = { event:$('#cfgEvent').value.trim(), staff:$('#cfgStaff').value.trim(),
+    branches:$('#cfgBranches').value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean) };
+  store(LS_CFG, cfg); applyCfg();
+  $('#ovlSettings').classList.remove('show'); toast('✓ บันทึกการตั้งค่าแล้ว');
+});
+$('#btnWipe').addEventListener('click', function(){
+  if (!leads.length){ toast('ไม่มีข้อมูลให้ลบ'); return; }
+  if (!confirm('ลบลูกค้าทั้งหมด ' + leads.length + ' รายการในเครื่องนี้? (กู้คืนไม่ได้)')) return;
+  if (prompt('พิมพ์คำว่า ลบ เพื่อยืนยัน') !== 'ลบ') return;
+  leads = []; persistLeads(); renderList(); updatePhoneStatus();
+  $('#ovlSettings').classList.remove('show'); toast('ลบแล้ว');
+});
+
+/* ---------- init ---------- */
+applyCfg();
+var draft = load(LS_DRAFT, null);
+if (draft) fillForm(draft); else updatePhoneStatus();
+renderList();
+if (!cfg.event && !leads.length) $('#tipBox').open = true;
+window.addEventListener('beforeunload', function(e){ if (active){ e.preventDefault(); e.returnValue = ''; } });
+})();
+</script>
+</body>
+</html>
