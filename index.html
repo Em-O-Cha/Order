@@ -66,7 +66,9 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .payment-methods{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin:4px 16px 16px;}
 /* ⚡ เพิ่ม (19/9/69) — เมื่อเปิดเก็บเงินปลายทางจะมี 3 ปุ่ม บีบระยะห่างลงให้พอดีจอมือถือ ไม่ต้องเลื่อนแนวนอน */
 .payment-methods.three{grid-template-columns:repeat(3,1fr);gap:12px;}
-.payment-methods.three .payment-method-title{font-size:12px;}
+.payment-methods.three{gap:8px;}
+/* ⚡ แก้ (9/10/69) — 3 ปุ่ม: ตัวอักษรเล็กลงให้ชื่ออยู่บรรทัดเดียว ไอคอนจะได้อยู่ระนาบเดียวกัน */
+.payment-methods.three .payment-method-title{font-size:10.5px;white-space:nowrap;letter-spacing:-.2px;}
 .payment-methods.three .payment-method-icon{width:48px;height:48px;}
 .payment-method{min-height:0;border:0;border-radius:0;background:transparent;color:#1a5c2a;
   padding:0;cursor:pointer;font-family:'Kanit',sans-serif;text-align:center;box-shadow:none;
@@ -258,7 +260,7 @@ button,.btn,.sbu,.shop-cta-btn{
   box-shadow:0 1px 4px rgba(0,0,0,.25);}
 .payment-method-sub{order:3;display:block;font-size:11px;font-weight:400;color:#8a8a8a;line-height:1.2;}
 .payment-method.active .payment-method-sub{color:var(--pm-d);}
-.payment-methods.three .payment-method-sub{font-size:10px;}
+.payment-methods.three .payment-method-sub{font-size:9.5px;white-space:nowrap;letter-spacing:-.2px;}
 /* ปุ่ม Copy เป็นปุ่มเครื่องมือ จึงคงพื้นเรียบไว้ */
 button.copy-account-btn{background:#fff !important;border:1px solid #d7d7d7 !important;box-shadow:none !important;}
 /* ปุ่มดำเนินการต่อและปุ่ม “ไม่ใช่” ในคำสั่งซื้อรอดำเนินการ ใช้สีเขียว */
