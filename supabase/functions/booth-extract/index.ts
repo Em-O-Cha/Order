@@ -1,6 +1,7 @@
 // booth-extract: อ่านบทสนทนาหน้าบูธ (ข้อความจากการแปลงเสียงในหน้า BoothCRM) แล้วให้ Claude ดึงข้อมูลลูกค้า
 //
-//   POST { transcript, branches[] } -> { success, data: { name, phone, branch, survey{...}, summary }, model }
+//   POST { transcript, branches[] } -> { success, data: { name, phone, branch, survey{...}, summary, speakerRoles[] }, model }
+//   บทสนทนาจากคลิปเสียง (booth-transcribe) ขึ้นต้นแต่ละบรรทัดด้วย "ผู้พูด N:" — speakerRoles บอกว่าใครคือพนักงาน/ลูกค้า
 //
 // หน้าเว็บ: https://em-o-cha.github.io/BoothCRM/ (repo Em-O-Cha/BoothCRM) — ผลที่ได้เป็น "AI เดา" ให้พนักงานตรวจก่อนบันทึก
 // deploy ด้วย verify_jwt = false (หน้าเว็บไม่มี JWT ของ Supabase) — ใช้ secret ANTHROPIC_API_KEY ตัวเดียวกับ loyalty
@@ -43,19 +44,28 @@ const SURVEY_SCHEMA = {
 const RESULT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["name", "phone", "branch", "survey", "summary"],
+  required: ["name", "phone", "branch", "survey", "summary", "speakerRoles"],
   properties: {
     name: { type: "string" },
     phone: { type: "string" },
     branch: { type: "string" },
     survey: SURVEY_SCHEMA,
     summary: { type: "string" },
+    speakerRoles: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["label", "role"],
+        properties: { label: { type: "string" }, role: { type: "string", enum: ["พนักงาน", "ลูกค้า", "อื่น ๆ"] } },
+      },
+    },
   },
 };
 
 const SYSTEM_PROMPT = `You read conversations recorded at an Em-O-Cha trade-show booth in Thailand and fill in a lead form for the staff, who will check your answers before saving.
 
-The transcript comes from phone speech recognition: one line per utterance, speakers are not labelled (it mixes the booth staff and the customer), Thai words are often misheard or split, and numbers may appear as digits or as Thai number words. Background chatter from other people may be mixed in. Read it the way a person who was standing there would understand it.
+The transcript comes from speech recognition: one line per utterance. Lines from a recorded clip start with a speaker label such as "ผู้พูด 1:" (the labels come from automatic speaker separation and can occasionally be wrong); lines from live recognition have no labels and mix the booth staff and the customer. Thai words are often misheard or split, and numbers may appear as digits or as Thai number words. Background chatter from other people may be mixed in. Read it the way a person who was standing there would understand it.
 
 Fill each field only from what was actually said. When something was not said, or you cannot tell, return an empty string — staff fill blanks themselves, and a wrong value is worse than a blank.
 
@@ -69,6 +79,7 @@ Fill each field only from what was actually said. When something was not said, o
 - survey.promoWish: what promotion/marketing help they want from Em-O-Cha, as a short Thai phrase.
 - survey.pastPromo: promotions they ran before and how those went, as a short Thai phrase.
 - survey.goodPromo: which promotions worked well for sales at their branch, as a short Thai phrase.
+- speakerRoles: only when lines carry speaker labels — for each label, whether that speaker is the booth staff ("พนักงาน", the one presenting Em-O-Cha, asking the questions, offering samples), the customer ("ลูกค้า", the shop/branch owner being asked), or someone else ("อื่น ๆ"). Use the exact label text without the colon, e.g. "ผู้พูด 1". Return an empty array when the lines have no labels.
 - summary: 1–3 short Thai sentences summarising what the customer wants or what was agreed (e.g. what to send, when to follow up). Empty if nothing useful was discussed.
 
 Write all values in Thai, as the customer said them, cleaned of filler words.`;
