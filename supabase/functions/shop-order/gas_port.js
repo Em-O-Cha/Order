@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 177 รายการ (120 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 179 รายการ (121 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1191,7 +1191,8 @@ function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shipp
       if (minPurchase > 0 && (subtotal || 0) < minPurchase) return;
       var type = String(row[2]);
       var value = parseFloat(row[3]) || 0;
-      var promo = { type: type, value: value, restriction: row[10], freeProduct: row[11], freeQty: row[12], freeDiscountPercent: row[14] };
+      var promo = { type: type, value: value, restriction: row[10], freeProduct: row[11], freeQty: row[12], freeDiscountPercent: row[14],
+        giftOnly: isGiftOnlyPrivilegeRow_(row) };
       var calc = calcPromoDiscount_(promo, itemsSafe, priceMap || {}, shippingCost || 0);
       var discount = calc.productDiscount + calc.shippingDiscount;
       results.push({
@@ -1552,6 +1553,12 @@ function physicalFreebieNotePart_(label, p) {
   return '';
 }
 
+var GIFT_ONLY_PRIVILEGE_GIVERS_ = ['วงล้อนำโชค'];
+
+function isGiftOnlyPrivilegeRow_(row) {
+  return String(row[2] || '') === 'bogo' && GIFT_ONLY_PRIVILEGE_GIVERS_.indexOf(String(row[5] || '')) !== -1;
+}
+
 function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
   var type = String(promo.type || '');
   var value = parseFloat(promo.value) || 0;
@@ -1573,6 +1580,14 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
     var shipFreeAt_ = parseFloat(promo.freeQty) || 0;
     if (shipFreeAt_ > 0 && computeEligibleInfo_(items || [], restriction).qty >= shipFreeAt_) shipPrice_ = 0;
     result.shippingDiscount = Math.max(0, (shippingCost || 0) - shipPrice_);
+    return result;
+  }
+  if (type === 'bogo' && promo.giftOnly) {
+    var eligibleGift = computeEligibleInfo_(items, restriction);
+    var giftQty = parseFloat(promo.freeQty) || 0;
+    result.physicalFreeQty = (giftQty > 0 && eligibleGift.qty >= (value > 0 ? value : 1)) ? giftQty : 0;
+    result.freeProductName = String(promo.freeProduct || '').trim();
+    result.freeDiscountPercent = 100;
     return result;
   }
   if (type === 'bogo') {
