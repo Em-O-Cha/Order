@@ -2138,7 +2138,7 @@ function renderOrderHistory(list, isStale){
     var oid = escHtml(o.orderId);
     if (o.isCard) cardOrderIds_[o.orderId] = true; else delete cardOrderIds_[o.orderId];
     return '<div class="history-item">'
-      + '<div class="row"><span><b>#' + oid + '</b></span><span class="badge-pending">' + (o.isCard ? '⏳ รอชำระด้วยบัตร' : '⏳ รอแนบสลิป') + '</span></div>'
+      + '<div class="row"><span><b>#' + oid + '</b></span><span class="badge-pending">' + (o.isCard ? '⏳ รอชำระเงิน' : '⏳ รอแนบสลิป') + '</span></div>'
       + '<div class="row"><span>วันที่</span><span>' + escHtml(o.date) + '</span></div>'
       + '<div class="row"><span>สินค้า</span><span>' + escHtml(o.firstItemName) + '</span></div>'
       + '<div class="row"><span>ยอดชำระ</span><span>฿' + Math.round(o.totalAmount).toLocaleString('th-TH') + '</span></div>'
