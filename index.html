@@ -2479,6 +2479,20 @@ function removePrivilegeFromOrder(rowIndex){
   renderPaymentDetail();
   refreshDiscounts();
 }
+// ⚡ (11/10/69) สลับสิทธิ์จากวงล้อ: เอาใบที่ใช้อยู่ออกจากออเดอร์นี้ (ยังเก็บไว้ครั้งหน้า) แล้วให้เซิร์ฟเวอร์คำนวณใบที่เลือกแทน
+function useSpinPrivilegeInstead_(rowIndex){
+  var all = (lastDiscountInfo && lastDiscountInfo.allPrivileges) || [];
+  all.forEach(function(p){
+    if (p.givenBy !== 'วงล้อนำโชค' || p.rowIndex === rowIndex || p.exclusivityDropped) return;
+    if (excludedPrivilegeRowIndexes.indexOf(p.rowIndex) === -1) excludedPrivilegeRowIndexes.push(p.rowIndex);
+  });
+  var idx = excludedPrivilegeRowIndexes.indexOf(rowIndex);
+  if (idx !== -1) excludedPrivilegeRowIndexes.splice(idx, 1);
+  recomputeAppliedPrivilegesClientSide_();
+  renderDiscountSummary();
+  renderPaymentDetail();
+  refreshDiscounts();
+}
 function undoRemovePrivilege(rowIndex){
   var idx = excludedPrivilegeRowIndexes.indexOf(rowIndex);
   if (idx !== -1) excludedPrivilegeRowIndexes.splice(idx, 1);
@@ -2727,16 +2741,27 @@ function renderDiscountSummary(){
   allPrivileges.forEach(function(p){
     var isExcluded = excludedPrivilegeRowIndexes.indexOf(p.rowIndex) !== -1;
     var isRedeemable = p.givenBy === 'แลกด้วยแต้ม';
+    var isSpinPriv_ = p.givenBy === 'วงล้อนำโชค';
     if (isExcluded) {
       h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>✅ ไม่ใช้สิทธิ์ "' + escHtml(p.name) + '" ในออเดอร์นี้ (ยังใช้ได้ครั้งถัดไป)</span>'
         + '<span><button type="button" onclick="undoRemovePrivilege(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ยกเลิก</button></span></div>';
       return;
     }
-    var removeBtnHtml = isRedeemable
-      ? ' <button type="button" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ลบ</button>'
+    // ⚡ (11/10/69) สิทธิ์จากวงล้อใช้ได้ครั้งละ 1 ใบ: ใบที่ไม่ได้ใช้ขึ้นปุ่ม "ใช้ใบนี้แทน" / ใบที่ใช้อยู่กด "ไม่ใช้" เก็บไว้ครั้งหน้าได้
+    if (p.exclusivityDropped && isSpinPriv_ && (p.discount > 0 || p.physicalFreeQty > 0)) {
+      h += '<div class="row" style="align-items:center;font-size:12px;color:var(--g6)"><span style="flex:1;min-width:0">🎡 ' + escHtml(p.name)
+        + '<span style="display:block;font-size:10.5px;line-height:1.35">ใช้สิทธิ์วงล้อได้ครั้งละ 1 ใบ · ใบนี้เก็บไว้ใช้ครั้งหน้า</span></span>'
+        + '<span><button type="button" onclick="useSpinPrivilegeInstead_(' + p.rowIndex + ')" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer;white-space:nowrap">ใช้ใบนี้แทน</button></span></div>';
+      return;
+    }
+    var removeBtnHtml = (isRedeemable || isSpinPriv_)
+      ? ' <button type="button" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">' + (isSpinPriv_ ? 'ไม่ใช้' : 'ลบ') + '</button>'
       : '';
     if (p.discount <= 0) {
-      if (p.physicalFreeQty > 0) h += freebieLineHtml_(p.name, p);
+      if (p.physicalFreeQty > 0) {
+        h += freebieLineHtml_(p.name, p);
+        if (isSpinPriv_) h += '<div class="row" style="justify-content:flex-end;margin-top:-2px">' + removeBtnHtml + '</div>';
+      }
       return;
     }
     var privBogoNote_ = p.type === 'bogo' ? '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
