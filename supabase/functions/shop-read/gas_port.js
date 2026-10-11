@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 186 รายการ (129 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 187 รายการ (129 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1869,6 +1869,8 @@ function priceGiftsText_(gifts) {
 
 var GIFT_ONLY_PRIVILEGE_GIVERS_ = ['วงล้อนำโชค'];
 
+var GIFT_SAME_ITEM_TEXT_ = 'ชิ้นเดียวกับที่ซื้อ';
+
 function isGiftOnlyPrivilegeRow_(row) {
   return String(row[2] || '') === 'bogo' && GIFT_ONLY_PRIVILEGE_GIVERS_.indexOf(String(row[5] || '')) !== -1;
 }
@@ -1899,9 +1901,23 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
   if (type === 'bogo' && promo.giftOnly) {
     var eligibleGift = computeEligibleInfo_(items, restriction);
     var giftQty = parseFloat(promo.freeQty) || 0;
+    var giftName = String(promo.freeProduct || '').trim();
+    // "ชิ้นเดียวกับที่ซื้อ" = ตัวเลือกของแถมคือสินค้าที่เข้าเงื่อนไขในตะกร้า (มีตัวเดียว = แถมตัวนั้นเลย)
+    if (giftName === GIFT_SAME_ITEM_TEXT_) {
+      var sameNames = [];
+      (items || []).forEach(function (it) {
+        if (!(parseFloat(it.qty) > 0)) return;
+        if (String(restriction || '').trim() && !promoMatchesItem_(restriction, it.name)) return;
+        var nm = cleanPriceGiftText_(it.name);
+        if (nm && sameNames.indexOf(nm) === -1) sameNames.push(nm);
+      });
+      if (sameNames.length) giftName = sameNames.join(' หรือ ');
+    }
     result.physicalFreeQty = (giftQty > 0 && eligibleGift.qty >= (value > 0 ? value : 1)) ? giftQty : 0;
-    result.freeProductName = String(promo.freeProduct || '').trim();
+    result.freeProductName = giftName;
     result.freeDiscountPercent = 100;
+    // รูปเดียวกับของแถมโปรขายราคาพิเศษ: หน้าชำระเงินให้ลูกค้าเลือกรส (ตัวเลือก > 1) ส่งกลับมาทาง giftChoices
+    if (result.physicalFreeQty > 0 && giftName) result.freeGifts = [{ name: giftName, qty: result.physicalFreeQty, unit: 'ชิ้น' }];
     return result;
   }
   if (type === 'bogo') {

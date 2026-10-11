@@ -1737,7 +1737,8 @@ function freebieLineHtml_(label, p){
   var simple = [], pickers = '';
   if (p.freeGifts && p.freeGifts.length) {
     p.freeGifts.forEach(function(g){
-      if (p.type === 'price' && giftOptions_(g.name).length > 1) pickers += giftPickerHtml_(label, p, g);
+      // ⚡ (11/10/69) bogo ที่มี freeGifts = รางวัลแถมของจริงจากวงล้อนำโชค เลือกรสได้เหมือนโปรขายราคาพิเศษ
+      if ((p.type === 'price' || p.type === 'bogo') && giftOptions_(g.name).length > 1) pickers += giftPickerHtml_(label, p, g);
       else simple.push(giftLabel_(g.name, g.qty, g.unit));
     });
   } else simple.push(p.physicalFreeQty + ' ชิ้น');
