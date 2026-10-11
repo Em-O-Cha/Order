@@ -1201,7 +1201,8 @@ function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shipp
         discount: discount, givenBy: row[5],
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
         physicalFreeQty: calc.physicalFreeQty || 0, minPurchase: minPurchase, freeDiscountPercent: calc.freeDiscountPercent || 100,
-        stackable: isStackablePrivilegeRow_(row), restriction: String(row[10] || ''), freeGifts: calc.freeGifts
+        stackable: isStackablePrivilegeRow_(row), restriction: String(row[10] || ''), freeGifts: calc.freeGifts,
+        giftOnly: !!promo.giftOnly
       });
     });
     return results;
@@ -1971,10 +1972,21 @@ function promoScopesConflict_(x, y) {
 function applyPromoExclusivity_(privileges, coupons, items) {
   var acceptedPriv = [], acceptedAuto = [], dropped = [], exclusivePrivilegeUsed = false;
   // kind: 'priv' = สิทธิ์สมาชิก / 'typed' = โค้ดที่พิมพ์เองที่ติ๊กใช้ร่วมได้ (ตรวจชนแค่กับสิทธิ์) / 'auto' = คูปองอื่นทั้งหมด
+  // ⚡ (11/10/69) สิทธิ์จากวงล้อนำโชคใช้ได้ครั้งละ 1 ใบต่อออเดอร์ ไม่ว่าจะติ๊กใช้ร่วมกับโปรอื่นได้หรือไม่
+  var spinPrivilegeUsed_ = false;
   function tryAccept(p, kind) {
+    var isSpin = !!(p && kind === 'priv' && (p.discount > 0 || p.physicalFreeQty > 0)
+      && GIFT_ONLY_PRIVILEGE_GIVERS_.indexOf(String(p.givenBy || '')) !== -1);
+    if (isSpin && spinPrivilegeUsed_) return false;
+    var ok = tryAcceptScope_(p, kind);
+    if (ok && isSpin) spinPrivilegeUsed_ = true;
+    return ok;
+  }
+  function tryAcceptScope_(p, kind) {
     if (!p) return true;
     if (!(p.discount > 0) && !(p.physicalFreeQty > 0)) return true; // ลดไม่ได้อยู่แล้ว ไม่ครอบอะไร ปล่อยตามเดิม
     if (p.stackable && isShippingPromoType_(p.type)) return true;   // ส่วนลดค่าส่งที่ติ๊ก ใช้ได้กับทุกโปรเสมอ
+    if (p.stackable && p.giftOnly) return true;                     // ⚡ ของแถมจริงที่ติ๊ก (ไม่ลดราคา) ใช้ได้กับทุกโปรเสมอ
     var sc = promoScope_(p, items);
     var against = kind === 'auto' ? acceptedPriv.concat(acceptedAuto) : acceptedPriv;
     if (against.some(function (a) { return promoScopesConflict_(a, sc); })) return false;
