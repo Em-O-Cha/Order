@@ -1527,7 +1527,7 @@ function applyGiftChoices_(privileges, coupons, giftChoices) {
   try { choices = giftChoices ? (typeof giftChoices === 'string' ? JSON.parse(giftChoices) : giftChoices) : {}; } catch (e) { choices = {}; }
   if (!choices || typeof choices !== 'object') return;
   (privileges || []).concat(coupons || []).forEach(function (p) {
-    if (!p || (p.type !== 'price' && p.type !== 'bogo') || !p.freeGifts) return; // bogo มี freeGifts เฉพาะสิทธิ์แถมของจริง (วงล้อ)
+    if (!p || (p.type !== 'price' && p.type !== 'bogo') || !p.freeGifts) return; // bogo มี freeGifts เมื่อมีของแถมต้องหยิบเพิ่ม
     p.freeGifts = p.freeGifts.map(function (g) {
       var opts = String(g.name || '').split(' หรือ ').map(function (x) { return x.trim(); }).filter(Boolean);
       var want = choices[giftChoiceKey_(p, g)];
@@ -1637,6 +1637,10 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
     result.physicalFreeQty = physicalFreeQty;
     result.freeProductName = freeProductName;
     result.freeDiscountPercent = freeDiscountPercent;
+    // ⚡ เพิ่ม (11/10/69) — ของแถมที่ทีมงานต้องหยิบเพิ่ม (ซื้อครบแต่ยังไม่ได้ใส่ชิ้นแถมในตะกร้า): รูปเดียวกับของแถม
+    // โปรขายราคาพิเศษ หน้าชำระเงินให้ลูกค้าเลือกรสเอง (สินค้าแถม > 1 ตัว) ส่งกลับมาทาง giftChoices
+    // ใส่ครบชุดในตะกร้าเอง = ลดราคาชิ้นที่แถมเหมือนเดิม (ไม่มีของต้องหยิบ)
+    if (physicalFreeQty > 0 && freeProductName) result.freeGifts = [{ name: freeProductName, qty: physicalFreeQty, unit: 'ชิ้น' }];
     return result;
   }
 

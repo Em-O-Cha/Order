@@ -1950,6 +1950,10 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
     result.physicalFreeQty = physicalFreeQty;
     result.freeProductName = freeProductName;
     result.freeDiscountPercent = freeDiscountPercent;
+    // ⚡ เพิ่ม (11/10/69) — ของแถมที่ทีมงานต้องหยิบเพิ่ม (ซื้อครบแต่ยังไม่ได้ใส่ชิ้นแถมในตะกร้า): รูปเดียวกับของแถม
+    // โปรขายราคาพิเศษ หน้าชำระเงินให้ลูกค้าเลือกรสเอง (สินค้าแถม > 1 ตัว) ส่งกลับมาทาง giftChoices
+    // ใส่ครบชุดในตะกร้าเอง = ลดราคาชิ้นที่แถมเหมือนเดิม (ไม่มีของต้องหยิบ)
+    if (physicalFreeQty > 0 && freeProductName) result.freeGifts = [{ name: freeProductName, qty: physicalFreeQty, unit: 'ชิ้น' }];
     return result;
   }
 
