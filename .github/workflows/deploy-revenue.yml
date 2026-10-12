@@ -21,6 +21,7 @@ on:
     paths:
       - 'apps-script-revenue/**'
       - '.github/workflows/deploy-revenue.yml'
+      - '.github/scripts/clasprc.mjs'
   workflow_dispatch:
     inputs:
       force:
@@ -53,12 +54,8 @@ jobs:
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
         run: |
-          if [ -z "$CLASPRC_JSON" ]; then
-            echo "::error::ยังไม่ได้ตั้ง secret CLASPRC_JSON — ดูขั้นตอนที่หัวไฟล์ .github/workflows/deploy-revenue.yml"
-            exit 1
-          fi
+          node .github/scripts/clasprc.mjs
           npm install -g @google/clasp@2.4.2
-          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
 
       - name: Check Apps Script was not edited outside the repo
         env:
