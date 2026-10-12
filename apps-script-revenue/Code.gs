@@ -494,6 +494,68 @@ function updateRevenue(rowIndex, data) {
   }
 }
 
+// ⚡ เพิ่ม (12/10/69) — ปุ่ม "ยกเลิกออเดอร์" ในหน้าแก้ไข สำหรับออเดอร์ที่ลูกค้ายกเลิกในแพลตฟอร์ม (Shopee/
+// TikTok ฯลฯ) แล้วต้องยกเลิกในระบบเราตาม — ใช้หลักเดียวกับ cancelShopOrder ของระบบ LINE Shop (Members.gs):
+// ไม่ลบแถว (Revenue ID ไม่หาย) แต่ (1) เขียนคำว่า "ยกเลิก" ทับชื่อสินค้าคอลัมน์ C ทุกแถวของบิล (2) ล้างยอดเงิน
+// เป็น 0 (ส่วนลด F, ยอดต่อรายการ G, ค่าจัดส่ง H, ยอดรวม I) (3) บันทึกเหตุผล + วันเวลาที่คอลัมน์ T
+// Dashboard/รายงาน/ใบจัดส่งตัดบิลที่ชื่อสินค้าเป็น "ยกเลิก" ออกเองอยู่แล้ว (isCancelledDashboardItem_,
+// listShippingLabelOrders) ต่างจาก LINE Shop ตรงที่หมายเหตุเดิมไม่ถูกลบทิ้ง — ต่อท้ายไว้หลังข้อความยกเลิก
+// ส่วนออเดอร์เก็บเงินปลายทาง ล้างสถานะ COD (คอลัมน์ AG) ออกด้วย จะได้ไม่ค้างอยู่ในรายการ "รอเก็บเงิน"
+var CANCELLED_REVENUE_MARK_ = 'ยกเลิก';
+var REVENUE_COD_STATUS_COL_ = 33; // คอลัมน์ AG "สถานะเก็บเงินปลายทาง" (สร้างโดยระบบ Members LINE)
+function cancelRevenue(rowIndex, revenueId, reason) {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); } catch (e) { return { success: false, error: 'ระบบมีคนบันทึกพร้อมกันหลายคน กรุณาลองใหม่อีกครั้ง' }; }
+  try {
+    revenueId = String(revenueId || '').trim();
+    if (!revenueId) return { success: false, error: 'ไม่พบ Revenue ID ของบิลนี้' };
+    var ss      = SpreadsheetApp.openById(REVENUE_SHEET_ID);
+    var sheet   = ss.getSheetByName(REVENUE_SHEET_NAME);
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return { success: false, error: 'ไม่พบบิลนี้ในชีต' };
+    var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+
+    // แถวอาจเลื่อนไปแล้วถ้ามีคนเพิ่ม/ลบแถวหลังกดค้นหา — ใช้ rowIndex เดิมเฉพาะเมื่อ Revenue ID ยังตรงกัน
+    // ไม่อย่างนั้นหาแถวใหม่จาก Revenue ID กันยกเลิกผิดบิล
+    var startRow = parseInt(rowIndex, 10) || 0;
+    if (startRow < 2 || startRow > lastRow || String(ids[startRow - 2][0]) !== revenueId) {
+      startRow = -1;
+      for (var i = 0; i < ids.length; i++) {
+        if (String(ids[i][0]) === revenueId) { startRow = i + 2; break; }
+      }
+      if (startRow === -1) return { success: false, error: 'ไม่พบบิล ' + revenueId + ' ในชีต' };
+    }
+    // สินค้าหลายรายการต่อกันหลายแถว แถวถัดๆ ไปมีคอลัมน์ A ว่าง
+    var numRows = 1;
+    while (startRow + numRows <= lastRow && !ids[startRow + numRows - 2][0]) numRows++;
+
+    var mainRow = sheet.getRange(startRow, 1, 1, 20).getValues()[0];
+    if (String(mainRow[2]) === CANCELLED_REVENUE_MARK_) return { success: false, error: 'บิลนี้ถูกยกเลิกไปแล้ว' };
+
+    var marks = [], zeros = [];
+    for (var r = 0; r < numRows; r++) { marks.push([CANCELLED_REVENUE_MARK_]); zeros.push([0, 0]); }
+    sheet.getRange(startRow, 3, numRows, 1).setValues(marks); // ชื่อสินค้า (C) -> "ยกเลิก"
+    sheet.getRange(startRow, 6, numRows, 2).setValues(zeros); // ส่วนลด (F), ยอดต่อรายการ (G)
+    sheet.getRange(startRow, 8, 1, 2).setValues([[0, 0]]);    // ค่าจัดส่ง (H), ยอดรวม (I)
+
+    reason = String(reason || '').trim();
+    var oldRemark = String(mainRow[19] || '').trim();
+    var note = 'ยกเลิก' + (reason ? ': ' + reason : '') + ' (' + Utilities.formatDate(new Date(), 'GMT+7', 'dd/MM/yyyy HH:mm') + ')'
+      + (oldRemark ? ' | หมายเหตุเดิม: ' + oldRemark : '');
+    sheet.getRange(startRow, 20).setValue(note); // หมายเหตุ (T)
+
+    if (String(mainRow[9] || '').indexOf('เก็บเงินปลายทาง') !== -1 && sheet.getMaxColumns() >= REVENUE_COD_STATUS_COL_) {
+      sheet.getRange(startRow, REVENUE_COD_STATUS_COL_).setValue('');
+    }
+    SpreadsheetApp.flush();
+    return { success: true, revenueId: revenueId, rows: numRows, previousTotal: Number(mainRow[8]) || 0 };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function getAllRevenue(limit) {
   try {
     var ss      = SpreadsheetApp.openById(REVENUE_SHEET_ID);

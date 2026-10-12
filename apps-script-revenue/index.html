@@ -78,6 +78,9 @@ textarea.fc{height:80px;padding:10px 12px;resize:vertical;}
 .bo:hover{background:var(--gp);}
 .bg{background:var(--g2);color:var(--g8);}
 .bg:hover{background:var(--g4);}
+.bx{background:#ffebee;color:#c62828;border:1.5px solid #ef9a9a;}
+.bx:hover{background:#ffcdd2;}
+.badge-x{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;background:#ffebee;color:#c62828;white-space:nowrap;}
 .btn:disabled{opacity:.5;cursor:not-allowed;transform:none !important;}
 .sbar{display:flex;gap:12px;align-items:flex-end;margin-bottom:24px;flex-wrap:wrap;}
 .sbar .fg{flex:1;min-width:150px;}
@@ -721,7 +724,7 @@ tbody td{padding:11px 14px;color:var(--g8);}
   <div class="modal modal-w">
     <div class="mhd"><h3>✏️ แก้ไขข้อมูลยอดขาย</h3><button class="mc" onclick="closeMo('moEdit')">✕</button></div>
     <div class="mbd" id="editBody"></div>
-    <div class="mft"><button class="btn bg" onclick="closeMo('moEdit')">ยกเลิก</button><button class="btn bp" onclick="previewEdit()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>ตรวจสอบก่อนบันทึก</button></div>
+    <div class="mft" style="flex-wrap:wrap"><button class="btn bx" id="btnCancelOrder" style="margin-right:auto" onclick="openCancelOrder()">🚫 ยกเลิกออเดอร์</button><button class="btn bg" onclick="closeMo('moEdit')">ปิด</button><button class="btn bp" onclick="previewEdit()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>ตรวจสอบก่อนบันทึก</button></div>
   </div>
 </div>
 
@@ -730,6 +733,30 @@ tbody td{padding:11px 14px;color:var(--g8);}
     <div class="mhd"><h3>📋 ตรวจสอบข้อมูลที่แก้ไข</h3><button class="mc" onclick="closeMo('moEditPrev')">✕</button></div>
     <div class="mbd"><div class="pg" id="epContent"></div></div>
     <div class="mft"><button class="btn bg" onclick="closeMo('moEditPrev')">← แก้ไขเพิ่ม</button><button class="btn bp" id="btnEditSave" onclick="confirmEdit()">💾 ยืนยันบันทึก</button></div>
+  </div>
+</div>
+
+<div class="mo" id="moCancelOrder">
+  <div class="modal">
+    <div class="mhd" style="background:linear-gradient(135deg,#c62828,#e53935)"><h3>🚫 ยกเลิกออเดอร์</h3><button class="mc" onclick="closeMo('moCancelOrder')">✕</button></div>
+    <div class="mbd">
+      <div id="coSummary"></div>
+      <div class="fg2" style="margin-top:16px">
+        <div class="fg"><label>เหตุผลการยกเลิก</label><select class="fc" id="coReason">
+          <option value="ลูกค้ายกเลิกใน Shopee">ลูกค้ายกเลิกใน Shopee</option>
+          <option value="ลูกค้ายกเลิกใน TikTok">ลูกค้ายกเลิกใน TikTok</option>
+          <option value="ลูกค้ายกเลิกใน LINE">ลูกค้ายกเลิกใน LINE</option>
+          <option value="ลูกค้าแจ้งยกเลิก">ลูกค้าแจ้งยกเลิก</option>
+          <option value="ร้านยกเลิก">ร้านยกเลิก</option>
+        </select></div>
+        <div class="fg"><label>รายละเอียดเพิ่มเติม <span style="font-weight:400;color:var(--g6);font-size:12px">(ไม่บังคับ)</span></label><input type="text" class="fc" id="coNote" placeholder="เช่น ลูกค้าเปลี่ยนใจ / สินค้าหมด"></div>
+      </div>
+      <div style="margin-top:16px;background:#fff3e0;border:1px solid #ffb74d;border-radius:8px;padding:12px 14px;font-size:13px;color:#e65100;line-height:1.6">
+        ⚠️ ระบบจะเปลี่ยนชื่อสินค้าทุกรายการของบิลนี้เป็น "ยกเลิก" และตั้งส่วนลด ยอดต่อรายการ ค่าจัดส่ง และยอดรวมเป็น 0 (เหมือนการยกเลิกผ่าน LINE Shop)
+        บิลจะไม่ถูกนับใน Dashboard รายงาน และใบจัดส่งอีก แถวและ Revenue ID ยังอยู่ครบ ส่วนหมายเหตุเดิมจะถูกต่อท้ายข้อความยกเลิกไว้<br><strong>ย้อนกลับเองไม่ได้</strong>
+      </div>
+    </div>
+    <div class="mft"><button class="btn bg" onclick="closeMo('moCancelOrder')">← กลับ</button><button class="btn bx" id="btnCancelOrderConfirm" onclick="confirmCancelOrder()">🚫 ยืนยันยกเลิกออเดอร์</button></div>
   </div>
 </div>
 
@@ -1284,7 +1311,7 @@ function renderResults(res){
 
     var nRows=prods.length;
     var mainCells=
-      '<td rowspan="'+nRows+'"><span class="badge">'+esc(bill.id)+'</span></td>'
+      '<td rowspan="'+nRows+'"><span class="badge">'+esc(bill.id)+'</span>'+(main.productName==='ยกเลิก'?'<br><span class="badge-x">🚫 ยกเลิกแล้ว</span>':'')+'</td>'
       +'<td rowspan="'+nRows+'" style="white-space:nowrap">'+escV(main.timestamp)+'</td>'
       +'<td rowspan="'+nRows+'" style="white-space:nowrap">'+escV(main.orderDate)+'</td>';
 
@@ -1442,8 +1469,9 @@ function openEdit(ri){
     if(!rec){showToast('ไม่พบข้อมูล','❌','#c62828');return;}
     bill={mainRow:rec,products:[rec]};
   }
-  editRec=bill.mainRow; editRowCount=0;
+  editRec=bill.mainRow; editBill=bill; editRowCount=0;
   var main=bill.mainRow;
+  $('btnCancelOrder').style.display=(main.productName==='ยกเลิก')?'none':'';
 
   $('editBody').innerHTML=
     '<div class="ib"><strong>Revenue ID:</strong> '+esc(main.revenueId)+' &nbsp;|&nbsp; <strong>วันที่บันทึก:</strong> '+esc(main.timestamp)+' &nbsp;|&nbsp; <strong>วันที่สั่งซื้อ:</strong> '+esc(main.orderDate)+'</div>'
@@ -1538,6 +1566,48 @@ function confirmEdit(){
       .withFailureHandler(function(e){showLoad(false);btn.disabled=false;btn.innerHTML='💾 ยืนยันบันทึก';showToast('Error: '+e.message,'❌','#c62828');})
       .updateRevenue(editRec.rowIndex,pendingData);
   });
+}
+
+// ⚡ เพิ่ม (12/10/69) — ยกเลิกออเดอร์ที่ลูกค้ายกเลิกในแพลตฟอร์ม (หลักเดียวกับยกเลิกผ่าน LINE Shop) ดู cancelRevenue ใน Code.gs
+var editBill=null;
+function openCancelOrder(){
+  if(!editRec)return;
+  var main=editRec;
+  var prods=(editBill&&editBill.products)||[main];
+  var items=prods.map(function(p){return esc(p.productName)+' × '+(p.qty||'—');}).join('<br>');
+  var total=parseFloat(main.billTotal)||0;
+  $('coSummary').innerHTML='<div class="pg">'
+    +'<div class="pi"><span class="pl">Revenue ID</span><span class="pv">'+esc(main.revenueId)+'</span></div>'
+    +'<div class="pi"><span class="pl">ลูกค้า</span><span class="pv">'+esc(main.customerName)+' · '+esc(main.phoneNumber)+'</span></div>'
+    +'<div class="pi"><span class="pl">Ad / ช่องทางชำระ</span><span class="pv">'+esc(main.ad)+' · '+esc(main.payment)+'</span></div>'
+    +'<div class="pi"><span class="pl">Order Shopee / TikTok</span><span class="pv">'+esc(main.orderShopee||main.orderTiktok)+'</span></div>'
+    +'<div class="pi"><span class="pl">สินค้า</span><span class="pv">'+items+'</span></div>'
+    +'<div class="pi"><span class="pl">ยอดรวมที่จะถูกล้างเป็น 0</span><span class="pv" style="color:#c62828;font-weight:700">'+baht(total)+'</span></div>'
+    +'</div>';
+  var ad=String(main.ad||'').toLowerCase();
+  $('coReason').value=main.orderTiktok||ad.indexOf('tiktok')!==-1?'ลูกค้ายกเลิกใน TikTok'
+    :main.orderShopee||ad.indexOf('shopee')!==-1?'ลูกค้ายกเลิกใน Shopee'
+    :ad.indexOf('line')!==-1?'ลูกค้ายกเลิกใน LINE':'ลูกค้าแจ้งยกเลิก';
+  $('coNote').value='';
+  openMo('moCancelOrder');
+}
+function confirmCancelOrder(){
+  if(!editRec)return;
+  var reason=$('coReason').value; var note=$('coNote').value.trim();
+  if(note) reason+=' — '+note;
+  var btn=$('btnCancelOrderConfirm'); btn.disabled=true; btn.textContent='⏳ กำลังยกเลิก...'; showLoad(true);
+  var rid=editRec.revenueId;
+  google.script.run
+    .withSuccessHandler(function(r){
+      showLoad(false); btn.disabled=false; btn.innerHTML='🚫 ยืนยันยกเลิกออเดอร์';
+      if(r&&r.success){
+        closeMo('moCancelOrder');closeMo('moEdit');
+        showToast('ยกเลิกออเดอร์แล้ว ID: '+rid,'🚫','#c62828');
+        var q=$('sq').value.trim();var start=$('sq_start').value;var end=$('sq_end').value;if(q||start||end)doSearch();else loadAll();
+      } else showToast('ยกเลิกไม่สำเร็จ: '+(r?r.error:''),'❌','#c62828');
+    })
+    .withFailureHandler(function(e){showLoad(false);btn.disabled=false;btn.innerHTML='🚫 ยืนยันยกเลิกออเดอร์';showToast('Error: '+e.message,'❌','#c62828');})
+    .cancelRevenue(editRec.rowIndex, rid, reason);
 }
 
 function handleEditSlip(n,inp){
