@@ -60,26 +60,27 @@ jobs:
       - name: Check Apps Script was not edited outside the repo
         env:
           FORCE: ${{ inputs.force }}
-          BEFORE: ${{ github.event.before }}
         run: |
-          remote="$RUNNER_TEMP/remote"; base="$RUNNER_TEMP/base"
-          mkdir -p "$remote" "$base"
+          remote="$RUNNER_TEMP/remote"
+          mkdir -p "$remote"
           cp "$DIR/.clasp.json" "$remote/"
           (cd "$remote" && clasp pull)
 
-          # โค้ดใน repo ก่อนการเปลี่ยนแปลงรอบนี้ (กดรันเอง = เทียบกับ HEAD)
-          ref=HEAD
-          if [ "$GITHUB_EVENT_NAME" = push ]; then ref="$BEFORE"; fi
-          if ! git cat-file -e "$ref:$DIR/.clasp.json" 2>/dev/null; then
-            # โฟลเดอร์ยังไม่มีใน main ก่อนหน้า — เทียบกับ snapshot แรกที่ export มาจาก Apps Script
-            ref=$(git log --diff-filter=A --format=%H -- "$DIR/.clasp.json" | tail -1)
-          fi
-          git archive "$ref" "$DIR" | tar -x -C "$base"
+          # โค้ดบน Apps Script ต้องตรงกับโค้ดเวอร์ชันใดเวอร์ชันหนึ่งที่เคยอยู่ใน repo (ใหม่ไปเก่า) — ไม่ใช่แค่
+          # เวอร์ชันก่อนหน้า เพราะถ้า deploy รอบก่อนล้มเหลว Apps Script จะยังเป็นโค้ดที่เก่ากว่านั้น
+          matched=""
+          for ref in $(git log --format=%H -- "$DIR"); do
+            base="$RUNNER_TEMP/base-$ref"; mkdir -p "$base"
+            git archive "$ref" "$DIR" | tar -x -C "$base"
+            if diff -ru --strip-trailing-cr -x .clasp.json -x .claspignore "$base/$DIR" "$remote" > /dev/null; then
+              matched="$ref"; break
+            fi
+          done
 
-          if diff -ru --strip-trailing-cr -x .clasp.json -x .claspignore "$base/$DIR" "$remote" > "$RUNNER_TEMP/drift.diff"; then
-            echo "โค้ดบน Apps Script ตรงกับ repo ($ref) — ส่งต่อได้"
+          if [ -n "$matched" ]; then
+            echo "โค้ดบน Apps Script ตรงกับ repo ($matched) — ส่งต่อได้"
           else
-            head -c 20000 "$RUNNER_TEMP/drift.diff"
+            diff -ru --strip-trailing-cr -x .clasp.json -x .claspignore "$DIR" "$remote" | head -c 20000
             if [ "$FORCE" = true ]; then
               echo "::warning::โค้ดบน Apps Script ถูกแก้นอก repo แต่เลือก force — จะเขียนทับ"
             else
