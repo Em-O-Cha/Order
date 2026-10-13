@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 103 รายการ (69 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 107 รายการ (72 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -178,7 +178,7 @@ function findHighestTierUpgradeRedeemed_(lineUid, tierConfig) {
 var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'price', 'ship_price'];
 
 function getSignupPrivilegeConfig_() {
-  var fallback = { enabled: false, name: '', type: 'percent', value: 0, expiryDays: 0, expiryDate: '', restriction: '', freeProduct: '', freeQty: 0, startDate: '', endDate: '' };
+  var fallback = { enabled: false, name: '', type: 'percent', value: 0, expiryDays: 0, expiryDate: '', restriction: '', freeProduct: '', freeQty: 0, freeDiscountPercent: '', startDate: '', endDate: '' };
   try {
     var raw = PropertiesService.getScriptProperties().getProperty('SIGNUP_PRIVILEGE_CONFIG');
     if (!raw) return fallback;
@@ -193,6 +193,8 @@ function getSignupPrivilegeConfig_() {
       restriction: String(cfg.restriction || ''),
       freeProduct: String(cfg.freeProduct || ''),
       freeQty: parseFloat(cfg.freeQty) || 0,
+      // ⚡ เพิ่ม (4/10/69) — ส่วนลดชิ้นถัดไป % ของ bogo (ว่าง = 100% แถมฟรี)
+      freeDiscountPercent: (cfg.freeDiscountPercent === undefined || cfg.freeDiscountPercent === null) ? '' : cfg.freeDiscountPercent,
       // ⚡ เพิ่ม (25/8/69) — ช่วงวันเริ่ม-สิ้นสุดของ "โปรนี้" (ตอนรับสมัครสมาชิกใหม่) เว้นว่างทั้งคู่ = ใช้ได้
       // ตลอดไม่มีกำหนด — คนละเรื่องกับ expiryDate ด้านบนที่คือวันหมดอายุของสิทธิ์ที่สมาชิกแต่ละคนได้รับไปแล้ว
       startDate: String(cfg.startDate || ''),
@@ -294,6 +296,16 @@ function listCodBlockedMembers(pin) {
   }
 }
 
+var SIGNUP_ITEM_DISCOUNT_HEADER_ = 'ส่วนลดชิ้นถัดไป(%)(เฉพาะ bogo — เว้นว่าง=100% ฟรี)';
+
+function signupItemDiscountCol_(sheet, create) {
+  var width = Math.max(sheet.getLastColumn(), 12);
+  var header = sheet.getRange(1, 1, 1, width).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var c = header.indexOf(SIGNUP_ITEM_DISCOUNT_HEADER_) + 1;
+  if (!c && create) { c = width + 1; sheet.getRange(1, c).setValue(SIGNUP_ITEM_DISCOUNT_HEADER_); }
+  return c;
+}
+
 function ensureSignupPrivilegesSheet_() {
   if (_sheetCache_.signupPrivileges) return _sheetCache_.signupPrivileges;
   var ss = SpreadsheetApp.openById(MEMBERS_SHEET_ID);
@@ -322,8 +334,11 @@ function listSignupPrivilegeItems(pin) {
     var lastRow = sheet.getLastRow();
     if (lastRow <= 1) return { success: true, results: [] };
     var data = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
+    var discountCol_ = signupItemDiscountCol_(sheet);
+    var discountVals_ = discountCol_ ? sheet.getRange(2, discountCol_, lastRow - 1, 1).getValues() : [];
     var results = data.map(function (row, idx) {
       return {
+        freeDiscountPercent: discountVals_[idx] ? discountVals_[idx][0] : '',
         rowIndex: idx + 2, name: row[0], type: row[1], value: row[2],
         expiryDays: row[3] || '', restriction: row[4] || '', freeProduct: row[5] || '', freeQty: row[6] || '',
         active: row[7] === true || String(row[7]).toUpperCase() === 'TRUE',
@@ -759,6 +774,7 @@ function getBlockedMembers(pin) {
         results.push({
           lineUid: row[0],
           displayName: row[9] || row[1] || '',
+          lineName: String(row[1] || ''), // ⚡ (13/10/69) ชื่อที่ใช้ใน LINE (คอลัมน์ 2) แสดงคู่กับชื่อจริง
           phone: String(row[3] || ''),
           memberCode: row[12] || '',
           joinedAt: row[4] ? Utilities.formatDate(new Date(row[4]), 'Asia/Bangkok', 'dd/MM/yyyy') : '', // วันที่สมัครสมาชิก (คอลัมน์ 5)
@@ -859,6 +875,26 @@ function privilegeDetailCol_(create) {
   if (!c && create) { c = width + 1; sheet.getRange(1, c).setValue(PROMO_DETAIL_HEADER_); }
   privilegeDetailColCache_ = c;
   return c;
+}
+
+function autoPrivilegeTicketText_(row) {
+  return autoTicketTextFor_(row[2], row[3], row[10], row[12], row[14]);
+}
+
+function autoTicketTextFor_(type, value, restriction, freeQty, freeDiscountPercent) {
+  type = String(type || '');
+  var products = String(restriction || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  if (type === 'percent' && products.length) return 'ลด ' + (parseFloat(value) || 0) + '% เฉพาะ ' + products.join(', ');
+  // ⚡ เพิ่ม (6/10/69) — ค่าส่งราคาพิเศษที่ส่งฟรีเมื่อซื้อครบ N ชิ้น (หน้าร้านไม่รู้ N เอง)
+  if (type === 'ship_price' && (parseFloat(freeQty) || 0) > 0 && (parseFloat(value) || 0) > 0) return 'ค่าส่ง ' + (parseFloat(value) || 0) + ' บาท · ซื้อครบ ' + (parseFloat(freeQty) || 0) + ' ชิ้นส่งฟรี';
+  if (type === 'bogo' && freeDiscountPercent !== '' && freeDiscountPercent !== null && freeDiscountPercent !== undefined) {
+    var pct = parseFloat(freeDiscountPercent);
+    var qty = parseFloat(freeQty) || 1;
+    if (!isNaN(pct) && pct < 100) {
+      return 'ซื้อ' + (products.length ? products.join(' หรือ ') + ' ' : '') + 'ครบ ' + (parseFloat(value) || 0) + ' ชิ้น ชิ้นถัดไปลด ' + pct + '%' + (qty > 1 ? ' (' + qty + ' ชิ้น)' : '');
+    }
+  }
+  return '';
 }
 
 var CANCELLED_ORDER_MARK_ = 'ยกเลิก';
@@ -1007,7 +1043,7 @@ function getMemberPrivileges(pin, lineUid) {
     var sheet = ensurePrivilegesSheet_();
     var lastRow = sheet.getLastRow();
     if (lastRow <= 1) return { success: true, results: [] };
-    var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
+    var data = sheet.getRange(2, 1, lastRow - 1, 15).getValues();
     var stackCol_ = privilegeStackableCol_();
     var stackVals_ = stackCol_ ? sheet.getRange(2, stackCol_, lastRow - 1, 1).getValues() : [];
     var detailCol_ = privilegeDetailCol_();
@@ -1035,9 +1071,9 @@ function getMemberPrivileges(pin, lineUid) {
         expiryDaysApprox: expiryDaysApprox,
         active: active,
         isUpcoming: !!(startDateVal && new Date(startDateVal) > now),
-        restriction: row[10] || '', freeProduct: row[11] || '', freeQty: row[12] || '',
+        restriction: row[10] || '', freeProduct: row[11] || '', freeQty: row[12] || '', freeDiscountPercent: row[14],
         stackable: stackRaw_ === true || String(stackRaw_).toUpperCase() === 'TRUE',
-        detailText: detailVals_[idx] ? String(detailVals_[idx][0] || '') : ''
+        detailText: (function (d) { return d && d === autoPrivilegeTicketText_(row) ? '' : d; })(detailVals_[idx] ? String(detailVals_[idx][0] || '') : '')
       });
     });
     results.sort(function (a, b) { return b.rowIndex - a.rowIndex; });
