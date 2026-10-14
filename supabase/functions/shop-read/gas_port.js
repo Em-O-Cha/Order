@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 187 รายการ (129 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 188 รายการ (129 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1160,7 +1160,10 @@ function privilegeDetailText_(row) {
   return c ? String(row[c - 1] || '').trim() : '';
 }
 
+var POINTS_REDEEM_GIVER_ = 'แลกด้วยแต้ม';
+
 function isStackablePrivilegeRow_(row) {
+  if (String(row[5] || '').trim() === POINTS_REDEEM_GIVER_) return true;
   var c = privilegeStackableCol_();
   if (!c) return false;
   var v = row[c - 1];
