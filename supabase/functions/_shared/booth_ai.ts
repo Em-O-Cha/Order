@@ -10,14 +10,14 @@ export const MAX_TRANSCRIPT_CHARS = 20000;
 const SURVEY_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["type", "hasProduct", "refill", "inquiry", "promoWish", "pastPromo", "goodPromo"],
+  required: ["type", "hasProduct", "noReason", "refill", "inquiry", "promoWish", "goodPromo"],
   properties: {
     type: { type: "string", enum: ["คอร์ปอเรท", "แฟรนไชส์", ""] },
     hasProduct: { type: "string", enum: ["มี", "ไม่มี", ""] },
+    noReason: { type: "string" },
     refill: { type: "string", enum: ["บ่อย", "นาน ๆ ครั้ง", "ไม่ค่อยเติม", ""] },
     inquiry: { type: "string", enum: ["ถามบ่อย", "มีบ้าง", "ไม่มีคนถาม", ""] },
     promoWish: { type: "string" },
-    pastPromo: { type: "string" },
     goodPromo: { type: "string" },
   },
 };
@@ -54,11 +54,11 @@ Fill each field only from what was actually said. When something was not said, o
 - branch: the branch (shop) of Em-O-Cha that the customer owns or runs. If a list of known branch names is given, return the matching name from the list exactly as written, allowing for misheard spellings and sound-alike Thai letters; if nothing on the list matches, return the branch as you understood it. If the customer says they do not have a branch yet, return "ยังไม่มีสาขา".
 - survey.type: "คอร์ปอเรท" if the customer's branch is company-owned/corporate, "แฟรนไชส์" if they are a franchisee.
 - survey.hasProduct: whether their branch currently stocks Em-O-Cha products ("มี"/"ไม่มี"). The brand is often misheard (e.g. "เอ็ม โอชา", "M โอชา", "เอมโอ ชา").
-- survey.refill: how often they reorder/restock Em-O-Cha products: "บ่อย", "นาน ๆ ครั้ง", or "ไม่ค่อยเติม".
+- survey.noReason: only when their branch does not stock Em-O-Cha — why not. Use these wordings when they fit, joined with ", " when several apply: ไม่รู้จักสินค้าเอมโอชา, เคยสั่งแล้วขายไม่ดี, ไม่รู้ช่องทางสั่งซื้อ; otherwise a short Thai phrase.
+- survey.refill: only when their branch stocks Em-O-Cha — how often they reorder/restock: "บ่อย", "นาน ๆ ครั้ง", or "ไม่ค่อยเติม".
 - survey.inquiry: whether their customers ask about Em-O-Cha products: "ถามบ่อย", "มีบ้าง", or "ไม่มีคนถาม".
-- survey.promoWish: what promotion/marketing help they want from Em-O-Cha, as a short Thai phrase.
-- survey.pastPromo: promotions they ran before and how those went, as a short Thai phrase.
-- survey.goodPromo: which promotions worked well for sales at their branch, as a short Thai phrase.
+- survey.promoWish: what promotion/marketing help they want from Em-O-Cha. Use these wordings when they fit, joined with ", ": ป้าย / สื่อ ณ จุดขาย, ให้ลูกค้าชิมสินค้าหน้าร้าน, โปรลดราคา, ซื้อ 1 แถม 1 / ซื้อคู่ถูกกว่า, ของแถม / ของพรีเมียม, โพสต์ / รีวิวบนโซเชียล; otherwise a short Thai phrase.
+- survey.goodPromo: which promotions worked well for sales at their branch. Use these wordings when they fit, joined with ", ": ลดราคา, ซื้อ 1 แถม 1 / ซื้อคู่ถูกกว่า, ของแถม, จัดเซ็ต / คอมโบ, สะสมแต้ม, ให้ชิมหน้าร้าน; otherwise a short Thai phrase (keep specifics such as "ซื้อ 5 แถม 1").
 - speakerRoles: only when lines carry speaker labels — for each label, whether that speaker is the booth staff ("พนักงาน", the one presenting Em-O-Cha, asking the questions, offering samples), the customer ("ลูกค้า", the shop/branch owner being asked), or someone else ("อื่น ๆ"). Use the exact label text without the colon, e.g. "ผู้พูด 1". Return an empty array when the lines have no labels.
 - summary: 1–3 short Thai sentences summarising what the customer wants or what was agreed (e.g. what to send, when to follow up). Empty if nothing useful was discussed.
 
