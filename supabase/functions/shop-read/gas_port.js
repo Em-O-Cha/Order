@@ -2315,6 +2315,8 @@ function applyPromoExclusivity_(privileges, coupons, items) {
     if (!(p.discount > 0) && !(p.physicalFreeQty > 0)) return true; // ลดไม่ได้อยู่แล้ว ไม่ครอบอะไร ปล่อยตามเดิม
     if (p.stackable && isShippingPromoType_(p.type)) return true;   // ส่วนลดค่าส่งที่ติ๊ก ใช้ได้กับทุกโปรเสมอ
     if (p.stackable && p.giftOnly) return true;                     // ⚡ ของแถมจริงที่ติ๊ก (ไม่ลดราคา) ใช้ได้กับทุกโปรเสมอ
+    // ⚡ (14/10/69) คูปองที่ลูกค้าแลกด้วยแต้ม ใช้ได้กับทุกโปรเสมอ — แม้โปรนั้นไม่ได้ติ๊กใช้ร่วมกับสิทธิพิเศษสมาชิก (ลูกค้าเสียแต้มแลกมาแล้ว)
+    if (kind === 'priv' && String(p.givenBy || '').trim() === POINTS_REDEEM_GIVER_) return true;
     var sc = promoScope_(p, items);
     var against = kind === 'auto' ? acceptedPriv.concat(acceptedAuto) : acceptedPriv;
     if (against.some(function (a) { return promoScopesConflict_(a, sc); })) return false;
