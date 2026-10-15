@@ -2721,19 +2721,14 @@ function renderDiscountSummary(){
       + '</div>';
   }
 
-  function fmtWeight_(g){
-    if (g >= 1000) return (g / 1000).toLocaleString('th-TH', { maximumFractionDigits: 2 }) + ' กก.';
-    return g.toLocaleString('th-TH') + ' ก.';
-  }
   var productLinesHtml = Object.keys(cart).map(function(skuName){
     var v = findVariant(skuName);
     if (!v) return '';
     var qty = cart[skuName];
-    var weightTotal = (v.weightG || 0) * qty;
     // ⚡ เพิ่ม (15/10/69) — ราคาของแต่ละรายการ (ราคาต่อชิ้น × จำนวน) ชิดขวา ผู้ใช้ขอให้เห็นแยกทีละอย่าง
     var lineTotal = (Number(v.price) || 0) * qty;
     return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--g6);padding:2px 0 2px 4px">'
-      + '<span class="fit1">' + escHtml(skuName) + ' x' + qty + (weightTotal > 0 ? ' (' + fmtWeight_(weightTotal) + ')' : '') + '</span>'
+      + '<span class="fit1">' + escHtml(skuName) + ' x' + qty + '</span>' // ⚡ (15/10/69) ไม่แสดงน้ำหนักท้ายชื่อสินค้าแล้ว (ผู้ใช้ขอ)
       + '<span style="flex-shrink:0;white-space:nowrap">฿' + lineTotal.toLocaleString('th-TH') + '</span></div>';
   }).join('');
 
