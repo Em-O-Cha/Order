@@ -2640,7 +2640,7 @@ function renderPointsRedeemBox_(){
 
   if (lastDiscountInfo.pointsUsed > 0) {
     h += '<div class="row" style="align-items:center"><span>ใช้ไปแล้ว ' + lastDiscountInfo.pointsUsed + ' คะแนน <span style="color:#c62828">(-฿' + Math.round(lastDiscountInfo.pointsRedeemDiscount).toLocaleString('th-TH') + ')</span></span>'
-      + '<button type="button" onclick="clearPointsRedeem()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ยกเลิก</button></div>';
+      + '<button type="button" onclick="clearPointsRedeem()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ไม่ใช้</button></div>';
   } else {
     h += '<div style="display:flex;gap:8px">'
       + '<input type="number" id="pointsRedeemInput" min="0" max="' + availablePoints + '" placeholder="จำนวนคะแนน" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:\'Kanit\',sans-serif">'
@@ -2750,11 +2750,11 @@ function renderDiscountSummary(){
         + '<span><button type="button" onclick="undoRemovePrivilege(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ใช้</button></span></div>';
       return;
     }
-    // ⚡ (11/10/69) สิทธิ์จากวงล้อใช้ได้ครั้งละ 1 ใบ: ใบที่ไม่ได้ใช้ขึ้นปุ่ม "ใช้ใบนี้แทน" / ใบที่ใช้อยู่กด "ไม่ใช้" เก็บไว้ครั้งหน้าได้
+    // ⚡ (11/10/69) สิทธิ์จากวงล้อใช้ได้ครั้งละ 1 ใบ: ใบที่ไม่ได้ใช้ขึ้นปุ่ม "ใช้" (สลับมาใช้ใบนี้แทน) / ใบที่ใช้อยู่กด "ไม่ใช้" เก็บไว้ครั้งหน้าได้
     if (p.exclusivityDropped && isSpinPriv_ && (p.discount > 0 || p.physicalFreeQty > 0)) {
       h += '<div class="row" style="align-items:center;font-size:12px;color:var(--g6)"><span style="flex:1;min-width:0">🎡 ' + escHtml(p.name)
         + '<span style="display:block;font-size:10.5px;line-height:1.35">ใช้สิทธิ์วงล้อได้ครั้งละ 1 ใบ · ใบนี้เก็บไว้ใช้ครั้งหน้า</span></span>'
-        + '<span><button type="button" onclick="useSpinPrivilegeInstead_(' + p.rowIndex + ')" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer;white-space:nowrap">ใช้ใบนี้แทน</button></span></div>';
+        + '<span><button type="button" onclick="useSpinPrivilegeInstead_(' + p.rowIndex + ')" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer;white-space:nowrap">ใช้</button></span></div>';
       return;
     }
     var removeBtnHtml = (isRedeemable || isSpinPriv_)
