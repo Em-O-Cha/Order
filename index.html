@@ -2733,7 +2733,7 @@ function renderDiscountSummary(){
     // ⚡ เพิ่ม (15/10/69) — ราคาของแต่ละรายการ (ราคาต่อชิ้น × จำนวน) ชิดขวา ผู้ใช้ขอให้เห็นแยกทีละอย่าง
     var lineTotal = (Number(v.price) || 0) * qty;
     return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--g6);padding:2px 0 2px 4px">'
-      + '<span>' + escHtml(skuName) + ' x' + qty + (weightTotal > 0 ? ' (' + fmtWeight_(weightTotal) + ')' : '') + '</span>'
+      + '<span class="fit1">' + escHtml(skuName) + ' x' + qty + (weightTotal > 0 ? ' (' + fmtWeight_(weightTotal) + ')' : '') + '</span>'
       + '<span style="flex-shrink:0;white-space:nowrap">฿' + lineTotal.toLocaleString('th-TH') + '</span></div>';
   }).join('');
 
@@ -2845,6 +2845,7 @@ function renderDiscountSummary(){
   h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px;align-items:center"><span><b>ยอดสุทธิ</b></span><span style="font-size:22px;font-weight:700;color:#e65100">฿' + getFinalTotal().toLocaleString('th-TH') + '</span></div>';
   h += '</div>';
   wrap.innerHTML = h;
+  fitOneLineIn_(wrap);
   document.getElementById('checkoutBarTotal').textContent = '฿' + getFinalTotal().toLocaleString('th-TH');
   updatePaymentMethodsUi_(); // ยอดเปลี่ยน = เงื่อนไขเก็บเงินปลายทางอาจเปลี่ยนตาม
   renderPointsRedeemBox_();
@@ -2865,6 +2866,23 @@ function selectPayment(method){
   renderDiscountSummary(); // ค่าธรรมเนียม/ยอดสุทธิเปลี่ยนตามวิธีชำระที่เลือก
 }
 
+// ⚡ เพิ่ม (15/10/69) — รายละเอียดในสรุปยอด (ชื่อสินค้า/โปร/สิทธิ์) ที่ยาวเกิน 1 บรรทัด ย่อตัวอักษรลงจนพอดี 1 บรรทัด
+//   (ผู้ใช้ขอ) ไม่เล็กกว่า 9px — ยาวกว่านั้นตัดท้ายด้วย … · ข้ามบรรทัดที่มีปุ่ม/ข้อความหลายบรรทัดในตัว (เช่น ค่าจัดส่ง)
+//   และข้ามตอนกล่องยังซ่อนอยู่ (วัดความกว้างไม่ได้ ปล่อยตัดบรรทัดตามปกติ)
+function fitOneLineIn_(root){
+  if (!root) return;
+  root.querySelectorAll('.row > span:first-child, .fit1').forEach(function(el){
+    if (!el.clientWidth || el.querySelector('br,div,button,[style*="display:block"]')) return;
+    var value = el.nextElementSibling;
+    el.style.flex = '1 1 auto'; el.style.minWidth = '0';
+    if (value) { value.style.flexShrink = '0'; value.style.whiteSpace = 'nowrap'; value.style.marginLeft = '8px'; }
+    el.style.whiteSpace = 'nowrap'; el.style.overflow = 'hidden'; el.style.textOverflow = 'ellipsis';
+    var size = parseFloat(getComputedStyle(el).fontSize) || 14;
+    var startSize = size;
+    while (el.scrollWidth > el.clientWidth + 1 && size > 9) { size -= 0.5; el.style.fontSize = size + 'px'; }
+    if (size < startSize && el.parentNode) el.parentNode.style.alignItems = 'center'; // ตัวเล็กลงแล้วให้อยู่กึ่งกลางแนวเดียวกับราคา
+  });
+}
 function getCartTotal(){
   var total = 0;
   Object.keys(cart).forEach(function(name){
@@ -3317,6 +3335,7 @@ function renderOrderSummary_(r, orderIdHtml, noticeHtml, shipCodes){
   summaryHtml += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><span><b>ยอดชำระ</b></span><span>' + oldAmountHtml_ + '<b>฿' + r.totalAmount.toLocaleString('th-TH') + '</b></span></div>'
     + '<div class="row"><span>วิธีชำระ</span><span>' + (selectedPayment === 'promptpay' ? 'พร้อมเพย์' : (selectedPayment === 'cod' ? '💵 เก็บเงินปลายทาง' : (selectedPayment === 'card' ? '💳 บัตรเครดิต/เดบิต' : 'โอนธนาคาร'))) + '</span></div>';
   document.getElementById('orderSummary').innerHTML = summaryHtml;
+  fitOneLineIn_(document.getElementById('orderSummary'));
 }
 
 function setSlipButtonWaiting_(waiting){
