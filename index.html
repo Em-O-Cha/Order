@@ -2727,9 +2727,12 @@ function renderDiscountSummary(){
     var qty = cart[skuName];
     // ⚡ เพิ่ม (15/10/69) — ราคาของแต่ละรายการ (ราคาต่อชิ้น × จำนวน) ชิดขวา ผู้ใช้ขอให้เห็นแยกทีละอย่าง
     var lineTotal = (Number(v.price) || 0) * qty;
-    return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--g6);padding:2px 0 2px 4px">'
-      + '<span class="fit1">' + escHtml(skuName) + ' <b style="display:inline-block;background:#e65100;color:#fff;border-radius:999px;padding:0 7px;font-size:11px;line-height:17px;margin-left:2px">x' + qty + '</b></span>' // ⚡ (15/10/69) ไม่แสดงน้ำหนักท้ายชื่อสินค้าแล้ว · จำนวน (x1, x2) เป็นป้ายพื้นส้ม (สีเดียวกับยอดสุทธิ) ตัวขาว ให้เห็นชัด (ผู้ใช้ขอ)
-      + '<span style="flex-shrink:0;white-space:nowrap">฿' + lineTotal.toLocaleString('th-TH') + '</span></div>';
+    return '<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--g6);padding:2px 0 2px 4px">'
+      // ⚡ (15/10/69) ไม่แสดงน้ำหนักท้ายชื่อสินค้าแล้ว · จำนวน (x1, x2) เป็นป้ายพื้นส้ม (สีเดียวกับยอดสุทธิ) ตัวขาว ให้เห็นชัด (ผู้ใช้ขอ)
+      //   ป้ายจำนวนแยกออกจากชื่อ: ชื่อยาวถูกย่อ/ตัด … ได้ แต่ป้ายจำนวนต้องเห็นเสมอ
+      + '<span class="fit1">' + escHtml(skuName) + '</span>'
+      + '<b style="flex-shrink:0;background:#e65100;color:#fff;border-radius:999px;padding:0 7px;font-size:11px;line-height:17px">x' + qty + '</b>'
+      + '<span style="flex-shrink:0;white-space:nowrap;margin-left:auto;padding-left:4px">฿' + lineTotal.toLocaleString('th-TH') + '</span></div>';
   }).join('');
 
   h += '<div class="bank-box"><div class="row"><span>ยอดสินค้า</span><span>฿' + subtotal.toLocaleString('th-TH') + '</span></div>'
@@ -2868,9 +2871,10 @@ function fitOneLineIn_(root){
   if (!root) return;
   root.querySelectorAll('.row > span:first-child, .fit1').forEach(function(el){
     if (!el.clientWidth || el.querySelector('br,div,button,[style*="display:block"]')) return;
-    var value = el.nextElementSibling;
-    el.style.flex = '1 1 auto'; el.style.minWidth = '0';
-    if (value) { value.style.flexShrink = '0'; value.style.whiteSpace = 'nowrap'; value.style.marginLeft = '8px'; }
+    var value = el.nextElementSibling, isItem = el.classList.contains('fit1');
+    // ชื่อสินค้า (.fit1) ไม่ยืดเต็มแถว ป้ายจำนวนจะได้อยู่ติดท้ายชื่อ ส่วนราคาชิดขวาด้วย margin-left:auto ของมันเอง
+    el.style.flex = isItem ? '0 1 auto' : '1 1 auto'; el.style.minWidth = '0';
+    if (value) { value.style.flexShrink = '0'; value.style.whiteSpace = 'nowrap'; if (!isItem) value.style.marginLeft = '8px'; }
     el.style.whiteSpace = 'nowrap'; el.style.overflow = 'hidden'; el.style.textOverflow = 'ellipsis';
     var size = parseFloat(getComputedStyle(el).fontSize) || 14;
     var startSize = size;
