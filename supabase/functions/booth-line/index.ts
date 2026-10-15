@@ -32,7 +32,7 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const APPEND_WINDOW_MIN = 120;
 const DELETE_WINDOW_MIN = 24 * 60;
 const SURVEY_LABELS: [string, string][] = [
-  ["type", "คอร์ปอเรท/แฟรนไชส์"], ["hasProduct", "มีสินค้าเอมโอชา"], ["noReason", "เหตุผลที่ไม่มีสินค้า"], ["refill", "เติมสินค้า"],
+  ["hasProduct", "มีสินค้าเอมโอชา"], ["noReason", "เหตุผลที่ไม่มีสินค้า"], ["refill", "เติมสินค้า"],
   ["inquiry", "ลูกค้ามาถาม"], ["promoWish", "อยากให้ช่วยโปรโมต"], ["goodPromo", "โปรที่ได้ผลดี"],
 ];
 
