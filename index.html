@@ -2728,10 +2728,10 @@ function renderDiscountSummary(){
     // ⚡ เพิ่ม (15/10/69) — ราคาของแต่ละรายการ (ราคาต่อชิ้น × จำนวน) ชิดขวา ผู้ใช้ขอให้เห็นแยกทีละอย่าง
     var lineTotal = (Number(v.price) || 0) * qty;
     return '<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--g6);padding:2px 0 2px 4px">'
-      // ⚡ (15/10/69) ไม่แสดงน้ำหนักท้ายชื่อสินค้าแล้ว · จำนวน (x1, x2) เป็นป้ายพื้นส้ม (สีเดียวกับยอดสุทธิ) ตัวขาว ให้เห็นชัด (ผู้ใช้ขอ)
-      //   ป้ายจำนวนแยกออกจากชื่อ: ชื่อยาวถูกย่อ/ตัด … ได้ แต่ป้ายจำนวนต้องเห็นเสมอ
+      // ⚡ (15/10/69) ไม่แสดงน้ำหนักท้ายชื่อสินค้าแล้ว · จำนวน (x1, x2) ตัวหนาสีส้ม (สีเดียวกับยอดสุทธิ) ไม่มีพื้น (ผู้ใช้ขอ)
+      //   จำนวนแยกออกจากชื่อ: ชื่อยาวถูกย่อ/ตัด … ได้ แต่จำนวนต้องเห็นเสมอ
       + '<span class="fit1">' + escHtml(skuName) + '</span>'
-      + '<b style="flex-shrink:0;background:#e65100;color:#fff;border-radius:999px;padding:0 7px;font-size:11px;line-height:17px">x' + qty + '</b>'
+      + '<b style="flex-shrink:0;color:#e65100">x' + qty + '</b>'
       + '<span style="flex-shrink:0;white-space:nowrap;margin-left:auto;padding-left:4px">฿' + lineTotal.toLocaleString('th-TH') + '</span></div>';
   }).join('');
 
