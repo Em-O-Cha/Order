@@ -2730,8 +2730,11 @@ function renderDiscountSummary(){
     if (!v) return '';
     var qty = cart[skuName];
     var weightTotal = (v.weightG || 0) * qty;
-    return '<div style="font-size:12px;color:var(--g6);padding:2px 0 2px 4px">' + escHtml(skuName) + ' x' + qty
-      + (weightTotal > 0 ? ' (' + fmtWeight_(weightTotal) + ')' : '') + '</div>';
+    // ⚡ เพิ่ม (15/10/69) — ราคาของแต่ละรายการ (ราคาต่อชิ้น × จำนวน) ชิดขวา ผู้ใช้ขอให้เห็นแยกทีละอย่าง
+    var lineTotal = (Number(v.price) || 0) * qty;
+    return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--g6);padding:2px 0 2px 4px">'
+      + '<span>' + escHtml(skuName) + ' x' + qty + (weightTotal > 0 ? ' (' + fmtWeight_(weightTotal) + ')' : '') + '</span>'
+      + '<span style="flex-shrink:0;white-space:nowrap">฿' + lineTotal.toLocaleString('th-TH') + '</span></div>';
   }).join('');
 
   h += '<div class="bank-box"><div class="row"><span>ยอดสินค้า</span><span>฿' + subtotal.toLocaleString('th-TH') + '</span></div>'
