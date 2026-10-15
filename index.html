@@ -2747,7 +2747,7 @@ function renderDiscountSummary(){
     var isSpinPriv_ = p.givenBy === 'วงล้อนำโชค';
     if (isExcluded) {
       h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>✅ ไม่ใช้สิทธิ์ "' + escHtml(p.name) + '" ในออเดอร์นี้ (ยังใช้ได้ครั้งถัดไป)</span>'
-        + '<span><button type="button" onclick="undoRemovePrivilege(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ยกเลิก</button></span></div>';
+        + '<span><button type="button" onclick="undoRemovePrivilege(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer">ใช้</button></span></div>';
       return;
     }
     // ⚡ (11/10/69) สิทธิ์จากวงล้อใช้ได้ครั้งละ 1 ใบ: ใบที่ไม่ได้ใช้ขึ้นปุ่ม "ใช้ใบนี้แทน" / ใบที่ใช้อยู่กด "ไม่ใช้" เก็บไว้ครั้งหน้าได้
@@ -2758,7 +2758,7 @@ function renderDiscountSummary(){
       return;
     }
     var removeBtnHtml = (isRedeemable || isSpinPriv_)
-      ? ' <button type="button" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">' + (isSpinPriv_ ? 'ไม่ใช้' : 'ลบ') + '</button>'
+      ? ' <button type="button" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ไม่ใช้</button>' // ⚡ (15/10/69) ใช้คำคู่ "ใช้ / ไม่ใช้" ทุกสิทธิ์ (เดิมสิทธิ์ทั่วไปเขียน "ลบ")
       : '';
     if (p.discount <= 0) {
       if (p.physicalFreeQty > 0) {
