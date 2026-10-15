@@ -10,9 +10,8 @@ export const MAX_TRANSCRIPT_CHARS = 20000;
 const SURVEY_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["type", "hasProduct", "noReason", "refill", "inquiry", "promoWish", "goodPromo"],
+  required: ["hasProduct", "noReason", "refill", "inquiry", "promoWish", "goodPromo"],
   properties: {
-    type: { type: "string", enum: ["คอร์ปอเรท", "แฟรนไชส์", ""] },
     hasProduct: { type: "string", enum: ["มี", "ไม่มี", ""] },
     noReason: { type: "string" },
     refill: { type: "string", enum: ["บ่อย", "นาน ๆ ครั้ง", "ไม่ค่อยเติม", ""] },
@@ -52,7 +51,6 @@ Fill each field only from what was actually said. When something was not said, o
 - name: the customer's name or nickname (not the staff member's), without honorifics such as คุณ/พี่/น้อง and without particles like ครับ/ค่ะ. If the name is said more than once with different spellings, use the clearest one.
 - phone: the customer's phone number as digits only (e.g. 0812345678). Convert Thai number words (ศูนย์ หนึ่ง สอง … เก้า, นึง, สูญ). If the number was read back or corrected, use the final confirmed version. Thai mobile numbers have 10 digits starting 06/08/09; landlines 9 digits starting 02-07. If you heard fewer digits than that, still return what you heard.
 - branch: the branch (shop) of Em-O-Cha that the customer owns or runs. If a list of known branch names is given, return the matching name from the list exactly as written, allowing for misheard spellings and sound-alike Thai letters; if nothing on the list matches, return the branch as you understood it. If the customer says they do not have a branch yet, return "ยังไม่มีสาขา".
-- survey.type: "คอร์ปอเรท" if the customer's branch is company-owned/corporate, "แฟรนไชส์" if they are a franchisee.
 - survey.hasProduct: whether their branch currently stocks Em-O-Cha products ("มี"/"ไม่มี"). The brand is often misheard (e.g. "เอ็ม โอชา", "M โอชา", "เอมโอ ชา").
 - survey.noReason: only when their branch does not stock Em-O-Cha — why not. Use these wordings when they fit, joined with ", " when several apply: ไม่รู้จักสินค้าเอมโอชา, เคยสั่งแล้วขายไม่ดี, ไม่รู้ช่องทางสั่งซื้อ; otherwise a short Thai phrase.
 - survey.refill: only when their branch stocks Em-O-Cha — how often they reorder/restock: "บ่อย", "นาน ๆ ครั้ง", or "ไม่ค่อยเติม".
