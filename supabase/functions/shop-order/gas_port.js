@@ -1,9 +1,9 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 181 รายการ (121 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 182 รายการ (121 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
-          verifyLineIdToken_, logErrorToSheet_, ensureDebugLogSheet_, logSlowAction_, logRegistrationQueueWait_, notifyBuyerOrderConfirmation_, notifyAdminNewOrder_, checkAndGrantReferralOnFirstPurchase_, checkAndGrantPurchaseReferral_, sendLineMessages_, notifyBuyerPendingSlip_, notifyBuyerOrderCancelled_, DriveApp, scheduleSlipFinalize_, deleteExistingOrderRows_, reverseRedeemedPointsForOrder_ } = env;
+          verifyLineIdToken_, logErrorToSheet_, ensureDebugLogSheet_, logSlowAction_, logRegistrationQueueWait_, notifyBuyerOrderConfirmation_, notifyAdminNewOrder_, checkAndGrantReferralOnFirstPurchase_, checkAndGrantPurchaseReferral_, sendLineMessages_, notifyBuyerPendingSlip_, notifyBuyerOrderCancelled_, DriveApp, scheduleSlipFinalize_, deleteExistingOrderRows_, reverseRedeemedPointsForOrder_, shopStockCheck_, shopStockApply_, shopStockRestore_, shopStockSyncMasterIfDirty_ } = env;
 
 var MEMBERS_SHEET_ID = '15yYmENUcxz5VO1ajhkAgU-seeZ3cMCs43Jm4xlYKvFk';
 
@@ -473,10 +473,12 @@ function toDirectImageUrl_(url) {
   return url;
 }
 
+var SHOP_PRODUCTS_CACHE_KEY_ = 'shop_products_v3';
+
 function getShopProducts() {
   try {
     var cache = CacheService.getScriptCache();
-    var cached = cache.get('shop_products_v2');
+    var cached = cache.get(SHOP_PRODUCTS_CACHE_KEY_);
     if (cached) return JSON.parse(cached);
 
     var ss = SpreadsheetApp.openById(MASTER_SHEET_ID_SHOP);
@@ -484,7 +486,7 @@ function getShopProducts() {
     if (!sheet) return { success: false, error: 'ไม่พบชีต SKU ใน Master Data' };
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return { success: true, categories: [] };
-    var data = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
+    var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
 
     var categoryMap = {};
     var order = [];
@@ -503,17 +505,25 @@ function getShopProducts() {
         order.push(category);
       }
       if (image && !categoryMap[category].image) categoryMap[category].image = image;
-      categoryMap[category].variants.push({
-        skuName: skuName,
-        label: variantLabel,
-        price: price,
-        weightG: weightG
-      });
+      // คอลัมน์ M เช่น "ขายได้ 20 ชุด (มี 121 ซอง)" / "ขายได้ 39 กระปุก" -> stock { left ชุดที่สั่งได้, units หน่วยย่อยทั้งหมด
+      // ของสินค้านั้น (ทุกขนาดใช้ก้อนเดียวกัน), per หน่วยย่อยต่อชุด } · ว่าง/ไม่พบในระบบสต๊อก = ไม่จำกัด (ไม่มี stock)
+      var stockText_ = String(row[12] || '');
+      var leftM_ = stockText_.match(/ขายได้\s*(\d+)/);
+      var variant_ = { skuName: skuName, label: variantLabel, price: price, weightG: weightG };
+      if (leftM_) {
+        var packM_ = variantLabel.match(/(\d+)\s*(ซอง|ถ้วย|กระปุก|ใบ|แพ็ค|แพค|ชิ้น)/);
+        var per_ = packM_ ? Math.max(1, Number(packM_[1])) : 1;
+        var unitsM_ = stockText_.match(/มี\s*(\d+)/);
+        var unitWordM_ = stockText_.match(/ขายได้\s*\d+\s*([^\s(]+)/);
+        variant_.stock = { left: Number(leftM_[1]), units: unitsM_ ? Number(unitsM_[1]) : Number(leftM_[1]) * per_, per: per_,
+                           unit: unitWordM_ ? unitWordM_[1] : 'ชิ้น' };
+      }
+      categoryMap[category].variants.push(variant_);
     });
 
     var categories = order.map(function (key) { return categoryMap[key]; });
     var result = { success: true, categories: categories };
-    try { cache.put('shop_products_v2', JSON.stringify(result), 180); } catch (e) {}
+    try { cache.put(SHOP_PRODUCTS_CACHE_KEY_, JSON.stringify(result), 180); } catch (e) {}
     return result;
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1306,12 +1316,14 @@ function cancelShopOrder(idToken, orderId) {
 
     var cancelDiff_ = diffReservedPromos_(reservedByCancel_, [], []);
     releaseReservedPromos_(cancelDiff_, profile.sub, orderId);
+    shopStockRestore_(orderId, 'ลูกค้ายกเลิก'); // ⚡ (16/10/69) คืนสต๊อกที่ออเดอร์นี้ตัดไว้
     var cancelledInfo_ = { lineUid: profile.sub, amount: Number(mainRow[8]) || 0, items: cancelledItems_ };
   } catch (e) {
     return { success: false, error: e.toString() };
   } finally {
     lock.releaseLock();
   }
+  shopStockSyncMasterIfDirty_();
 
   // ⚡ เพิ่ม (3/10/69) — ส่ง LINE ยืนยันการยกเลิกให้ลูกค้า (ไม่แจ้งกลุ่มแอดมิน — กลุ่มได้ข้อความเฉพาะตอนแนบสลิป)
   try {
@@ -2036,6 +2048,9 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     // ⚡ เพิ่ม (8/10/69) — "ซื้อครั้งนี้สำหรับ..." หน้าร้านรุ่นเก่าที่ยังไม่ส่งค่านี้มา (undefined) ไม่บังคับ กันสั่งซื้อไม่ได้
     var purposeRes_ = purchasePurpose === undefined || purchasePurpose === null ? { value: '' } : resolvePurchasePurpose_(purchasePurpose);
     if (purposeRes_.error) return { success: false, error: purposeRes_.error };
+    // ⚡ เพิ่ม (16/10/69) — เช็กสต๊อก (ระบบ Sales & Marketing Stock) ก่อนแตะชีตใด ๆ ไม่พอ = บอกว่าแต่ละรายการสั่งได้เท่าไหร่
+    var stockCheck_ = shopStockCheck_(itemsJson, String(existingOrderId || '').trim());
+    if (!stockCheck_.ok) return { success: false, error: stockCheck_.error, stockShort: stockCheck_.shortages };
 
     var memberSheet = ensureMembersSheet_();
     var customerName = profile.name || '';
@@ -2301,6 +2316,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
          .setNumberFormat('dd/MM/yyyy HH:mm:ss');
     sheet.getRange(startRow, 1, rows.length, REVENUE_TOTAL_COLS_).setValues(rows);
     if (purchasePurpose !== undefined && purchasePurpose !== null && (purposeRes_.value || isEditingExistingOrder)) writePurchasePurpose_(sheet, startRow, purposeRes_.value);
+    shopStockApply_(revenueId, stockCheck_.plan, isEditingExistingOrder); // ⚡ (16/10/69) ตัดสต๊อกอัตโนมัติ
 
     // ⚡ แก้ (perf) — เดิมยิงเขียนชีตแยก 1 รอบต่อสิทธิ์ 1 ใบ (ลูกค้าที่ใช้สิทธิ์หลายใบพร้อมกันยิ่งรอนาน)
     // เปลี่ยนมาใช้ getRangeList().setValue() ซึ่งเซ็ตค่าเดียวกันให้ทุกช่องพร้อมกันในการยิงรอบเดียว
@@ -2441,6 +2457,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
   } finally {
     lock.releaseLock();
   }
+  shopStockSyncMasterIfDirty_();
 
   if (immediateNotifyData_) {
     try {

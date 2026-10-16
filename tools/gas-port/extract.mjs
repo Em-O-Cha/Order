@@ -55,6 +55,8 @@ const TARGETS = {
       // แก้ไขออเดอร์: ตัวจำลองลบแถวไม่ได้ — ทำนายยอดโดยถือว่าลบแถวเดิมแล้ว (ตัวจริงลบตอน Apps Script เขียนชีต)
       // และออเดอร์ที่รอแนบสลิปไม่มีรายการแลกคะแนนใน Points_Log (ตัดคะแนนตอนแนบสลิป) จึงไม่มีอะไรให้คืน
       'deleteExistingOrderRows_', 'reverseRedeemedPointsForOrder_',
+      // สต๊อก (ShopStock.gs ใน Apps Script): Supabase ทำนายโดยไม่เช็ก/ไม่ตัดสต๊อก — ตัวจริงเช็กและตัดตอน Apps Script เขียนชีต
+      'shopStockCheck_', 'shopStockApply_', 'shopStockRestore_', 'shopStockSyncMasterIfDirty_',
     ],
   },
   'admin-read': {
