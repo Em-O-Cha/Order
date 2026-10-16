@@ -34,10 +34,10 @@ Deno.serve(async (req: Request) => {
   if (cache && Date.now() - cache.at < (fresh ? 5_000 : CACHE_MS)) return json(cache.body);
   try {
     const raw: string[][] = await sheet("rows");
-    // sheet row: [created, staffName, event, ...answers in KEYS order]; drop rows with no answer at all
+    // sheet row: [created, staffName, event, ...answers in KEYS order]
+    // ⚡ (16/10/69) every customer counts, even with no answers yet (the dashboard shows them as "รอเติม")
     const rows = (Array.isArray(raw) ? raw : [])
-      .map((r) => [String(r[0] || ""), r[1] === QR_STAFF ? "qr" : "line", String(r[2] || ""), ...KEYS.map((_, i) => String(r[3 + i] || ""))])
-      .filter((r) => r.slice(3).some(Boolean));
+      .map((r) => [String(r[0] || ""), r[1] === QR_STAFF ? "qr" : "line", String(r[2] || ""), ...KEYS.map((_, i) => String(r[3 + i] || ""))]);
     const body = { success: true, updatedAt: new Date().toISOString(), keys: KEYS, rows };
     cache = { at: Date.now(), body };
     return json(body);
