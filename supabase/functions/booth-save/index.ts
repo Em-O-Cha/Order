@@ -2,6 +2,8 @@
 //
 //   POST { op: "upsert", lead: { id, created, staff, event, name, phone, branch, survey{...}, details, flags[] } } -> { success }
 //   POST { op: "delete", id } -> { success }
+//   POST { op: "list" } -> { success, leads[] }  ทุกคนในชีต (ทุกเครื่อง/QR/LINE) ใหม่สุดก่อน — หน้ารายชื่อรวม (ผู้ใช้: ไม่ต้องมีรหัสผ่าน)
+//   POST { op: "update", id: "<รหัสในชีต>", lead } -> { success }  แก้คนที่บันทึกจากเครื่องอื่น/QR/LINE (แก้เฉพาะชื่อ เบอร์ สาขา คำตอบ รายละเอียด)
 //   id = รหัสในเครื่อง — ชีตเก็บเป็น "W" + id: ส่งซ้ำ (ลองใหม่/แก้ไข/ส่งทั้งหมด) แก้แถวเดิม ไม่เพิ่มแถวซ้ำ
 //   ลบได้เฉพาะแถวที่มาจากหน้าพนักงาน (รหัส W…) — แถวจาก LINE/QR ลบผ่านทางนี้ไม่ได้
 //
@@ -15,6 +17,7 @@ const ALLOWED_ORIGINS = new Set(["https://em-o-cha.github.io"]);
 // same order as the sheet; "type" is no longer asked but older leads on a device may still carry it
 const SURVEY_KEYS = ["type", "hasProduct", "noReason", "refill", "inquiry", "promoWish", "goodPromo"];
 const LOCAL_ID = /^[A-Za-z0-9]{4,40}$/;
+const SHEET_ID = /^[WB][A-Za-z0-9]{4,40}$/;   // W… staff page, B… LINE / QR
 
 const CORS = {
   "Access-Control-Allow-Origin": "https://em-o-cha.github.io",
@@ -43,6 +46,22 @@ Deno.serve(async (req: Request) => {
       const id = String(body.id || "");
       if (!LOCAL_ID.test(id)) return json({ success: false, error: "รหัสไม่ถูกต้อง" }, 400);
       await sheet("delete", { id: "W" + id, lineUserId: "" });
+      return json({ success: true });
+    }
+    if (body.op === "list") {
+      const leads = await sheet("list");
+      return json({ success: true, leads: Array.isArray(leads) ? leads : [] });
+    }
+    if (body.op === "update") {
+      const id = String(body.id || "");
+      if (!SHEET_ID.test(id)) return json({ success: false, error: "รหัสไม่ถูกต้อง" }, 400);
+      const l: Json = body.lead && typeof body.lead === "object" ? body.lead : {};
+      const sv: Json = l.survey && typeof l.survey === "object" ? l.survey : {};
+      await sheet("update", { id, lead: {
+        name: clean(l.name, 80), phone: clean(l.phone, 20), branch: clean(l.branch, 80),
+        survey: Object.fromEntries(SURVEY_KEYS.filter((k) => k in sv).map((k) => [k, clean(sv[k], 300)])),
+        summary: clean(l.details, 1000),
+      } });
       return json({ success: true });
     }
     if (body.op !== "upsert") return json({ success: false, error: "ไม่รู้จักคำสั่ง" }, 400);
