@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 188 รายการ (129 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 189 รายการ (129 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -610,10 +610,12 @@ function toDirectImageUrl_(url) {
   return url;
 }
 
+var SHOP_PRODUCTS_CACHE_KEY_ = 'shop_products_v3';
+
 function getShopProducts() {
   try {
     var cache = CacheService.getScriptCache();
-    var cached = cache.get('shop_products_v2');
+    var cached = cache.get(SHOP_PRODUCTS_CACHE_KEY_);
     if (cached) return JSON.parse(cached);
 
     var ss = SpreadsheetApp.openById(MASTER_SHEET_ID_SHOP);
@@ -621,7 +623,7 @@ function getShopProducts() {
     if (!sheet) return { success: false, error: 'ไม่พบชีต SKU ใน Master Data' };
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return { success: true, categories: [] };
-    var data = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
+    var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
 
     var categoryMap = {};
     var order = [];
@@ -640,17 +642,25 @@ function getShopProducts() {
         order.push(category);
       }
       if (image && !categoryMap[category].image) categoryMap[category].image = image;
-      categoryMap[category].variants.push({
-        skuName: skuName,
-        label: variantLabel,
-        price: price,
-        weightG: weightG
-      });
+      // คอลัมน์ M เช่น "ขายได้ 20 ชุด (มี 121 ซอง)" / "ขายได้ 39 กระปุก" -> stock { left ชุดที่สั่งได้, units หน่วยย่อยทั้งหมด
+      // ของสินค้านั้น (ทุกขนาดใช้ก้อนเดียวกัน), per หน่วยย่อยต่อชุด } · ว่าง/ไม่พบในระบบสต๊อก = ไม่จำกัด (ไม่มี stock)
+      var stockText_ = String(row[12] || '');
+      var leftM_ = stockText_.match(/ขายได้\s*(\d+)/);
+      var variant_ = { skuName: skuName, label: variantLabel, price: price, weightG: weightG };
+      if (leftM_) {
+        var packM_ = variantLabel.match(/(\d+)\s*(ซอง|ถ้วย|กระปุก|ใบ|แพ็ค|แพค|ชิ้น)/);
+        var per_ = packM_ ? Math.max(1, Number(packM_[1])) : 1;
+        var unitsM_ = stockText_.match(/มี\s*(\d+)/);
+        var unitWordM_ = stockText_.match(/ขายได้\s*\d+\s*([^\s(]+)/);
+        variant_.stock = { left: Number(leftM_[1]), units: unitsM_ ? Number(unitsM_[1]) : Number(leftM_[1]) * per_, per: per_,
+                           unit: unitWordM_ ? unitWordM_[1] : 'ชิ้น' };
+      }
+      categoryMap[category].variants.push(variant_);
     });
 
     var categories = order.map(function (key) { return categoryMap[key]; });
     var result = { success: true, categories: categories };
-    try { cache.put('shop_products_v2', JSON.stringify(result), 180); } catch (e) {}
+    try { cache.put(SHOP_PRODUCTS_CACHE_KEY_, JSON.stringify(result), 180); } catch (e) {}
     return result;
   } catch (e) {
     return { success: false, error: e.toString() };

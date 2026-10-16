@@ -41,6 +41,11 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .qty-btn{width:30px;height:30px;border-radius:8px;border:1.5px solid var(--gb);background:var(--gp);
   color:var(--gd);font-size:16px;font-weight:700;cursor:pointer;}
 .qty-val{width:24px;text-align:center;font-weight:600;}
+/* ⚡ (16/10/69) สต๊อกจากระบบ Sales & Marketing Stock */
+.stock-tag{display:inline-block;margin-top:4px;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1.6;background:#fff3e0;color:#e65100;}
+.stock-tag.out{background:#fdecea;color:#c62828;}
+.stock-msg{font-size:12px;color:#c62828;font-weight:600;margin-top:4px;}
+.qty-btn:disabled{opacity:.35;cursor:not-allowed;}
 
 .cat-card{border:1.5px solid #eee;border-radius:14px;overflow:hidden;margin-bottom:16px;}
 .cat-img{width:100%;height:150px;object-fit:cover;display:block;background:var(--gp);}
@@ -2029,6 +2034,7 @@ function renderCatalog(){
     h += '<div class="cat-name">' + escHtml(cat.name) + '</div>';
     cat.variants.forEach(function(v){
       var idx = variantList.length;
+      v._pool = cat.name;   // ขนาดต่าง ๆ ของสินค้าเดียวกันใช้สต๊อกก้อนเดียวกัน
       variantList.push(v);
       var promoPrice = getBestPromoPrice_(v.skuName, v.price);
       // ⚡ แก้ — ระบุ font-size:18px ตรงๆ ในทั้ง 2 span แทนที่จะปล่อยให้สืบทอดจาก .prod-price เฉยๆ กันกรณี
@@ -2037,14 +2043,17 @@ function renderCatalog(){
         ? '<span style="font-size:18px;text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="font-size:18px;color:#c62828;font-weight:700">฿' + Math.round(promoPrice).toLocaleString('th-TH') + '</span>'
         : '฿' + v.price.toLocaleString('th-TH');
       var giftHint = promoGiftHint_(v.skuName);
+      var soldOut_ = v.stock && v.stock.left <= 0;
       h += '<div class="prod-item">'
         + '<div style="flex:1"><div class="prod-name">' + escHtml(v.label) + '</div><div class="prod-price">' + priceHtml + '</div>'
         + (giftHint ? '<div style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;background:#fff3e0;color:#e65100;font-size:11.5px;font-weight:600;line-height:1.5">🎁 ' + escHtml(giftHint) + '</div>' : '')
+        + stockTagHtml_(v)
+        + '<div class="stock-msg" id="stockMsg_' + idx + '" hidden></div>'
         + '</div>'
         + '<div class="qty-ctl">'
         + '<button class="qty-btn" onclick="changeQty(' + idx + ',-1)">−</button>'
         + '<span class="qty-val" id="qty_' + idx + '">' + (cart[v.skuName] || 0) + '</span>'
-        + '<button class="qty-btn" onclick="changeQty(' + idx + ',1)">+</button>'
+        + '<button class="qty-btn" id="qtyPlus_' + idx + '" onclick="changeQty(' + idx + ',1)"' + (soldOut_ && !cart[v.skuName] ? ' disabled' : '') + '>+</button>'
         + '</div></div>';
     });
     h += '</div>';
@@ -2058,9 +2067,42 @@ function findVariant(skuName){
   return variantList.find(function(v){ return v.skuName === skuName; });
 }
 
+// ⚡ เพิ่ม (16/10/69) — สต๊อก: v.stock = { left ชุดที่สั่งได้, units หน่วยย่อยทั้งหมดของสินค้านั้น, per หน่วยย่อยต่อชุด, unit }
+// (จาก Master Data Sales คอลัมน์ M ที่ระบบสต๊อกเขียน) ไม่มี v.stock = ไม่จำกัด · สั่งเกินไม่ได้ ตอนสั่งจริงระบบเช็กซ้ำกับสต๊อกล่าสุด
+function stockTagHtml_(v){
+  if (!v.stock) return '';
+  if (v.stock.left <= 0) return '<div class="stock-tag out">สินค้าหมด</div>';
+  if (v.stock.left <= 10) return '<div class="stock-tag">เหลือ ' + v.stock.left + ' ' + escHtml(v.stock.unit || 'ชิ้น') + '</div>';
+  return '';
+}
+// สั่งขนาดนี้ได้สูงสุดกี่ชุด เมื่อหักส่วนที่ขนาดอื่นของสินค้าเดียวกันในตะกร้าใช้ไปแล้ว (null = ไม่จำกัด)
+function stockMaxFor_(v){
+  if (!v || !v.stock) return null;
+  var used = 0;
+  variantList.forEach(function(o){
+    if (o !== v && o.stock && o._pool === v._pool && cart[o.skuName]) used += cart[o.skuName] * o.stock.per;
+  });
+  return Math.max(0, Math.floor((v.stock.units - used) / v.stock.per));
+}
+var stockMsgTimers_ = {};
+function showStockMsg_(idx, text){
+  var el = document.getElementById('stockMsg_' + idx);
+  if (!el) return;
+  el.textContent = text; el.hidden = false;
+  clearTimeout(stockMsgTimers_[idx]);
+  stockMsgTimers_[idx] = setTimeout(function(){ el.hidden = true; }, 3500);
+}
+
 function changeQty(idx, delta){
   var skuName = variantList[idx].skuName;
   var cur = cart[skuName] || 0;
+  var max_ = delta > 0 ? stockMaxFor_(variantList[idx]) : null;
+  if (max_ !== null && cur + delta > max_) {
+    var unit_ = variantList[idx].stock.unit || 'ชิ้น';
+    showStockMsg_(idx, max_ > 0 ? 'สต๊อกเหลือ ' + max_ + ' ' + unit_ + ' สั่งได้ไม่เกินนี้'
+      : (variantList[idx].stock.left > 0 ? 'สต๊อกไม่พอแล้ว (รวมกับขนาดอื่นของสินค้านี้ในตะกร้า)' : 'สินค้าหมด สั่งเพิ่มไม่ได้'));
+    return;
+  }
   cur = Math.max(0, cur + delta);
   if (cur === 0) delete cart[skuName]; else cart[skuName] = cur;
   document.getElementById('qty_' + idx).textContent = cur;
