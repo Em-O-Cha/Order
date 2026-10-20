@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 108 รายการ (72 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 113 รายการ (77 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -631,8 +631,8 @@ function listPointsPromos(pin) {
       return {
         rowIndex: idx + 2, name: row[0], type: row[1],
         active: row[2] === true || String(row[2]).toUpperCase() === 'TRUE',
-        startDate: startDateVal ? Utilities.formatDate(new Date(startDateVal), 'GMT+7', 'yyyy-MM-dd') : '',
-        expiryDate: expiryDateVal ? Utilities.formatDate(new Date(expiryDateVal), 'GMT+7', 'yyyy-MM-dd') : '',
+        startDate: startDateVal ? dateTimeRaw_(startDateVal) : '',
+        expiryDate: expiryDateVal ? dateTimeRaw_(expiryDateVal) : '',
         multiplierValue: row[5] || '', minPurchase: row[6] || '', restriction: row[7] || '',
         bonusPoints: row[8] || '', bonusDiscountType: row[9] || '', bonusDiscountValue: row[10] || '',
         stubText: row[12] || '',
@@ -992,15 +992,49 @@ function normalizeDateCell_(v) {
   if (!v) return '';
   if (Object.prototype.toString.call(v) === '[object Date]') {
     if (isNaN(v.getTime())) return '';
-    return Utilities.formatDate(v, 'GMT+7', 'yyyy-MM-dd');
+    return dateTimeRaw_(v);
   }
   return String(v).trim();
+}
+
+function hasTimeOfDay_(v) {
+  if (!v) return false;
+  var d = (Object.prototype.toString.call(v) === '[object Date]') ? v : (typeof v === 'string' ? parseDateInputStr_(v) : new Date(v));
+  if (!d || isNaN(d.getTime())) return false;
+  var h = d.getHours(), m = d.getMinutes();
+  return !((h === 0 && m === 0) || (h === 23 && m === 59));
+}
+
+function endOfDayUnlessTimed_(d) {
+  if (d && !hasTimeOfDay_(d)) d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function dateTimeRaw_(v) {
+  if (!v) return '';
+  var d = (Object.prototype.toString.call(v) === '[object Date]') ? v : new Date(v);
+  if (isNaN(d.getTime())) return '';
+  return Utilities.formatDate(d, 'GMT+7', hasTimeOfDay_(d) ? 'yyyy-MM-dd HH:mm' : 'yyyy-MM-dd');
+}
+
+function thaiDateText_(v) {
+  if (!v) return '';
+  var d = (Object.prototype.toString.call(v) === '[object Date]') ? v : (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? parseDateInputStr_(v) : new Date(v));
+  if (!d || isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('th-TH') + (hasTimeOfDay_(d) ? ' ' + Utilities.formatDate(d, 'GMT+7', 'HH:mm') + ' น.' : '');
+}
+
+function parseDateInputStr_(s) {
+  var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (!m) return null;
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10),
+    m[4] ? parseInt(m[4], 10) : 0, m[5] ? parseInt(m[5], 10) : 0);
 }
 
 function isExpired_(expiryValue, now) {
   if (!expiryValue) return false;
   var d = new Date(expiryValue);
-  d.setHours(23, 59, 59, 999);
+  endOfDayUnlessTimed_(d);
   return d < (now || new Date());
 }
 
@@ -1075,9 +1109,10 @@ function getMemberPrivileges(pin, lineUid) {
       results.push({
         rowIndex: idx + 2,
         name: row[1], type: row[2], value: row[3],
-        expiry: expiryVal ? new Date(expiryVal).toLocaleDateString('th-TH') : '',
-        startDate: startDateVal ? new Date(startDateVal).toLocaleDateString('th-TH') : '',
-        startDateRaw: startDateVal ? Utilities.formatDate(new Date(startDateVal), 'GMT+7', 'yyyy-MM-dd') : '',
+        expiry: expiryVal ? thaiDateText_(expiryVal) : '',
+        startDate: startDateVal ? thaiDateText_(startDateVal) : '',
+        startDateRaw: startDateVal ? dateTimeRaw_(startDateVal) : '',
+        expiryDateRaw: expiryVal ? dateTimeRaw_(expiryVal) : '',
         expiryDaysApprox: expiryDaysApprox,
         active: active,
         isUpcoming: !!(startDateVal && new Date(startDateVal) > now),
@@ -1119,10 +1154,10 @@ function listGlobalCoupons(pin) {
       return {
         rowIndex: idx + 2, code: row[0], type: row[1], value: row[2],
         minPurchase: row[3] || 0, maxUses: row[4] || 0, usedCount: row[5] || 0,
-        expiry: expiryVal ? new Date(expiryVal).toLocaleDateString('th-TH') : '',
-        expiryRaw: expiryVal ? Utilities.formatDate(new Date(expiryVal), 'GMT+7', 'yyyy-MM-dd') : '',
-        startDate: startDateVal ? new Date(startDateVal).toLocaleDateString('th-TH') : '',
-        startDateRaw: startDateVal ? Utilities.formatDate(new Date(startDateVal), 'GMT+7', 'yyyy-MM-dd') : '',
+        expiry: expiryVal ? thaiDateText_(expiryVal) : '',
+        expiryRaw: expiryVal ? dateTimeRaw_(expiryVal) : '',
+        startDate: startDateVal ? thaiDateText_(startDateVal) : '',
+        startDateRaw: startDateVal ? dateTimeRaw_(startDateVal) : '',
         autoApply: row[8] === true || String(row[8]).toUpperCase() === 'TRUE',
         active: row[7] === true || String(row[7]).toUpperCase() === 'TRUE',
         isUpcoming: !!(startDateVal && new Date(startDateVal) > now),

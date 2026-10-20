@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 182 รายการ (121 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 186 รายการ (125 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1430,6 +1430,26 @@ function findMemberRowIndex_(lineUid) {
   return found ? found.rowIndex : -1;
 }
 
+function hasTimeOfDay_(v) {
+  if (!v) return false;
+  var d = (Object.prototype.toString.call(v) === '[object Date]') ? v : (typeof v === 'string' ? parseDateInputStr_(v) : new Date(v));
+  if (!d || isNaN(d.getTime())) return false;
+  var h = d.getHours(), m = d.getMinutes();
+  return !((h === 0 && m === 0) || (h === 23 && m === 59));
+}
+
+function endOfDayUnlessTimed_(d) {
+  if (d && !hasTimeOfDay_(d)) d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function thaiDateText_(v) {
+  if (!v) return '';
+  var d = (Object.prototype.toString.call(v) === '[object Date]') ? v : (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? parseDateInputStr_(v) : new Date(v));
+  if (!d || isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('th-TH') + (hasTimeOfDay_(d) ? ' ' + Utilities.formatDate(d, 'GMT+7', 'HH:mm') + ' น.' : '');
+}
+
 function expiryFromDays_(baseDate, days) {
   var n = parseInt(days, 10) || 0;
   if (n <= 0) return '';
@@ -1439,10 +1459,17 @@ function expiryFromDays_(baseDate, days) {
   return base;
 }
 
+function parseDateInputStr_(s) {
+  var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (!m) return null;
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10),
+    m[4] ? parseInt(m[4], 10) : 0, m[5] ? parseInt(m[5], 10) : 0);
+}
+
 function isExpired_(expiryValue, now) {
   if (!expiryValue) return false;
   var d = new Date(expiryValue);
-  d.setHours(23, 59, 59, 999);
+  endOfDayUnlessTimed_(d);
   return d < (now || new Date());
 }
 
@@ -1890,7 +1917,7 @@ function validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTi
       var active = row[7] === true || String(row[7]).toUpperCase() === 'TRUE';
       if (!active) return { error: 'โค้ดนี้ถูกปิดใช้งานแล้ว' };
       var startDate = row[10];
-      if (startDate && new Date(startDate) > new Date()) return { error: 'โค้ดนี้ยังไม่เริ่มใช้งาน (เริ่ม ' + new Date(startDate).toLocaleDateString('th-TH') + ')' };
+      if (startDate && new Date(startDate) > new Date()) return { error: 'โค้ดนี้ยังไม่เริ่มใช้งาน (เริ่ม ' + thaiDateText_(startDate) + ')' };
       var expiry = row[6];
       if (isExpired_(expiry)) return { error: 'โค้ดนี้หมดอายุแล้ว' };
 
