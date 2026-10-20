@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 189 รายการ (129 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 193 รายการ (133 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -760,7 +760,7 @@ function getActivePointsMultiplierPromosForDisplay_() {
       results.push({
         name: row[0], multiplier: multiplier,
         minPurchase: parseFloat(row[6]) || 0, restriction: String(row[7] || '').trim(),
-        expiry: expiryDateVal ? new Date(expiryDateVal).toLocaleDateString('th-TH') : '',
+        expiry: expiryDateVal ? thaiDateText_(expiryDateVal) : '',
         stubText: row[12] || ''
       });
     });
@@ -823,7 +823,7 @@ function getActiveRepeatPromosForDisplay_() {
         name: row[0], bonusPoints: bonusPoints,
         discountType: row[9] || '', discountValue: discountValue, multiplier: multiplier,
         minPurchase: parseFloat(row[6]) || 0, restriction: String(row[7] || '').trim(),
-        expiry: expiryDateVal ? new Date(expiryDateVal).toLocaleDateString('th-TH') : '',
+        expiry: expiryDateVal ? thaiDateText_(expiryDateVal) : '',
         stubText: row[12] || ''
       });
     });
@@ -1270,7 +1270,7 @@ function getMyPrivilegesForLineUid_(lineUid) {
     var isUpcoming = !!(startDate && new Date(startDate) > now);
     results.push({
       name: row[1], type: row[2], value: row[3],
-      expiry: expiry ? new Date(expiry).toLocaleDateString('th-TH') : 'ไม่มีวันหมดอายุ',
+      expiry: expiry ? thaiDateText_(expiry) : 'ไม่มีวันหมดอายุ',
       // ⚡ เพิ่ม — ส่ง "ให้โดย" (คอลัมน์ 6 ในชีต) กลับไปด้วย เพื่อให้ฝั่งหน้าเว็บกรองแยกได้ว่าสิทธิ์ไหนมาจาก
       // การสมัครสมาชิก (ของขวัญต้อนรับสมาชิกใหม่) ต่างจากสิทธิ์ที่มาจากแหล่งอื่น (แนะนำเพื่อน/วันเกิด/แอดมินให้เอง)
       // ไม่กระทบผู้ใช้เดิมของฟังก์ชันนี้เลยเพราะเป็นแค่ field เสริม ไม่ได้ตัด field เดิมออก
@@ -1281,7 +1281,7 @@ function getMyPrivilegesForLineUid_(lineUid) {
       stackable: isStackablePrivilegeRow_(row), // ⚡ เพิ่ม (29/9/69) — หน้าร้านขึ้นป้าย "ใช้ร่วมกับโปรอื่นได้/ไม่ได้" บนตั๋วสิทธิ์
       exclusive: isExclusivePromo_(String(row[2] || ''), row[10], isStackablePrivilegeRow_(row)),
       isUpcoming: isUpcoming,
-      startDateText: startDate ? new Date(startDate).toLocaleDateString('th-TH') : ''
+      startDateText: startDate ? thaiDateText_(startDate) : ''
     });
   });
   return results;
@@ -1405,10 +1405,10 @@ function getPrivilegesPanelData(idToken) {
         var isUpcoming = !!(startDate && new Date(startDate) > now);
         privileges.push({
           name: row[1], type: row[2], value: row[3],
-          expiry: expiry ? new Date(expiry).toLocaleDateString('th-TH') : 'ไม่มีวันหมดอายุ',
+          expiry: expiry ? thaiDateText_(expiry) : 'ไม่มีวันหมดอายุ',
           restriction: row[10] || '', freeProduct: row[11] || '', freeQty: row[12] || '',
           isUpcoming: isUpcoming,
-          startDateText: isUpcoming ? new Date(startDate).toLocaleDateString('th-TH') : ''
+          startDateText: isUpcoming ? thaiDateText_(startDate) : ''
         });
       });
     }
@@ -1625,7 +1625,7 @@ function getActiveCoupons() {
       results.push({
         code: row[0], type: row[1], value: row[2],
         minPurchase: row[3] || 0,
-        expiry: expiry ? new Date(expiry).toLocaleDateString('th-TH') : '',
+        expiry: expiry ? thaiDateText_(expiry) : '',
         autoApply: row[8] === true || String(row[8]).toUpperCase() === 'TRUE',
         restriction: row[9] || '', freeProduct: row[11] || '', freeQty: row[12] || '',
         tierRestriction: row[13] || '', freeDiscountPercent: row[14] === '' || row[14] === null ? '' : row[14],
@@ -1757,9 +1757,36 @@ function normalizeDateCell_(v) {
   if (!v) return '';
   if (Object.prototype.toString.call(v) === '[object Date]') {
     if (isNaN(v.getTime())) return '';
-    return Utilities.formatDate(v, 'GMT+7', 'yyyy-MM-dd');
+    return dateTimeRaw_(v);
   }
   return String(v).trim();
+}
+
+function hasTimeOfDay_(v) {
+  if (!v) return false;
+  var d = (Object.prototype.toString.call(v) === '[object Date]') ? v : (typeof v === 'string' ? parseDateInputStr_(v) : new Date(v));
+  if (!d || isNaN(d.getTime())) return false;
+  var h = d.getHours(), m = d.getMinutes();
+  return !((h === 0 && m === 0) || (h === 23 && m === 59));
+}
+
+function endOfDayUnlessTimed_(d) {
+  if (d && !hasTimeOfDay_(d)) d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function dateTimeRaw_(v) {
+  if (!v) return '';
+  var d = (Object.prototype.toString.call(v) === '[object Date]') ? v : new Date(v);
+  if (isNaN(d.getTime())) return '';
+  return Utilities.formatDate(d, 'GMT+7', hasTimeOfDay_(d) ? 'yyyy-MM-dd HH:mm' : 'yyyy-MM-dd');
+}
+
+function thaiDateText_(v) {
+  if (!v) return '';
+  var d = (Object.prototype.toString.call(v) === '[object Date]') ? v : (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? parseDateInputStr_(v) : new Date(v));
+  if (!d || isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('th-TH') + (hasTimeOfDay_(d) ? ' ' + Utilities.formatDate(d, 'GMT+7', 'HH:mm') + ' น.' : '');
 }
 
 function isDateRangeActive_(startDateStr, endDateStr, now) {
@@ -1773,7 +1800,7 @@ function isDateRangeActive_(startDateStr, endDateStr, now) {
   if (endDateStr) {
     var e = parseDateInputStr_(endDateStr);
     if (e) {
-      e.setHours(23, 59, 59, 999); // ใช้ได้ถึงสิ้นวันนั้นจริงๆ (แพทเทิร์นเดียวกับ isExpired_)
+      endOfDayUnlessTimed_(e); // ไม่ระบุเวลา = ใช้ได้ถึงสิ้นวันนั้นจริงๆ (แพทเทิร์นเดียวกับ isExpired_)
       if (e < now) return false;
     }
   }
@@ -1781,15 +1808,16 @@ function isDateRangeActive_(startDateStr, endDateStr, now) {
 }
 
 function parseDateInputStr_(s) {
-  var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/);
   if (!m) return null;
-  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10),
+    m[4] ? parseInt(m[4], 10) : 0, m[5] ? parseInt(m[5], 10) : 0);
 }
 
 function isExpired_(expiryValue, now) {
   if (!expiryValue) return false;
   var d = new Date(expiryValue);
-  d.setHours(23, 59, 59, 999);
+  endOfDayUnlessTimed_(d);
   return d < (now || new Date());
 }
 
@@ -2209,7 +2237,7 @@ function validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTi
       var active = row[7] === true || String(row[7]).toUpperCase() === 'TRUE';
       if (!active) return { error: 'โค้ดนี้ถูกปิดใช้งานแล้ว' };
       var startDate = row[10];
-      if (startDate && new Date(startDate) > new Date()) return { error: 'โค้ดนี้ยังไม่เริ่มใช้งาน (เริ่ม ' + new Date(startDate).toLocaleDateString('th-TH') + ')' };
+      if (startDate && new Date(startDate) > new Date()) return { error: 'โค้ดนี้ยังไม่เริ่มใช้งาน (เริ่ม ' + thaiDateText_(startDate) + ')' };
       var expiry = row[6];
       if (isExpired_(expiry)) return { error: 'โค้ดนี้หมดอายุแล้ว' };
 
