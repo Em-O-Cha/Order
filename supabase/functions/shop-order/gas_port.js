@@ -2076,7 +2076,10 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     var purposeRes_ = purchasePurpose === undefined || purchasePurpose === null ? { value: '' } : resolvePurchasePurpose_(purchasePurpose);
     if (purposeRes_.error) return { success: false, error: purposeRes_.error };
     // ⚡ เพิ่ม (16/10/69) — เช็กสต๊อก (ระบบ Sales & Marketing Stock) ก่อนแตะชีตใด ๆ ไม่พอ = บอกว่าแต่ละรายการสั่งได้เท่าไหร่
-    var stockCheck_ = shopStockCheck_(itemsJson, String(existingOrderId || '').trim());
+    // ⚡ เพิ่ม (21/10/69) — แอดมินคีย์ออเดอร์ (AdminShop.gs): ราคาเอง / ค่าส่งเอง / ส่วนลดท้ายบิล / ของแถมฟรี / เงินสด
+    // หน้าร้านไม่มีค่านี้ (null) ทุกอย่างคิดเหมือนเดิม
+    var adminExtra_ = (typeof ADMIN_SHOP_EXTRA_ !== 'undefined' && ADMIN_SHOP_EXTRA_) || null;
+    var stockCheck_ = shopStockCheck_(adminExtra_ && adminExtra_.stockItemsJson ? adminExtra_.stockItemsJson : itemsJson, String(existingOrderId || '').trim());
     if (!stockCheck_.ok) return { success: false, error: stockCheck_.error, stockShort: stockCheck_.shortages };
 
     var memberSheet = ensureMembersSheet_();
@@ -2125,6 +2128,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     productsResult.categories.forEach(function (cat) {
       cat.variants.forEach(function (v) { priceMap[v.skuName] = v.price; weightMap[v.skuName] = v.weightG || 0; });
     });
+    if (adminExtra_) adminShopApplyPrices_(priceMap, adminExtra_);
 
     var subtotal = 0;
     var totalWeightG = 0;
@@ -2136,6 +2140,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       return { name: item.name, qty: qty, price: price };
     });
     var shippingCost = calcShippingCost_(totalWeightG);
+    if (adminExtra_ && adminExtra_.shipping !== null) shippingCost = adminExtra_.shipping;
 
     var appliedPrivileges = getAppliedPrivileges_(profile.sub, subtotal, excludeRowIndexes, items, priceMap, shippingCost, reservedByEdit_ ? reservedByEdit_.privilegeRows : null);
     var countedCodes_ = reservedByEdit_ ? reservedByEdit_.couponCodes : null;
@@ -2189,11 +2194,13 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     var totalShippingDiscount = Math.min(shippingCost, privilegeShippingDiscount + couponShippingDiscount);
     var finalShippingCost = Math.max(0, shippingCost - totalShippingDiscount);
     var finalAmount = subtotal - totalDiscount + finalShippingCost;
+    var adminExtraDiscount_ = adminExtra_ ? Math.min(Math.max(0, subtotal - totalDiscount), adminExtra_.extraDiscount || 0) : 0;
+    if (adminExtraDiscount_ > 0) { totalDiscount += adminExtraDiscount_; finalAmount -= adminExtraDiscount_; }
 
     var cashDiscountOnly_ = 0;
     appliedPrivileges.forEach(function (p) { cashDiscountOnly_ += (p.productDiscount || 0); });
     couponResults.forEach(function (c) { cashDiscountOnly_ += (c.productDiscount || 0); });
-    cashDiscountOnly_ += repeatBonusDiscount_;
+    cashDiscountOnly_ += repeatBonusDiscount_ + adminExtraDiscount_;
 
     // แลกคะแนนเป็นส่วนลด: จองคะแนนไว้กับออเดอร์ระหว่างรอแนบสลิป แต่จะตัดคะแนนจริงตอนแนบสลิปสำเร็จเท่านั้น
     var availablePointsForThisOrder_ = Math.max(0, memberPoints - getPendingPointsReservedForPhone_(phone, existingOrderId));
@@ -2256,6 +2263,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       ? COD_PAYMENT_LABEL_
       : isCardOrder ? CARD_PAYMENT_LABEL_
       : (paymentMethod === 'promptpay' ? 'พร้อมเพย์ (LINE Shop)' : 'โอนเงินธนาคาร (LINE Shop)');
+    if (adminExtra_ && adminExtra_.paymentLabel) paymentLabel = adminExtra_.paymentLabel;
     var discountNoteParts = [];
     var freebieNoteParts = [];
     var physicalFreebieNoteParts = [];
@@ -2279,6 +2287,17 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     pointsMultiplierInfo_.productPromos.forEach(function (p) {
       if (p.multiplier > pointsMultiplierInfo_.multiplier) discountNoteParts.push('คูณแต้ม: ' + p.name + ' (x' + p.multiplier + ' เฉพาะสินค้าโปร)');
     });
+    // ของแถมฟรี/ส่วนลดท้ายบิลที่แอดมินให้เอง — รูปแบบเดียวกับคีย์ออเดอร์มือแบบเดิม (การ์ดกลุ่มแอดมิน/รายงานเห็นที่มาของยอดลด)
+    var adminFreeRows_ = [];
+    if (adminExtra_) {
+      adminExtra_.freeItems.forEach(function (f) {
+        var fp = priceMap.hasOwnProperty(f.name) ? priceMap[f.name] : 0;
+        adminFreeRows_.push({ name: f.name, qty: f.qty, price: fp });
+        discountNoteParts.push('แถมฟรี: ' + f.name + ' x' + f.qty + ' (-' + Math.round(f.qty * fp * 100) / 100 + ')');
+        freebieNoteParts.push(String(f.name).replace(/,/g, ' ') + ' x' + f.qty + ' (แถมฟรีจากร้าน)');
+      });
+      if (adminExtraDiscount_ > 0) discountNoteParts.push('ส่วนลดท้ายบิล: ลดพิเศษจากร้าน (-' + Math.round(adminExtraDiscount_ * 100) / 100 + ')');
+    }
     if (pointsRedeemResult_.pointsUsed > 0) {
       discountNoteParts.push('แลกคะแนน: ' + pointsRedeemResult_.pointsUsed + ' คะแนน (-' + Math.round(pointsRedeemResult_.discount) + ')');
     }
@@ -2327,6 +2346,13 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       } else {
         rows.push(['', '', item.name, item.qty, item.price, itemDiscount, amt - itemDiscount, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']); // ⚡ แก้ (19/9/69) — ขยายจาก 32 เป็น 34 คอลัมน์ (A-AH) ให้ตรงกับ setValues ด้านล่าง กันบั๊ก 'จำนวนคอลัมน์ไม่ตรง' ตอนออเดอร์มีมากกว่า 1 รายการ
       }
+    });
+
+    adminFreeRows_.forEach(function (f) {
+      var freeRow_ = [];
+      for (var ci_ = 0; ci_ < REVENUE_TOTAL_COLS_; ci_++) freeRow_.push('');
+      freeRow_[2] = f.name; freeRow_[3] = f.qty; freeRow_[4] = f.price; freeRow_[5] = f.qty * f.price; freeRow_[6] = 0;
+      rows.push(freeRow_);
     });
 
     // แก้ไขออเดอร์: จำนวนรายการเปลี่ยน -> เพิ่ม/ลบเฉพาะแถวส่วนต่างต่อจากแถวของออเดอร์นี้ แล้วเขียนทับ
@@ -2645,9 +2671,9 @@ function releaseReservedPromos_(diff, lineUid, orderId) {
   }
 }
 
-var DISCOUNT_NOTE_LABEL_RE_ = /^(สิทธิ์|คูปอง|ซื้อซ้ำเดือนนี้|คูณแต้ม|แลกคะแนน):/;
+var DISCOUNT_NOTE_LABEL_RE_ = /^(สิทธิ์|คูปอง|ซื้อซ้ำเดือนนี้|คูณแต้ม|แลกคะแนน|แถมฟรี|ส่วนลดท้ายบิล):/;
 
-var DISCOUNT_NOTE_SPLIT_RE_ = /,\s*(?=(?:สิทธิ์|คูปอง|ซื้อซ้ำเดือนนี้|คูณแต้ม|แลกคะแนน):)/;
+var DISCOUNT_NOTE_SPLIT_RE_ = /,\s*(?=(?:สิทธิ์|คูปอง|ซื้อซ้ำเดือนนี้|คูณแต้ม|แลกคะแนน|แถมฟรี|ส่วนลดท้ายบิล):)/;
 
 function parseDiscountNotesFromRemark_(remark) {
   var notes = [];
@@ -2731,9 +2757,10 @@ function findMemberLineUidByPhone_(phone) {
   return null;
 }
 
-function uploadShopSlip(orderId, base64Data, fileName, mimeType) {
+function uploadShopSlip(orderId, base64Data, fileName, mimeType, presetSlipValue) {
   var slipUrl;
-  try {
+  if (presetSlipValue) slipUrl = String(presetSlipValue);
+  else try {
     Logger.log('uploadShopSlip: เริ่มทำงาน orderId="' + orderId + '"');
     var folder = DriveApp.getFolderById(SLIP_FOLDER_ID_SHOP);
     var decoded = Utilities.base64Decode(base64Data);
