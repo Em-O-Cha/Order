@@ -1474,24 +1474,68 @@ function getCampaignAudience(pin, group) {
   }
 }
 
-function findLineUidByPhoneFromRevenue(pin, phone) {
+function findLineUidByPhoneFromRevenue(pin, phone, lineUid) {
   if (!checkAdminPin_(pin)) return { success: false, error: 'PIN ไม่ถูกต้อง' };
   var phoneClean = String(phone || '').replace(/[^0-9]/g, '');
-  if (!phoneClean) return { success: false, error: 'กรุณากรอกเบอร์โทร' };
+  var uidQuery = String(lineUid || '').trim();
+  if (!phoneClean && !uidQuery) return { success: false, error: 'กรุณากรอกเบอร์โทร (หรือ LINE UID) ก่อนค้นหา' };
   try {
+    var out = { success: true, lineUid: '', customerName: '', phone: '', address: '', province: '', birthday: '',
+      orderId: '', lastOrderDate: '', orderCount: 0, isMember: false, memberCode: '', points: 0, tierName: '' };
+    var samePhone = function (v) { return phoneClean && String(v || '').replace(/[^0-9]/g, '') === phoneClean; };
+
+    // 1) ออเดอร์ในชีต Revenue (ใหม่สุดก่อน)
     var ss = SpreadsheetApp.openById(REVENUE_SHEET_ID_SHOP);
     var sheet = ss.getSheetByName(REVENUE_SHEET_NAME_SHOP);
     var lastRow = sheet.getLastRow();
-    if (lastRow <= 1) return { success: false, error: 'ไม่พบประวัติออเดอร์' };
-    var data = sheet.getRange(2, 1, lastRow - 1, 32).getValues();
-    for (var i = data.length - 1; i >= 0; i--) {
-      var rowPhone = String(data[i][14] || '').replace(/[^0-9]/g, '');
-      var rowUid = String(data[i][31] || '').trim();
-      if (rowPhone === phoneClean && rowUid) {
-        return { success: true, lineUid: rowUid, customerName: String(data[i][13] || ''), orderId: String(data[i][0] || '') };
+    if (lastRow > 1) {
+      var data = sheet.getRange(2, 1, lastRow - 1, 32).getValues();
+      for (var i = data.length - 1; i >= 0; i--) {
+        var r = data[i];
+        if (!r[0] || String(r[2]) === CANCELLED_ORDER_MARK_) continue;
+        var rowUid = String(r[31] || '').trim();
+        if (!(samePhone(r[14]) || (uidQuery && rowUid === uidQuery) || (out.lineUid && rowUid === out.lineUid))) continue;
+        out.orderCount++;
+        if (out.orderCount > 1) { if (!out.lineUid && rowUid) out.lineUid = rowUid; continue; }
+        out.orderId = String(r[0]);
+        out.lastOrderDate = r[1] ? Utilities.formatDate(new Date(r[1]), 'GMT+7', 'dd/MM/yyyy') : '';
+        out.lineUid = rowUid || out.lineUid;
+        out.customerName = String(r[13] || '').trim();
+        out.phone = String(r[14] || '').trim();
+        out.province = String(r[23] || '').trim();
+        out.address = String(r[24] || '').trim();
       }
     }
-    return { success: false, error: 'ไม่พบเบอร์นี้ในประวัติออเดอร์เก่า (ต้องเป็นออเดอร์ที่เคยบันทึก LINE UID ไว้แล้วเท่านั้น)' };
+
+    // 2) โปรไฟล์สมาชิก (ข้อมูลที่ลูกค้ากรอกเอง แม่นกว่า — ใช้แทนเมื่อมีค่า)
+    var mem = ensureMembersSheet_(), mLast = mem.getLastRow();
+    if (mLast > 1) {
+      var md = mem.getRange(2, 1, mLast - 1, 13).getValues();
+      for (var k = 0; k < md.length; k++) {
+        var m = md[k], mUid = String(m[0] || '').trim();
+        if (!mUid) continue;
+        if (!((uidQuery && mUid === uidQuery) || (out.lineUid && mUid === out.lineUid) || samePhone(m[3]))) continue;
+        out.isMember = true;
+        out.lineUid = out.lineUid || mUid;
+        out.customerName = String(m[9] || '').trim() || out.customerName || String(m[1] || '').trim();
+        out.phone = String(m[3] || '').trim() || out.phone;
+        out.address = out.address || String(m[7] || '').trim();
+        out.province = out.province || String(m[8] || '').trim();
+        var b = m[10];
+        if (Object.prototype.toString.call(b) === '[object Date]' && !isNaN(b.getTime())) out.birthday = Utilities.formatDate(b, 'Asia/Bangkok', 'yyyy-MM-dd');
+        else {
+          var bs = String(b || '').trim(), bm = bs.match(/^(\d{4})-(\d{2})-(\d{2})/), bt = bs.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+          if (bm) out.birthday = bm[1] + '-' + bm[2] + '-' + bm[3];
+          else if (bt) { var by = +bt[3]; if (by > 2400) by -= 543; out.birthday = by + '-' + ('0' + bt[2]).slice(-2) + '-' + ('0' + bt[1]).slice(-2); }
+        }
+        out.points = Number(m[5]) || 0;
+        out.memberCode = String(m[12] || '');
+        try { out.tierName = resolveTierByStoredValue_(String(m[6] || ''), m[11] || 0, mUid).name || ''; } catch (tierErr) { out.tierName = String(m[6] || ''); }
+        break;
+      }
+    }
+    if (!out.lineUid && !out.isMember && !out.orderCount) return { success: false, error: 'ไม่พบลูกค้านี้ทั้งในประวัติออเดอร์และรายชื่อสมาชิก' };
+    return out;
   } catch (e) {
     return { success: false, error: e.toString() };
   }
