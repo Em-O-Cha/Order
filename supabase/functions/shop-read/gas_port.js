@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 193 รายการ (133 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 195 รายการ (134 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -610,6 +610,12 @@ function toDirectImageUrl_(url) {
   return url;
 }
 
+var SHOP_STOCK_LIMIT_PROP_ = 'SHOP_STOCK_LIMIT_ENABLED';
+
+function shopStockLimitEnabled_() {
+  return PropertiesService.getScriptProperties().getProperty(SHOP_STOCK_LIMIT_PROP_) === 'true';
+}
+
 var SHOP_PRODUCTS_CACHE_KEY_ = 'shop_products_v3';
 
 function getShopProducts() {
@@ -624,6 +630,7 @@ function getShopProducts() {
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return { success: true, categories: [] };
     var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
+    var stockLimitOn_ = shopStockLimitEnabled_();
 
     var categoryMap = {};
     var order = [];
@@ -647,7 +654,7 @@ function getShopProducts() {
       var stockText_ = String(row[12] || '');
       var leftM_ = stockText_.match(/ขายได้\s*(\d+)/);
       var variant_ = { skuName: skuName, label: variantLabel, price: price, weightG: weightG };
-      if (leftM_) {
+      if (leftM_ && stockLimitOn_) {
         var packM_ = variantLabel.match(/(\d+)\s*(ซอง|ถ้วย|กระปุก|ใบ|แพ็ค|แพค|ชิ้น)/);
         var per_ = packM_ ? Math.max(1, Number(packM_[1])) : 1;
         var unitsM_ = stockText_.match(/มี\s*(\d+)/);
