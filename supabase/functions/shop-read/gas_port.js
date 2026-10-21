@@ -2418,6 +2418,9 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
         cat.variants.forEach(function (v) { priceMap[v.skuName] = v.price; weightMap[v.skuName] = v.weightG || 0; });
       });
     }
+    // ⚡ เพิ่ม (21/10/69) — แอดมินคีย์ออเดอร์: ราคาเอง / ค่าส่งเอง / ส่วนลดท้ายบิล (กติกาเดียวกับ createShopOrder)
+    var adminExtra_ = (typeof ADMIN_SHOP_EXTRA_ !== 'undefined' && ADMIN_SHOP_EXTRA_) || null;
+    if (adminExtra_) adminShopApplyPrices_(priceMap, adminExtra_);
     var items = rawItems.map(function (it) {
       return { name: it.name, qty: parseFloat(it.qty) || 0, price: priceMap.hasOwnProperty(it.name) ? priceMap[it.name] : 0 };
     });
@@ -2427,6 +2430,7 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
       totalWeightG += (parseFloat(it.qty) || 0) * (weightMap.hasOwnProperty(it.name) ? weightMap[it.name] : 0);
     });
     var shippingCost = calcShippingCost_(totalWeightG);
+    if (adminExtra_ && adminExtra_.shipping !== null) shippingCost = adminExtra_.shipping;
 
     // ⚡ แก้ (perf) — คำนวณสิทธิพิเศษทั้งหมดครั้งเดียวแล้วกรอง exclude เอง (logic เดียวกับใน
     // getAppliedPrivileges_ ทุกประการ) แทนที่จะเรียกทั้ง getAppliedPrivileges_ และ
@@ -2507,7 +2511,8 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     var couponProductDiscount_ = (coupon ? (coupon.productDiscount || 0) : 0) + autoCoupons.reduce(function (sum, c) { return sum + (c.productDiscount || 0); }, 0);
     var repeatDiscountForPoints_ = repeatPromo ? (repeatPromo.discount || 0) : 0;
     var totalProductDiscount_ = Math.min(subtotal, privilegeProductDiscount_ + couponProductDiscount_ + repeatDiscountForPoints_);
-    var payableBeforePoints_ = Math.max(0, subtotal - totalProductDiscount_) + finalShippingCost;
+    var adminExtraDiscount_ = adminExtra_ ? Math.min(Math.max(0, subtotal - totalProductDiscount_), adminExtra_.extraDiscount || 0) : 0;
+    var payableBeforePoints_ = Math.max(0, subtotal - totalProductDiscount_ - adminExtraDiscount_) + finalShippingCost;
 
     var memberPointsBalance_ = 0;
     if (memberRow_) {
@@ -2523,7 +2528,7 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     }
 
     return { success: true, editChanges: editChanges_, privileges: appliedPrivileges, privilegeDiscount: privilegeDiscount, allPrivileges: allPrivileges, privilegeLockNote: privilegeLock_.note, privilegeLocked: false, coupon: coupon, autoCoupons: autoCoupons, couponError: couponError, shippingCost: shippingCost, shippingDiscount: totalShippingDiscount, finalShippingCost: finalShippingCost, totalWeightG: totalWeightG, repeatPromo: repeatPromo,
-      memberPoints: memberPointsBalance_, pointsRedeemConfig: getPointsRedeemConfig_(), pointsRedeemDiscount: pointsRedeemResult_.discount, pointsUsed: pointsRedeemResult_.pointsUsed, pointsRedeemError: pointsRedeemResult_.error };
+      memberPoints: memberPointsBalance_, pointsRedeemConfig: getPointsRedeemConfig_(), pointsRedeemDiscount: pointsRedeemResult_.discount, pointsUsed: pointsRedeemResult_.pointsUsed, pointsRedeemError: pointsRedeemResult_.error, adminExtraDiscount: adminExtraDiscount_ };
   } catch (e) {
     return { success: false, error: e.toString() };
   }
@@ -2798,9 +2803,9 @@ function checkPendingOrderPromoStillValid(idToken, orderId) {
   }
 }
 
-var DISCOUNT_NOTE_LABEL_RE_ = /^(สิทธิ์|คูปอง|ซื้อซ้ำเดือนนี้|คูณแต้ม|แลกคะแนน):/;
+var DISCOUNT_NOTE_LABEL_RE_ = /^(สิทธิ์|คูปอง|ซื้อซ้ำเดือนนี้|คูณแต้ม|แลกคะแนน|แถมฟรี|ส่วนลดท้ายบิล):/;
 
-var DISCOUNT_NOTE_SPLIT_RE_ = /,\s*(?=(?:สิทธิ์|คูปอง|ซื้อซ้ำเดือนนี้|คูณแต้ม|แลกคะแนน):)/;
+var DISCOUNT_NOTE_SPLIT_RE_ = /,\s*(?=(?:สิทธิ์|คูปอง|ซื้อซ้ำเดือนนี้|คูณแต้ม|แลกคะแนน|แถมฟรี|ส่วนลดท้ายบิล):)/;
 
 function parseDiscountNotesFromRemark_(remark) {
   var notes = [];
