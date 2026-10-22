@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 117 รายการ (79 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 119 รายการ (81 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -918,7 +918,7 @@ function autoTicketTextFor_(type, value, restriction, freeQty, freeDiscountPerce
   var products = String(restriction || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
   if (type === 'percent' && products.length) return 'ลด ' + (parseFloat(value) || 0) + '% เฉพาะ ' + products.join(', ');
   // ⚡ เพิ่ม (6/10/69) — ค่าส่งราคาพิเศษที่ส่งฟรีเมื่อซื้อครบ N ชิ้น (หน้าร้านไม่รู้ N เอง)
-  if (type === 'ship_price' && (parseFloat(freeQty) || 0) > 0 && (parseFloat(value) || 0) > 0) return 'ค่าส่ง ' + (parseFloat(value) || 0) + ' บาท · ซื้อครบ ' + (parseFloat(freeQty) || 0) + ' ชิ้นส่งฟรี';
+  if (type === 'ship_price' && shipFreeRuleText_(freeQty) && (parseFloat(value) || 0) > 0) return 'ค่าส่ง ' + (parseFloat(value) || 0) + ' บาท · ' + shipFreeRuleText_(freeQty);
   if (type === 'bogo' && freeDiscountPercent !== '' && freeDiscountPercent !== null && freeDiscountPercent !== undefined) {
     var pct = parseFloat(freeDiscountPercent);
     var qty = parseFloat(freeQty) || 1;
@@ -1148,6 +1148,19 @@ function getMemberPrivileges(pin, lineUid) {
   } catch (e) {
     return { success: false, error: e.toString() };
   }
+}
+
+function shipFreeRule_(freeQty) {
+  var s = String(freeQty === null || freeQty === undefined ? '' : freeQty);
+  var q = parseFloat(s) || 0, m = s.match(/฿\s*([\d.]+)/);
+  return { qty: q > 0 ? q : 0, amount: m ? (parseFloat(m[1]) || 0) : 0 };
+}
+
+function shipFreeRuleText_(freeQty) {
+  var r = shipFreeRule_(freeQty), parts = [];
+  if (r.qty) parts.push('ซื้อครบ ' + r.qty + ' ชิ้น');
+  if (r.amount) parts.push('ยอดครบ ' + r.amount.toLocaleString('th-TH') + ' บาท');
+  return parts.length ? parts.join(' หรือ ') + ' ส่งฟรี' : '';
 }
 
 function listGlobalCoupons(pin) {
