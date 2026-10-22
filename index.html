@@ -1564,7 +1564,12 @@ function applyShopBootstrap_(r){
   // ระหว่างรอ API จริง พอ renderCatalog() รันซ้ำจะทำให้จอดีดกลับขึ้นบนสุดโดยไม่ตั้งใจ (ลูกค้าจะงงว่าเลือก
   // สินค้าไว้หายไปไหน) — จำตำแหน่งเลื่อนหน้าจอไว้ก่อน แล้วคืนกลับให้เหมือนเดิมหลัง render เสร็จ
   var scrollY_ = window.scrollY;
-  categories = r.categories || [];
+  // ⚡ (22/10/69) สินค้า/ขนาดที่แอดมินซ่อน (hidden) ไม่แสดงในหน้าร้าน — ตะกร้าเดิมที่มีสินค้านี้จะถูกตัดออกตอนคืนตะกร้า
+  categories = (r.categories || []).filter(function(c){ return !c.hidden; }).map(function(c){
+    var vs = (c.variants || []).filter(function(v){ return !v.hidden; });
+    if (vs.length === (c.variants || []).length) return c;
+    var copy = {}; Object.keys(c).forEach(function(k){ copy[k] = c[k]; }); copy.variants = vs; return copy;
+  }).filter(function(c){ return (c.variants || []).length; });
   activeAutoCoupons = (r.coupons || []).filter(function(c){ return c.autoApply; });
   myPricePrivileges_ = (r.privileges || []).filter(function(p){ return p.type === 'price' && !p.isUpcoming && p.restriction; });
   renderCatalog();

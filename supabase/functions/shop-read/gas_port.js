@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 195 รายการ (134 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 197 รายการ (135 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -616,6 +616,15 @@ function shopStockLimitEnabled_() {
   return PropertiesService.getScriptProperties().getProperty(SHOP_STOCK_LIMIT_PROP_) === 'true';
 }
 
+var SHOP_HIDDEN_PRODUCTS_PROP_ = 'SHOP_HIDDEN_PRODUCTS';
+
+function shopHiddenProducts_() {
+  try {
+    var list = JSON.parse(PropertiesService.getScriptProperties().getProperty(SHOP_HIDDEN_PRODUCTS_PROP_) || '[]');
+    return Array.isArray(list) ? list.map(String) : [];
+  } catch (e) { return []; }
+}
+
 var SHOP_PRODUCTS_CACHE_KEY_ = 'shop_products_v3';
 
 function getShopProducts() {
@@ -631,6 +640,8 @@ function getShopProducts() {
     if (lastRow < 2) return { success: true, categories: [] };
     var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
     var stockLimitOn_ = shopStockLimitEnabled_();
+    var hidden_ = {};
+    shopHiddenProducts_().forEach(function (n) { hidden_[n] = true; });
 
     var categoryMap = {};
     var order = [];
@@ -662,10 +673,14 @@ function getShopProducts() {
         variant_.stock = { left: Number(leftM_[1]), units: unitsM_ ? Number(unitsM_[1]) : Number(leftM_[1]) * per_, per: per_,
                            unit: unitWordM_ ? unitWordM_[1] : 'ชิ้น' };
       }
+      if (hidden_[skuName] || hidden_[category]) variant_.hidden = true;
       categoryMap[category].variants.push(variant_);
     });
 
     var categories = order.map(function (key) { return categoryMap[key]; });
+    categories.forEach(function (c) {
+      if (hidden_[c.name] || c.variants.every(function (v) { return v.hidden; })) c.hidden = true;
+    });
     var result = { success: true, categories: categories };
     try { cache.put(SHOP_PRODUCTS_CACHE_KEY_, JSON.stringify(result), 180); } catch (e) {}
     return result;
