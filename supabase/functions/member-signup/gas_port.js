@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target member-signup) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 34 รายการ (24 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 47 รายการ (34 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -126,7 +126,7 @@ function calcEligibleTier_(lifetimeSpend, points) {
 var VALID_PRIVILEGE_TYPES_ = ['percent', 'fixed', 'bogo', 'ship_percent', 'ship_fixed', 'price', 'ship_price'];
 
 function getSignupPrivilegeConfig_() {
-  var fallback = { enabled: false, name: '', type: 'percent', value: 0, expiryDays: 0, expiryDate: '', restriction: '', freeProduct: '', freeQty: 0, startDate: '', endDate: '' };
+  var fallback = { enabled: false, name: '', type: 'percent', value: 0, expiryDays: 0, expiryDate: '', restriction: '', freeProduct: '', freeQty: 0, freeDiscountPercent: '', startDate: '', endDate: '' };
   try {
     var raw = PropertiesService.getScriptProperties().getProperty('SIGNUP_PRIVILEGE_CONFIG');
     if (!raw) return fallback;
@@ -141,6 +141,8 @@ function getSignupPrivilegeConfig_() {
       restriction: String(cfg.restriction || ''),
       freeProduct: String(cfg.freeProduct || ''),
       freeQty: parseFloat(cfg.freeQty) || 0,
+      // ⚡ เพิ่ม (4/10/69) — ส่วนลดชิ้นถัดไป % ของ bogo (ว่าง = 100% แถมฟรี)
+      freeDiscountPercent: (cfg.freeDiscountPercent === undefined || cfg.freeDiscountPercent === null) ? '' : cfg.freeDiscountPercent,
       // ⚡ เพิ่ม (25/8/69) — ช่วงวันเริ่ม-สิ้นสุดของ "โปรนี้" (ตอนรับสมัครสมาชิกใหม่) เว้นว่างทั้งคู่ = ใช้ได้
       // ตลอดไม่มีกำหนด — คนละเรื่องกับ expiryDate ด้านบนที่คือวันหมดอายุของสิทธิ์ที่สมาชิกแต่ละคนได้รับไปแล้ว
       startDate: String(cfg.startDate || ''),
@@ -149,6 +151,22 @@ function getSignupPrivilegeConfig_() {
   } catch (e) {
     return fallback;
   }
+}
+
+var SIGNUP_ITEM_DISCOUNT_HEADER_ = 'ส่วนลดชิ้นถัดไป(%)(เฉพาะ bogo — เว้นว่าง=100% ฟรี)';
+
+function signupItemDiscountCol_(sheet, create) {
+  var width = Math.max(sheet.getLastColumn(), 12);
+  var header = sheet.getRange(1, 1, 1, width).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var c = header.indexOf(SIGNUP_ITEM_DISCOUNT_HEADER_) + 1;
+  if (!c && create) { c = width + 1; sheet.getRange(1, c).setValue(SIGNUP_ITEM_DISCOUNT_HEADER_); }
+  return c;
+}
+
+function signupDiscountCell_(type, freeDiscountPercent) {
+  if (type !== 'bogo' || freeDiscountPercent === '' || freeDiscountPercent === null || freeDiscountPercent === undefined) return '';
+  var n = parseFloat(freeDiscountPercent);
+  return isNaN(n) ? '' : Math.max(0, Math.min(100, n));
 }
 
 function ensureSignupPrivilegesSheet_() {
@@ -388,7 +406,7 @@ function registerMember(idToken, phoneNumber, fullName, birthday, referrerCode) 
         var usageEndDate_ = signupPrivilegeConfig_.endDate ? parseDateInputStr_(signupPrivilegeConfig_.endDate) : null;
         var signupPrivilegeExpiry_;
         if (usageEndDate_) {
-          usageEndDate_.setHours(23, 59, 59, 999);
+          endOfDayUnlessTimed_(usageEndDate_);
           signupPrivilegeExpiry_ = usageEndDate_;
         } else {
           signupPrivilegeExpiry_ = signupPrivilegeConfig_.expiryDate
@@ -398,7 +416,8 @@ function registerMember(idToken, phoneNumber, fullName, birthday, referrerCode) 
         pendingPrivilegeRows_.push([
           profile.sub, signupPrivilegeConfig_.name, signupPrivilegeConfig_.type, signupPrivilegeConfig_.value,
           signupPrivilegeExpiry_ || '', 'ของขวัญต้อนรับสมาชิกใหม่ (อัตโนมัติ)', new Date(), true, false, usableFromDate_ || '',
-          signupPrivilegeConfig_.restriction || '', signupPrivilegeConfig_.freeProduct || '', signupPrivilegeConfig_.freeQty || '', ''
+          signupPrivilegeConfig_.restriction || '', signupPrivilegeConfig_.freeProduct || '', signupPrivilegeConfig_.freeQty || '', '',
+          signupDiscountCell_(signupPrivilegeConfig_.type, signupPrivilegeConfig_.freeDiscountPercent)
         ]);
         grantedPrivilegesDetailed_.push({
           name: signupPrivilegeConfig_.name, type: signupPrivilegeConfig_.type, value: signupPrivilegeConfig_.value,
@@ -418,7 +437,9 @@ function registerMember(idToken, phoneNumber, fullName, birthday, referrerCode) 
       var signupPrivItemsLastRow_ = signupPrivItemsSheet_.getLastRow();
       if (signupPrivItemsLastRow_ > 1) {
         var signupPrivItemsData_ = signupPrivItemsSheet_.getRange(2, 1, signupPrivItemsLastRow_ - 1, 12).getValues();
-        signupPrivItemsData_.forEach(function (row) {
+        var signupPrivItemsDiscountCol_ = signupItemDiscountCol_(signupPrivItemsSheet_);
+        var signupPrivItemsDiscount_ = signupPrivItemsDiscountCol_ ? signupPrivItemsSheet_.getRange(2, signupPrivItemsDiscountCol_, signupPrivItemsLastRow_ - 1, 1).getValues() : [];
+        signupPrivItemsData_.forEach(function (row, rowIdx_) {
           var active = row[7] === true || String(row[7]).toUpperCase() === 'TRUE';
           if (!active) return;
           // ⚡ แก้ (26/8/69) — เหมือนแก้ในสิทธิ์แบบเดี่ยวด้านบน: "วันเริ่มโปร/วันสิ้นสุดโปร" (คอลัมน์ 11-12 ของ
@@ -433,7 +454,7 @@ function registerMember(idToken, phoneNumber, fullName, birthday, referrerCode) 
           var expiryDaysVal = parseInt(row[3]) || 0;
           var itemExpiry_;
           if (usageEndDate_) {
-            usageEndDate_.setHours(23, 59, 59, 999);
+            endOfDayUnlessTimed_(usageEndDate_);
             itemExpiry_ = usageEndDate_;
           } else {
             itemExpiry_ = expiryFromDays_(new Date(), expiryDaysVal);
@@ -441,7 +462,8 @@ function registerMember(idToken, phoneNumber, fullName, birthday, referrerCode) 
           pendingPrivilegeRows_.push([
             profile.sub, row[0], row[1], row[2],
             itemExpiry_ || '', 'ของขวัญต้อนรับสมาชิกใหม่ (อัตโนมัติ)', new Date(), true, false, usableFromDate_ || '',
-            row[4] || '', row[5] || '', row[6] || '', row[9] || ''
+            row[4] || '', row[5] || '', row[6] || '', row[9] || '',
+            signupDiscountCell_(row[1], signupPrivItemsDiscount_[rowIdx_] ? signupPrivItemsDiscount_[rowIdx_][0] : '')
           ]);
           grantedPrivilegesDetailed_.push({
             name: row[0], type: row[1], value: row[2], restriction: row[4] || '',
@@ -459,8 +481,11 @@ function registerMember(idToken, phoneNumber, fullName, birthday, referrerCode) 
     if (pendingPrivilegeRows_.length) {
       try {
         var privSheetForWrite_ = ensurePrivilegesSheet_();
-        privSheetForWrite_.getRange(privSheetForWrite_.getLastRow() + 1, 1, pendingPrivilegeRows_.length, 14)
+        privSheetForWrite_.getRange(privSheetForWrite_.getLastRow() + 1, 1, pendingPrivilegeRows_.length, 15)
                           .setValues(pendingPrivilegeRows_);
+        // ⚡ เพิ่ม (4/10/69) — ข้อความบนตั๋วอัตโนมัติ (ลด % เฉพาะสินค้า / ชิ้นถัดไปลด %) ให้หน้าร้านเห็นสินค้าที่ร่วมโปร
+        var firstWritten_ = privSheetForWrite_.getLastRow() - pendingPrivilegeRows_.length + 1;
+        pendingPrivilegeRows_.forEach(function (r_, i_) { var t_ = autoPrivilegeTicketText_(r_); if (t_) setPrivilegeDetailText_(privSheetForWrite_, firstWritten_ + i_, 1, t_); });
       } catch (privWriteErr) {
         Logger.log('registerMember: บันทึกสิทธิ์ต้อนรับลงชีตไม่สำเร็จ: ' + privWriteErr.toString());
       }
@@ -593,13 +618,13 @@ function buildWelcomeFlexMessage_(displayName, memberCode, signupBonusPoints, gr
       if (p.startDate) {
         try {
           var startDate_ = new Date(p.startDate);
-          if (!isNaN(startDate_.getTime())) startText = startDate_.toLocaleDateString('th-TH');
+          if (!isNaN(startDate_.getTime())) startText = thaiDateText_(startDate_);
         } catch (e) {}
       }
       if (p.expiry) {
         try {
           var expiryDate_ = new Date(p.expiry);
-          if (!isNaN(expiryDate_.getTime())) endText = expiryDate_.toLocaleDateString('th-TH');
+          if (!isNaN(expiryDate_.getTime())) endText = thaiDateText_(expiryDate_);
         } catch (e) {}
       }
       if (startText && endText) {
@@ -641,13 +666,82 @@ function buildWelcomeFlexMessage_(displayName, memberCode, signupBonusPoints, gr
   return { type: 'flex', altText: 'สมัครสมาชิกสำเร็จแล้ว! ยินดีต้อนรับสู่คลับคนรักเอมโอชา 💚', contents: bubble };
 }
 
+var PROMO_DETAIL_HEADER_ = 'ข้อความรายละเอียดบนตั๋ว(เว้นว่าง=ระบบสร้างให้)';
+
+var privilegeDetailColCache_ = null;
+
+function privilegeDetailCol_(create) {
+  if (privilegeDetailColCache_ !== null && (privilegeDetailColCache_ > 0 || !create)) return privilegeDetailColCache_;
+  var sheet = ensurePrivilegesSheet_();
+  var width = Math.max(sheet.getLastColumn(), 15);
+  var header = sheet.getRange(1, 1, 1, width).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var c = header.indexOf(PROMO_DETAIL_HEADER_) + 1;
+  if (!c && create) { c = width + 1; sheet.getRange(1, c).setValue(PROMO_DETAIL_HEADER_); }
+  privilegeDetailColCache_ = c;
+  return c;
+}
+
+function setPrivilegeDetailText_(sheet, firstRow, numRows, detailText) {
+  if (detailText === undefined || detailText === null || !numRows) return;
+  var text = String(detailText).trim();
+  if (!text && !privilegeDetailCol_()) return;
+  sheet.getRange(firstRow, privilegeDetailCol_(true), numRows, 1).setValue(text);
+}
+
+function autoPrivilegeTicketText_(row) {
+  return autoTicketTextFor_(row[2], row[3], row[10], row[12], row[14]);
+}
+
+function autoTicketTextFor_(type, value, restriction, freeQty, freeDiscountPercent) {
+  type = String(type || '');
+  var products = String(restriction || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  if (type === 'percent' && products.length) return 'ลด ' + (parseFloat(value) || 0) + '% เฉพาะ ' + products.join(', ');
+  // ⚡ เพิ่ม (6/10/69) — ค่าส่งราคาพิเศษที่ส่งฟรีเมื่อซื้อครบ N ชิ้น (หน้าร้านไม่รู้ N เอง)
+  if (type === 'ship_price' && (parseFloat(freeQty) || 0) > 0 && (parseFloat(value) || 0) > 0) return 'ค่าส่ง ' + (parseFloat(value) || 0) + ' บาท · ซื้อครบ ' + (parseFloat(freeQty) || 0) + ' ชิ้นส่งฟรี';
+  if (type === 'bogo' && freeDiscountPercent !== '' && freeDiscountPercent !== null && freeDiscountPercent !== undefined) {
+    var pct = parseFloat(freeDiscountPercent);
+    var qty = parseFloat(freeQty) || 1;
+    if (!isNaN(pct) && pct < 100) {
+      return 'ซื้อ' + (products.length ? products.join(' หรือ ') + ' ' : '') + 'ครบ ' + (parseFloat(value) || 0) + ' ชิ้น ชิ้นถัดไปลด ' + pct + '%' + (qty > 1 ? ' (' + qty + ' ชิ้น)' : '');
+    }
+  }
+  return '';
+}
+
 function normalizeDateCell_(v) {
   if (!v) return '';
   if (Object.prototype.toString.call(v) === '[object Date]') {
     if (isNaN(v.getTime())) return '';
-    return Utilities.formatDate(v, 'GMT+7', 'yyyy-MM-dd');
+    return dateTimeRaw_(v);
   }
   return String(v).trim();
+}
+
+function hasTimeOfDay_(v) {
+  if (!v) return false;
+  var d = (Object.prototype.toString.call(v) === '[object Date]') ? v : (typeof v === 'string' ? parseDateInputStr_(v) : new Date(v));
+  if (!d || isNaN(d.getTime())) return false;
+  var h = d.getHours(), m = d.getMinutes();
+  return !((h === 0 && m === 0) || (h === 23 && m === 59));
+}
+
+function endOfDayUnlessTimed_(d) {
+  if (d && !hasTimeOfDay_(d)) d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function dateTimeRaw_(v) {
+  if (!v) return '';
+  var d = (Object.prototype.toString.call(v) === '[object Date]') ? v : new Date(v);
+  if (isNaN(d.getTime())) return '';
+  return Utilities.formatDate(d, 'GMT+7', hasTimeOfDay_(d) ? 'yyyy-MM-dd HH:mm' : 'yyyy-MM-dd');
+}
+
+function thaiDateText_(v) {
+  if (!v) return '';
+  var d = (Object.prototype.toString.call(v) === '[object Date]') ? v : (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? parseDateInputStr_(v) : new Date(v));
+  if (!d || isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('th-TH') + (hasTimeOfDay_(d) ? ' ' + Utilities.formatDate(d, 'GMT+7', 'HH:mm') + ' น.' : '');
 }
 
 function isDateRangeActive_(startDateStr, endDateStr, now) {
@@ -661,7 +755,7 @@ function isDateRangeActive_(startDateStr, endDateStr, now) {
   if (endDateStr) {
     var e = parseDateInputStr_(endDateStr);
     if (e) {
-      e.setHours(23, 59, 59, 999); // ใช้ได้ถึงสิ้นวันนั้นจริงๆ (แพทเทิร์นเดียวกับ isExpired_)
+      endOfDayUnlessTimed_(e); // ไม่ระบุเวลา = ใช้ได้ถึงสิ้นวันนั้นจริงๆ (แพทเทิร์นเดียวกับ isExpired_)
       if (e < now) return false;
     }
   }
@@ -678,9 +772,10 @@ function expiryFromDays_(baseDate, days) {
 }
 
 function parseDateInputStr_(s) {
-  var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/);
   if (!m) return null;
-  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10),
+    m[4] ? parseInt(m[4], 10) : 0, m[5] ? parseInt(m[5], 10) : 0);
 }
 
   return { registerMember };
