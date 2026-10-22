@@ -3065,8 +3065,8 @@ function renderPaymentDetail(targetElId, fixedTotal, showBoth){
   if (!showBoth && selectedPayment === 'card') {
     var cardFeeNow_ = cardFeeAmount_();
     wrap.innerHTML = '<div class="bank-box" style="text-align:center">'
-      + '<p style="font-weight:600;color:#1565c0;font-size:15px">💳 ชำระด้วยบัตรเครดิต/เดบิต</p>'
-      + '<p style="font-size:24px;font-weight:700;color:#1565c0;margin-top:8px">฿' + total.toLocaleString('th-TH') + '</p>'
+      + '<p style="font-weight:600;color:#5b2c9c;font-size:15px">💳 ชำระด้วยบัตรเครดิต/เดบิต</p>'
+      + '<p style="font-size:24px;font-weight:700;color:#5b2c9c;margin-top:8px">฿' + total.toLocaleString('th-TH') + '</p>'
       + (cardFeeNow_ > 0 ? '<p style="font-size:12px;color:var(--g6);margin-top:4px">(รวมค่าธรรมเนียมชำระด้วยบัตร ฿' + cardFeeNow_.toLocaleString('th-TH') + ' แล้ว)</p>' : '')
       + (cardInfo_ && cardInfo_.fee > 0 && cardInfo_.feeFreeFrom > 0
           ? '<p style="font-size:12px;color:' + (cardFeeNow_ > 0 ? '#e65100' : '#2e7d32') + ';margin-top:4px">' + (cardFeeNow_ > 0
