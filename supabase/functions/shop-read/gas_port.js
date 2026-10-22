@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 199 รายการ (137 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 200 รายการ (138 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1235,7 +1235,7 @@ function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shipp
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
         physicalFreeQty: calc.physicalFreeQty || 0, minPurchase: minPurchase, freeDiscountPercent: calc.freeDiscountPercent || 100,
         stackable: isStackablePrivilegeRow_(row), restriction: String(row[10] || ''), freeGifts: calc.freeGifts,
-        giftOnly: !!promo.giftOnly
+        giftOnly: !!promo.giftOnly, shipFreeAmount: calc.shipFreeAmount || 0, shipBaseDiscount: calc.shipBaseDiscount || 0
       });
     });
     return results;
@@ -1856,6 +1856,18 @@ function shipFreeRuleText_(freeQty) {
   return parts.length ? parts.join(' หรือ ') + ' ส่งฟรี' : '';
 }
 
+function applyShipFreeByNetAmount_(promos, subtotal) {
+  var list = (promos || []).filter(Boolean);
+  var productDisc = list.reduce(function (sum, p) { return sum + (p.productDiscount || 0); }, 0);
+  var net = Math.max(0, (subtotal || 0) - Math.min(subtotal || 0, productDisc));
+  list.forEach(function (p) {
+    if (!(p.shipFreeAmount > 0) || net >= p.shipFreeAmount) return;
+    var base = Math.min(p.shippingDiscount || 0, p.shipBaseDiscount || 0);
+    p.discount = Math.max(0, (p.discount || 0) - ((p.shippingDiscount || 0) - base));
+    p.shippingDiscount = base;
+  });
+}
+
 function computeEligibleInfo_(items, restrictionText) {
   var restriction = String(restrictionText || '').trim();
   if (!restriction) {
@@ -1972,6 +1984,12 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
     var shipPrice_ = Math.max(0, value);
     var shipRule_ = shipFreeRule_(promo.freeQty); // ⚡ (22/10/69) + ส่งฟรีเมื่อยอดซื้อ (ค่าสินค้าทั้งตะกร้า) ครบ A บาท
     if (shipRule_.qty > 0 && computeEligibleInfo_(items || [], restriction).qty >= shipRule_.qty) shipPrice_ = 0;
+    // ยอดครบ A บาท: ตรงนี้ดูจากราคาปกติไปก่อน (ให้โปรยังอยู่ในรายการ) — ตัดสินจริงด้วยยอดหลังหักส่วนลดของทุกโปร
+    // ที่ applyShipFreeByNetAmount_ (เรียกหลังเลือกโปรแล้ว ใน checkShopDiscounts / createShopOrder)
+    if (shipRule_.amount > 0 && shipPrice_ > 0) {
+      result.shipFreeAmount = shipRule_.amount;
+      result.shipBaseDiscount = Math.max(0, (shippingCost || 0) - shipPrice_);
+    }
     if (shipRule_.amount > 0) {
       var cartTotal_ = (items || []).reduce(function (s, it) {
         var pr = priceMap && priceMap.hasOwnProperty(it.name) ? priceMap[it.name] : (parseFloat(it.price) || 0);
@@ -2246,7 +2264,8 @@ function findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKey
         discount: totalDiscount, restriction: meta.restriction,
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
         physicalFreeQty: calc.physicalFreeQty || 0, freeDiscountPercent: calc.freeDiscountPercent || 100,
-        stackable: couponRowStackable_(bundle_, row), freeGifts: calc.freeGifts
+        stackable: couponRowStackable_(bundle_, row), freeGifts: calc.freeGifts,
+        shipFreeAmount: calc.shipFreeAmount || 0, shipBaseDiscount: calc.shipBaseDiscount || 0
       };
     }
 
@@ -2340,6 +2359,7 @@ function validateCoupon_(code, subtotal, items, priceMap, shippingCost, memberTi
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
         physicalFreeQty: calc.physicalFreeQty || 0, freeDiscountPercent: calc.freeDiscountPercent || 100,
         audience: audience_.length > 0, stackable: couponRowStackable_(bundle_, row), freeGifts: calc.freeGifts,
+        shipFreeAmount: calc.shipFreeAmount || 0, shipBaseDiscount: calc.shipBaseDiscount || 0,
         typedOnly: !(row[8] === true || String(row[8]).toUpperCase() === 'TRUE') // โค้ดที่ลูกค้าต้องพิมพ์เอง (ไม่ใช่คูปองอัตโนมัติ)
       };
     }
@@ -2515,6 +2535,7 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     }
     // ⚡ เพิ่ม (26/9/69) — ส่วนลดค่าส่งหลายก้อนรวมกันเกินค่าส่ง (เช่น สิทธิ์ส่งฟรี + คูปองลดค่าส่ง) ตัดยอดของคูปองให้
     // เหลือเท่าที่ลดได้จริง บรรทัดส่วนลดในหน้าชำระเงิน/บิล/รายงานจะได้บวกกันตรงกับยอดจริง
+    applyShipFreeByNetAmount_(appliedPrivileges.concat(coupon ? [coupon] : [], autoCoupons), subtotal);
     var trimmedShip_ = trimCouponShippingDiscounts_(appliedPrivileges, coupon ? [coupon].concat(autoCoupons) : autoCoupons, shippingCost);
     if (coupon) { coupon = trimmedShip_[0]; autoCoupons = trimmedShip_.slice(1); } else { autoCoupons = trimmedShip_; }
     autoCoupons = autoCoupons.filter(isUsefulAutoCoupon_);
