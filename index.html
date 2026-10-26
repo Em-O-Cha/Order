@@ -2083,8 +2083,8 @@ function findVariant(skuName){
 function stockTagHtml_(v){
   if (!v.stock) return '';
   if (v.stock.left <= 0) return '<div class="stock-tag out">สินค้าหมด</div>';
-  if (v.stock.left <= 10) return '<div class="stock-tag">เหลือ ' + v.stock.left + ' ' + escHtml(v.stock.unit || 'ชิ้น') + '</div>';
-  return '';
+  // ⚡ (26/10/69) สินค้าที่จำกัดสต๊อก (เช่น เมนูเจ) แสดงจำนวนคงเหลือเสมอ (เดิมแสดงเมื่อเหลือไม่เกิน 10)
+  return '<div class="stock-tag">เหลือ ' + v.stock.left + ' ' + escHtml(v.stock.unit || 'ชิ้น') + '</div>';
 }
 // สั่งขนาดนี้ได้สูงสุดกี่ชุด เมื่อหักส่วนที่ขนาดอื่นของสินค้าเดียวกันในตะกร้าใช้ไปแล้ว (null = ไม่จำกัด)
 function stockMaxFor_(v){
