@@ -2586,6 +2586,9 @@ function previewPointsRedeem_(points){
   var oldDiscount = Number(lastDiscountInfo.pointsRedeemDiscount) || 0;
   var usablePoints = Math.max(0, parseInt(points) || 0);
   if (cfg.maxRedeemPerOrder > 0) usablePoints = Math.min(usablePoints, cfg.maxRedeemPerOrder);
+  // ⚡ (26/10/69) เพดานตามยอดซื้อ (ขั้นบันได) ที่ระบบคำนวณจากตะกร้าล่าสุด
+  var tierCap = lastDiscountInfo.pointsTierCap;
+  if (tierCap !== undefined && tierCap !== null) usablePoints = Math.min(usablePoints, tierCap);
   var rate = Number(cfg.pointsPerBaht) || 1;
   var maxPayable = Math.max(0, getFinalTotal() + oldDiscount);
   var provisionalDiscount = Math.min(maxPayable, usablePoints / rate);
@@ -2690,6 +2693,14 @@ function renderPointsRedeemBox_(){
     + '<p style="font-weight:600;margin-bottom:6px">🎯 แลกคะแนนเป็นส่วนลดเงินสดทันที ' + escHtml(rateText) + ' ( มี ' + memberPoints.toLocaleString('th-TH') + ' คะแนน )</p>';
   if (reservedPoints > 0) h += '<p style="font-size:11.5px;color:#a50d0c;margin:-2px 0 8px">⏳ ใช้ได้ ' + availablePoints.toLocaleString('th-TH') + ' คะแนน · มี ' + reservedPoints.toLocaleString('th-TH') + ' คะแนนถูกกันไว้ในออเดอร์รอแนบสลิป</p>';
   if (cfg.minRedeem > 0) h += '<p style="font-size:11.5px;color:var(--g6);margin-bottom:8px">แลกขั้นต่ำ ' + cfg.minRedeem + ' คะแนน</p>';
+  // ⚡ (26/10/69) บอกเพดานคะแนนของยอดซื้อนี้ (ขั้นบันได) และยอดที่ต้องซื้อเพิ่มเพื่อใช้ได้มากขึ้น
+  var tierCap_ = lastDiscountInfo.pointsTierCap, tiers_ = cfg.tiers || [], base_ = Number(lastDiscountInfo.pointsTierBase) || 0;
+  if (tierCap_ !== undefined && tierCap_ !== null && tiers_.length) {
+    var next_ = tiers_.filter(function(t){ return t.min > base_; })[0];
+    var capText_ = tierCap_ > 0 ? 'ยอดนี้ใช้คะแนนได้สูงสุด ' + tierCap_.toLocaleString('th-TH') + ' คะแนน' : 'ซื้อครบ ' + tiers_[0].min.toLocaleString('th-TH') + ' บาท (ไม่รวมค่าส่ง) ถึงจะใช้คะแนนได้';
+    if (tierCap_ > 0 && next_) capText_ += ' · ซื้อเพิ่มอีก ' + Math.ceil(next_.min - base_).toLocaleString('th-TH') + ' บาท ใช้ได้ ' + next_.max.toLocaleString('th-TH') + ' คะแนน';
+    h += '<p style="font-size:11.5px;color:#a50d0c;margin:-2px 0 8px">' + escHtml(capText_) + '</p>';
+  }
 
   if (lastDiscountInfo.pointsUsed > 0) {
     h += '<div class="row" style="align-items:center"><span>ใช้ไปแล้ว ' + lastDiscountInfo.pointsUsed + ' คะแนน <span style="color:#c62828">(-฿' + Math.round(lastDiscountInfo.pointsRedeemDiscount).toLocaleString('th-TH') + ')</span></span>'
