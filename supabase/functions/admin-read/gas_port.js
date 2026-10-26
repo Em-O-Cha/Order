@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 122 รายการ (83 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 124 รายการ (84 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -205,8 +205,20 @@ function getSignupPrivilegeConfig_() {
   }
 }
 
+var POINTS_REDEEM_DEFAULT_TIERS_ = [
+  { min: 100, max: 10 }, { min: 300, max: 30 }, { min: 500, max: 50 }, { min: 1000, max: 100 },
+  { min: 2000, max: 200 }, { min: 3000, max: 300 }, { min: 5000, max: 500 }
+];
+
+function normalizePointsTiers_(list) {
+  return (Array.isArray(list) ? list : []).map(function (t) {
+    return { min: Math.max(0, parseFloat(t && t.min) || 0), max: Math.max(0, parseInt(t && t.max, 10) || 0) };
+  }).filter(function (t) { return t.min > 0 || t.max > 0; })
+    .sort(function (a, b) { return a.min - b.min; }).slice(0, 20);
+}
+
 function getPointsRedeemConfig_() {
-  var fallback = { enabled: false, pointsPerBaht: 1, minRedeem: 0, maxRedeemPerOrder: 0 };
+  var fallback = { enabled: false, pointsPerBaht: 1, minRedeem: 0, maxRedeemPerOrder: 0, tiers: POINTS_REDEEM_DEFAULT_TIERS_.slice() };
   try {
     var raw = PropertiesService.getScriptProperties().getProperty('POINTS_REDEEM_CONFIG');
     if (!raw) return fallback;
@@ -216,7 +228,8 @@ function getPointsRedeemConfig_() {
       enabled: !!cfg.enabled,
       pointsPerBaht: rate > 0 ? rate : 1,
       minRedeem: parseInt(cfg.minRedeem) || 0,
-      maxRedeemPerOrder: parseInt(cfg.maxRedeemPerOrder) || 0
+      maxRedeemPerOrder: parseInt(cfg.maxRedeemPerOrder) || 0,
+      tiers: cfg.tiers === undefined ? POINTS_REDEEM_DEFAULT_TIERS_.slice() : normalizePointsTiers_(cfg.tiers)
     };
   } catch (e) {
     return fallback;

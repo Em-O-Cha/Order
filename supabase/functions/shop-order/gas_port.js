@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 196 รายการ (131 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 199 รายการ (133 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -172,8 +172,28 @@ function findHighestTierUpgradeRedeemed_(lineUid, tierConfig) {
   }
 }
 
+var POINTS_REDEEM_DEFAULT_TIERS_ = [
+  { min: 100, max: 10 }, { min: 300, max: 30 }, { min: 500, max: 50 }, { min: 1000, max: 100 },
+  { min: 2000, max: 200 }, { min: 3000, max: 300 }, { min: 5000, max: 500 }
+];
+
+function normalizePointsTiers_(list) {
+  return (Array.isArray(list) ? list : []).map(function (t) {
+    return { min: Math.max(0, parseFloat(t && t.min) || 0), max: Math.max(0, parseInt(t && t.max, 10) || 0) };
+  }).filter(function (t) { return t.min > 0 || t.max > 0; })
+    .sort(function (a, b) { return a.min - b.min; }).slice(0, 20);
+}
+
+function pointsTierCap_(cfg, amount) {
+  var tiers = (cfg && cfg.tiers) || [];
+  if (!tiers.length) return null;
+  var cap = 0;
+  tiers.forEach(function (t) { if ((amount || 0) >= t.min) cap = t.max; });
+  return cap;
+}
+
 function getPointsRedeemConfig_() {
-  var fallback = { enabled: false, pointsPerBaht: 1, minRedeem: 0, maxRedeemPerOrder: 0 };
+  var fallback = { enabled: false, pointsPerBaht: 1, minRedeem: 0, maxRedeemPerOrder: 0, tiers: POINTS_REDEEM_DEFAULT_TIERS_.slice() };
   try {
     var raw = PropertiesService.getScriptProperties().getProperty('POINTS_REDEEM_CONFIG');
     if (!raw) return fallback;
@@ -183,14 +203,15 @@ function getPointsRedeemConfig_() {
       enabled: !!cfg.enabled,
       pointsPerBaht: rate > 0 ? rate : 1,
       minRedeem: parseInt(cfg.minRedeem) || 0,
-      maxRedeemPerOrder: parseInt(cfg.maxRedeemPerOrder) || 0
+      maxRedeemPerOrder: parseInt(cfg.maxRedeemPerOrder) || 0,
+      tiers: cfg.tiers === undefined ? POINTS_REDEEM_DEFAULT_TIERS_.slice() : normalizePointsTiers_(cfg.tiers)
     };
   } catch (e) {
     return fallback;
   }
 }
 
-function calcPointsRedeemDiscount_(pointsToRedeem, memberPoints, maxPayable) {
+function calcPointsRedeemDiscount_(pointsToRedeem, memberPoints, maxPayable, tierBase) {
   var cfg = getPointsRedeemConfig_();
   var requested = parseInt(pointsToRedeem) || 0;
   if (requested <= 0) return { discount: 0, pointsUsed: 0, error: '' };
@@ -198,6 +219,9 @@ function calcPointsRedeemDiscount_(pointsToRedeem, memberPoints, maxPayable) {
   if (cfg.minRedeem > 0 && requested < cfg.minRedeem) return { discount: 0, pointsUsed: 0, error: 'ต้องแลกอย่างน้อย ' + cfg.minRedeem + ' คะแนน' };
   if (requested > memberPoints) return { discount: 0, pointsUsed: 0, error: 'ไม่สามารถใช้คะแนนได้: คุณมีคะแนนคงเหลือ ' + (parseInt(memberPoints) || 0) + ' คะแนน' };
   if (cfg.maxRedeemPerOrder > 0 && requested > cfg.maxRedeemPerOrder) requested = cfg.maxRedeemPerOrder;
+  var tierCap = tierBase === undefined ? null : pointsTierCap_(cfg, tierBase);
+  if (tierCap === 0) return { discount: 0, pointsUsed: 0, error: 'ยอดซื้อขั้นต่ำ ' + cfg.tiers[0].min.toLocaleString() + ' บาท (ไม่รวมค่าส่ง) ถึงจะใช้คะแนนได้' };
+  if (tierCap !== null && requested > tierCap) requested = tierCap;   // ใช้ได้เท่าเพดานของยอดนี้ (หน้าร้านบอกเพดานไว้แล้ว)
   var discount = requested / cfg.pointsPerBaht;
   if (discount > maxPayable) {
     requested = Math.min(memberPoints, Math.ceil(maxPayable * cfg.pointsPerBaht));
@@ -2291,7 +2315,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
 
     // แลกคะแนนเป็นส่วนลด: จองคะแนนไว้กับออเดอร์ระหว่างรอแนบสลิป แต่จะตัดคะแนนจริงตอนแนบสลิปสำเร็จเท่านั้น
     var availablePointsForThisOrder_ = Math.max(0, memberPoints - getPendingPointsReservedForPhone_(phone, existingOrderId));
-    var pointsRedeemResult_ = calcPointsRedeemDiscount_(pointsToRedeem, availablePointsForThisOrder_, Math.max(0, finalAmount));
+    var pointsRedeemResult_ = calcPointsRedeemDiscount_(pointsToRedeem, availablePointsForThisOrder_, Math.max(0, finalAmount), Math.max(0, subtotal - totalDiscount));
     finalAmount = Math.max(0, finalAmount - pointsRedeemResult_.discount);
     cashDiscountOnly_ += pointsRedeemResult_.discount;
     // ⚡ แก้ — ปัดเศษสตางค์ทิ้งด้วย Math.floor (ไม่ปัดขึ้น) ก่อนบันทึกลงชีต Revenue และส่งกลับไปแสดงผลที่ลูกค้า
