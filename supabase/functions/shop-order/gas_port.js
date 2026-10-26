@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 192 รายการ (129 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 195 รายการ (131 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -479,6 +479,26 @@ function shopStockLimitEnabled_() {
   return PropertiesService.getScriptProperties().getProperty(SHOP_STOCK_LIMIT_PROP_) === 'true';
 }
 
+var SHOP_STOCK_LIMITED_PROP_ = 'SHOP_STOCK_LIMITED_PRODUCTS';
+
+function shopStockLimitedProducts_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(SHOP_STOCK_LIMITED_PROP_);
+  if (raw == null) return null;
+  try {
+    var list = JSON.parse(raw || '[]');
+    return Array.isArray(list) ? list.map(String) : [];
+  } catch (e) { return []; }
+}
+
+function shopStockLimitTester_() {
+  if (shopStockLimitEnabled_()) return function () { return true; };
+  var list = shopStockLimitedProducts_();
+  if (list === null) return function (name) { return /\(เจ\)/.test(String(name || '')); };
+  var set = {};
+  list.forEach(function (n) { set[n.trim()] = true; });
+  return function (name) { return !!set[String(name || '').trim()]; };
+}
+
 var SHOP_HIDDEN_PRODUCTS_PROP_ = 'SHOP_HIDDEN_PRODUCTS';
 
 function shopHiddenProducts_() {
@@ -502,7 +522,7 @@ function getShopProducts() {
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return { success: true, categories: [] };
     var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
-    var stockLimitOn_ = shopStockLimitEnabled_();
+    var stockLimited_ = shopStockLimitTester_();
     var hidden_ = {};
     shopHiddenProducts_().forEach(function (n) { hidden_[n] = true; });
 
@@ -528,7 +548,7 @@ function getShopProducts() {
       var stockText_ = String(row[12] || '');
       var leftM_ = stockText_.match(/ขายได้\s*(\d+)/);
       var variant_ = { skuName: skuName, label: variantLabel, price: price, weightG: weightG };
-      if (leftM_ && stockLimitOn_) {
+      if (leftM_ && stockLimited_(category)) {
         var packM_ = variantLabel.match(/(\d+)\s*(ซอง|ถ้วย|กระปุก|ใบ|แพ็ค|แพค|ชิ้น)/);
         var per_ = packM_ ? Math.max(1, Number(packM_[1])) : 1;
         var unitsM_ = stockText_.match(/มี\s*(\d+)/);
