@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 195 รายการ (131 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 196 รายการ (131 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1095,6 +1095,8 @@ function addPointsAndCheckRewards_(lineUid, pointsToAdd, spendAmount, memberRowI
     Logger.log('addPointsAndCheckRewards_ error: ' + e.toString());
   }
 }
+
+var SHIP_COD_NOTE_ = 'เก็บปลายทาง (ลูกค้าชำระค่าส่งเองตอนรับสินค้า)';
 
 function parsePendingPointsReservation_(remark) {
   var match = String(remark || '').match(/🎯 คะแนนรอหัก:\s*(\d+)\s*คะแนน\s*\(-฿([\d.]+)\)/);
@@ -2386,7 +2388,8 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     if (pointsRedeemResult_.pointsUsed > 0) {
       discountNoteParts.push('แลกคะแนน: ' + pointsRedeemResult_.pointsUsed + ' คะแนน (-' + Math.round(pointsRedeemResult_.discount) + ')');
     }
-    var shippingLine = totalShippingDiscount > 0
+    var shippingLine = (adminExtra_ && adminExtra_.shipCod) ? ('ค่าจัดส่ง: ' + SHIP_COD_NOTE_)
+      : totalShippingDiscount > 0
       ? ('ค่าจัดส่ง: ' + Math.round(shippingCost) + ' บาท ลด ' + Math.round(totalShippingDiscount) + ' บาท เหลือ ' + Math.round(finalShippingCost) + ' บาท')
       : ('ค่าจัดส่ง: ' + Math.round(finalShippingCost) + ' บาท');
     // ค่าธรรมเนียมเก็บเงินปลายทางบวกรวมไปกับค่าจัดส่งในคอลัมน์ H เพื่อให้ยอดในชีตบวกกันได้ลงตัวเหมือนเดิม
@@ -2600,7 +2603,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
   if (immediateNotifyData_) {
     try {
       var billInfoNow_ = getBillDataForNotify_(sheet, startRow);
-      notifyBuyerOrderConfirmation_(immediateNotifyData_.lineUid, immediateNotifyData_.revenueId, billInfoNow_.items, immediateNotifyData_.paymentLabel, billInfoNow_.subtotal, billInfoNow_.discountTotal, billInfoNow_.shippingCost, billInfoNow_.billTotal, billInfoNow_.freebieItems, billInfoNow_.physicalFreebieItems);
+      notifyBuyerOrderConfirmation_(immediateNotifyData_.lineUid, immediateNotifyData_.revenueId, billInfoNow_.items, immediateNotifyData_.paymentLabel, billInfoNow_.subtotal, billInfoNow_.discountTotal, billInfoNow_.shippingCost, billInfoNow_.billTotal, billInfoNow_.freebieItems, billInfoNow_.physicalFreebieItems, billInfoNow_.shipCod);
       notifyAdminNewOrder_(immediateNotifyData_.revenueId, billInfoNow_.customerName, billInfoNow_.phone, billInfoNow_.items, immediateNotifyData_.paymentLabel, billInfoNow_.billTotal, billInfoNow_.address, billInfoNow_.province, billInfoNow_.freebieItems, billInfoNow_.slipImageUrl, billInfoNow_.physicalFreebieItems, billInfoNow_);
     } catch (immediateNotifyErr) {
       Logger.log('createShopOrder: แจ้งเตือนออเดอร์ที่ไม่ต้องแนบสลิปไม่สำเร็จ: ' + immediateNotifyErr.toString());
@@ -2821,6 +2824,7 @@ function getBillDataForNotify_(sheet, targetRow) {
     discountNotes: parseDiscountNotesFromRemark_(mainRow[19]),
     freebieItems: parseFreebieItemsFromRemark_(mainRow[19]),
     physicalFreebieItems: parsePhysicalFreebieItemsFromRemark_(mainRow[19]),
+    shipCod: String(mainRow[19] || '').indexOf('ค่าจัดส่ง: ' + SHIP_COD_NOTE_) !== -1,
     purchaseReferrerCode: parsePurchaseReferrerCodeFromRemark_(mainRow[19]),
     slipImageUrl: String(mainRow[10] || ''),
     orderTime: mainRow[1] || '', // คอลัมน์ B: เวลาสั่งซื้อ

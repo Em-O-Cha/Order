@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 203 รายการ (140 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 204 รายการ (140 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1094,6 +1094,8 @@ function ensurePointsLogSheet_() {
   _sheetCache_.pointsLog = sheet;
   return sheet;
 }
+
+var SHIP_COD_NOTE_ = 'เก็บปลายทาง (ลูกค้าชำระค่าส่งเองตอนรับสินค้า)';
 
 function parsePendingPointsReservation_(remark) {
   var match = String(remark || '').match(/🎯 คะแนนรอหัก:\s*(\d+)\s*คะแนน\s*\(-฿([\d.]+)\)/);
@@ -2961,6 +2963,7 @@ function getBillDataForNotify_(sheet, targetRow) {
     discountNotes: parseDiscountNotesFromRemark_(mainRow[19]),
     freebieItems: parseFreebieItemsFromRemark_(mainRow[19]),
     physicalFreebieItems: parsePhysicalFreebieItemsFromRemark_(mainRow[19]),
+    shipCod: String(mainRow[19] || '').indexOf('ค่าจัดส่ง: ' + SHIP_COD_NOTE_) !== -1,
     purchaseReferrerCode: parsePurchaseReferrerCodeFromRemark_(mainRow[19]),
     slipImageUrl: String(mainRow[10] || ''),
     orderTime: mainRow[1] || '', // คอลัมน์ B: เวลาสั่งซื้อ
