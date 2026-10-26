@@ -215,8 +215,8 @@ function getSignupPrivilegeConfig_() {
 }
 
 var POINTS_REDEEM_DEFAULT_TIERS_ = [
-  { min: 100, max: 10 }, { min: 300, max: 30 }, { min: 500, max: 50 }, { min: 1000, max: 100 },
-  { min: 2000, max: 200 }, { min: 3000, max: 300 }, { min: 5000, max: 500 }
+  { min: 100, max: 15 }, { min: 300, max: 45 }, { min: 500, max: 75 }, { min: 1000, max: 150 },
+  { min: 2000, max: 300 }, { min: 3000, max: 450 }, { min: 5000, max: 750 }
 ];
 
 function normalizePointsTiers_(list) {
