@@ -1612,7 +1612,12 @@ function priceGiftLabel_(name, qty, unit) {
 
 function priceGiftsText_(gifts) {
   return (gifts || []).map(function (g) {
-    if (!g.picks) return priceGiftLabel_(g.name, g.qty, g.unit);
+    // ⚡ แก้ (26/10/69) — ยังไม่มีใครเลือกรส: บอกชื่อของแถมเสมอ (เดิมขึ้นแค่ "10 ซอง: ทีมงานเลือกให้ ×10" ไม่รู้ว่าแถมอะไร)
+    if (!g.picks || !g.picks.length) {
+      var opts_ = String(g.name || '').split(' หรือ ').map(function (x) { return x.trim(); }).filter(Boolean);
+      if (g.picks && opts_.length > 1) return g.qty + ' ' + (g.unit || 'ชิ้น') + ' ทีมงานเลือกรสให้: ' + opts_.join(' / ');
+      return priceGiftLabel_(g.name, g.qty, g.unit);
+    }
     // ลูกค้าเลือกรสเองแล้ว เช่น "4 ชิ้น: น้ำพริกน้ำย้อย บรรจุ 6 ซอง ×2 / น้ำพริกตะไคร้หอม บรรจุ 6 ซอง ×1 / ทีมงานเลือกให้ ×1"
     var picked = 0;
     var parts = g.picks.map(function (x) { picked += x.qty; return x.name + ' ×' + x.qty; });
@@ -2243,6 +2248,10 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     couponResults = exclOrder_.coupons;
     if (manualResult && !manualResult.error) manualResult = couponResults.filter(function (c) { return String(c.rowIndex) === String(manualResult.rowIndex); })[0] || null;
     applyShipFreeByNetAmount_(appliedPrivileges.concat(couponResults), subtotal);
+    if (adminExtra_ && adminExtra_.shipping !== null) {   // แอดมินกรอกค่าส่งเอง = ไม่มีส่วนลดค่าส่ง (AdminShop.gs)
+      appliedPrivileges = adminShopFixedShip_(appliedPrivileges);
+      couponResults = adminShopFixedShip_(couponResults, manualResult ? manualResult.rowIndex : null);
+    }
     // ส่วนลดค่าส่งรวมกันไม่เกินค่าส่ง (กติกาเดียวกับ checkShopDiscounts) — โค้ดที่พิมพ์เองอยู่ลำดับแรกเสมอ ไม่ถูกตัดทิ้ง
     couponResults = trimCouponShippingDiscounts_(appliedPrivileges, couponResults, shippingCost)
       .filter(function (c) { return (manualResult && String(c.rowIndex) === String(manualResult.rowIndex)) || isUsefulAutoCoupon_(c); });
