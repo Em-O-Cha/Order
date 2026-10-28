@@ -2552,6 +2552,9 @@ function useSpinPrivilegeInstead_(rowIndex){
 // ⚡ (28/10/69) คูปองส่วนลด (ลดค่าสินค้า) ใช้ได้ครั้งละ 1 ใบต่อออเดอร์ — ลูกค้าเลือกเองด้วยปุ่ม ใช้ / ไม่ใช้
 // เซิร์ฟเวอร์เลือกใบที่ลดมากสุดในใบที่ไม่ได้กด "ไม่ใช้" (โค้ดที่พิมพ์เองมาก่อน) ส่วนลดค่าส่ง/ของแถมใช้คู่ได้เหมือนเดิม
 var couponLimitNotice_ = '';
+// ⚡ (28/10/69) ปุ่ม ใช้ / ไม่ใช้ วางต่อท้ายชื่อคูปอง (ตัวเลขส่วนลดอยู่ชิดขวาสุดเสมอ)
+function useBtnHtml_(onclick){ return ' <button type="button" class="btn-use" onclick="' + onclick + '" style="font-size:11px;padding:2px 9px;border-radius:6px;border:1px solid var(--gm);background:var(--gm);color:#fff;font-weight:600;cursor:pointer;white-space:nowrap;margin-left:4px;vertical-align:middle">ใช้</button>'; }
+function notUseBtnHtml_(onclick){ return ' <button type="button" class="btn-notuse" onclick="' + onclick + '" style="font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #c62828;background:#c62828;color:#fff;font-weight:600;cursor:pointer;white-space:nowrap;margin-left:4px;vertical-align:middle">ไม่ใช้</button>'; }
 function isLimitedCoupon_(p){ return !!p && (p.productDiscount || 0) > 0 && !p.giftOnly; }
 function limitedCouponInUse_(){
   var priv = ((lastDiscountInfo && lastDiscountInfo.allPrivileges) || []).filter(function(p){
@@ -2748,8 +2751,8 @@ function renderPointsRedeemBox_(){
   }
 
   if (lastDiscountInfo.pointsUsed > 0) {
-    h += '<div class="row" style="align-items:center"><span>ใช้ไปแล้ว ' + lastDiscountInfo.pointsUsed + ' คะแนน <span style="color:#c62828">(-฿' + Math.round(lastDiscountInfo.pointsRedeemDiscount).toLocaleString('th-TH') + ')</span></span>'
-      + '<button type="button" class="btn-notuse" onclick="clearPointsRedeem()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#c62828;color:#fff;font-weight:600;cursor:pointer">ไม่ใช้</button></div>';
+    h += '<div class="row" style="align-items:center"><span>ใช้ไปแล้ว ' + lastDiscountInfo.pointsUsed + ' คะแนน' + notUseBtnHtml_('clearPointsRedeem()') + '</span>'
+      + '<span style="color:#c62828;white-space:nowrap">-฿' + Math.round(lastDiscountInfo.pointsRedeemDiscount).toLocaleString('th-TH') + '</span></div>';
   } else {
     h += '<div style="display:flex;gap:8px">'
       + '<input type="number" id="pointsRedeemInput" min="0" max="' + availablePoints + '" placeholder="จำนวนคะแนน" style="flex:1;height:42px;padding:0 12px;border:1.5px solid #eee;border-radius:10px;font-size:14px;font-family:\'Kanit\',sans-serif">'
@@ -2856,45 +2859,41 @@ function renderDiscountSummary(){
     if (isLimitedCoupon_(p)) {
       var icon_ = p.givenBy === 'แลกด้วยแต้ม' ? '🎯 ' : (p.givenBy === 'วงล้อนำโชค' ? '🎡 ' : '🎁 ');
       if (isExcluded || p.exclusivityDropped) {
-        h += '<div class="row" style="align-items:center;font-size:12.5px"><span style="flex:1;min-width:0">' + icon_ + escHtml(p.name)
-          + '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">ลดได้ ฿' + Math.round(p.discount).toLocaleString('th-TH') + ' · เก็บไว้ใช้ครั้งหน้าได้</span></span>'
-          + '<span><button type="button" class="btn-use" onclick="useLimitedCoupon_(' + p.rowIndex + ')" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1px solid var(--gm);background:var(--gm);color:#fff;font-weight:600;cursor:pointer;white-space:nowrap">ใช้</button></span></div>';
+        h += '<div class="row" style="align-items:center;font-size:12.5px"><span style="flex:1;min-width:0;color:var(--g6);font-weight:400">' + icon_ + escHtml(p.name) + useBtnHtml_('useLimitedCoupon_(' + p.rowIndex + ')')
+          + '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">ลดได้ ฿' + Math.round(p.discount).toLocaleString('th-TH') + ' · เก็บไว้ใช้ครั้งหน้าได้</span></span></div>';
         return;
       }
       var limitedBogoNote_ = p.type === 'bogo' ? '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
-      h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">✅ ' + icon_ + escHtml(p.name) + limitedBogoNote_ + '</span>'
-        + '<span style="display:flex;align-items:center;gap:8px;white-space:nowrap;flex-shrink:0"><span style="color:#c62828">-฿' + Math.round(p.discount).toLocaleString('th-TH') + '</span>'
-        + '<button type="button" class="btn-notuse" onclick="notUseLimitedCoupons_()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#c62828;color:#fff;font-weight:600;cursor:pointer">ไม่ใช้</button></span></div>';
+      h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">✅ ' + icon_ + escHtml(p.name) + notUseBtnHtml_('notUseLimitedCoupons_()') + limitedBogoNote_ + '</span>'
+        + '<span style="color:#c62828;white-space:nowrap;flex-shrink:0">-฿' + Math.round(p.discount).toLocaleString('th-TH') + '</span></div>';
       if (p.freeGifts && p.freeGifts.length) h += freebieLineHtml_(p.name, p);
       return;
     }
     var isRedeemable = p.givenBy === 'แลกด้วยแต้ม';
     var isSpinPriv_ = p.givenBy === 'วงล้อนำโชค';
     if (isExcluded) {
-      h += '<div class="row" style="font-size:12px;color:var(--g6)"><span>✅ ไม่ใช้สิทธิ์ "' + escHtml(p.name) + '" ในออเดอร์นี้ (ยังใช้ได้ครั้งถัดไป)</span>'
-        + '<span><button type="button" class="btn-use" onclick="undoRemovePrivilege(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--gm);background:var(--gm);color:#fff;font-weight:600;cursor:pointer">ใช้</button></span></div>';
+      h += '<div class="row" style="font-size:12px;color:var(--g6)"><span style="color:var(--g6);font-weight:400">✅ ไม่ใช้สิทธิ์ "' + escHtml(p.name) + '" ในออเดอร์นี้ (ยังใช้ได้ครั้งถัดไป)' + useBtnHtml_('undoRemovePrivilege(' + p.rowIndex + ')') + '</span></div>';
       return;
     }
     // ⚡ (11/10/69) สิทธิ์จากวงล้อใช้ได้ครั้งละ 1 ใบ: ใบที่ไม่ได้ใช้ขึ้นปุ่ม "ใช้" (สลับมาใช้ใบนี้แทน) / ใบที่ใช้อยู่กด "ไม่ใช้" เก็บไว้ครั้งหน้าได้
     if (p.exclusivityDropped && isSpinPriv_ && (p.discount > 0 || p.physicalFreeQty > 0)) {
-      h += '<div class="row" style="align-items:center;font-size:12px;color:var(--g6)"><span style="flex:1;min-width:0">🎡 ' + escHtml(p.name)
-        + '<span style="display:block;font-size:10.5px;line-height:1.35">ใช้สิทธิ์วงล้อได้ครั้งละ 1 ใบ · ใบนี้เก็บไว้ใช้ครั้งหน้า</span></span>'
-        + '<span><button type="button" class="btn-use" onclick="useSpinPrivilegeInstead_(' + p.rowIndex + ')" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1px solid var(--gm);background:var(--gm);color:#fff;font-weight:600;cursor:pointer;white-space:nowrap">ใช้</button></span></div>';
+      h += '<div class="row" style="align-items:center;font-size:12px;color:var(--g6)"><span style="flex:1;min-width:0;color:var(--g6);font-weight:400">🎡 ' + escHtml(p.name) + useBtnHtml_('useSpinPrivilegeInstead_(' + p.rowIndex + ')')
+        + '<span style="display:block;font-size:10.5px;line-height:1.35">ใช้สิทธิ์วงล้อได้ครั้งละ 1 ใบ · ใบนี้เก็บไว้ใช้ครั้งหน้า</span></span></div>';
       return;
     }
     var removeBtnHtml = (isRedeemable || isSpinPriv_)
-      ? ' <button type="button" class="btn-notuse" onclick="removePrivilegeFromOrder(' + p.rowIndex + ')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#c62828;color:#fff;font-weight:600;cursor:pointer">ไม่ใช้</button>' // ⚡ (15/10/69) ใช้คำคู่ "ใช้ / ไม่ใช้" ทุกสิทธิ์ (เดิมสิทธิ์ทั่วไปเขียน "ลบ")
+      ? notUseBtnHtml_('removePrivilegeFromOrder(' + p.rowIndex + ')') // ⚡ (15/10/69) ใช้คำคู่ "ใช้ / ไม่ใช้" ทุกสิทธิ์ (เดิมสิทธิ์ทั่วไปเขียน "ลบ")
       : '';
     if (p.discount <= 0) {
       if (p.physicalFreeQty > 0) {
         h += freebieLineHtml_(p.name, p);
-        if (isSpinPriv_) h += '<div class="row" style="justify-content:flex-end;margin-top:-2px">' + removeBtnHtml + '</div>';
+        if (isSpinPriv_) h += '<div class="row" style="margin-top:-2px"><span>' + removeBtnHtml + '</span></div>';
       }
       return;
     }
     var privBogoNote_ = p.type === 'bogo' ? '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
-    h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">🎁 ' + escHtml(p.name) + privBogoNote_ + '</span>'
-      + '<span style="display:flex;align-items:center;gap:8px;white-space:nowrap;flex-shrink:0"><span style="color:#c62828">-฿' + Math.round(p.discount).toLocaleString('th-TH') + '</span>' + removeBtnHtml + '</span></div>';
+    h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">🎁 ' + escHtml(p.name) + removeBtnHtml + privBogoNote_ + '</span>'
+      + '<span style="color:#c62828;white-space:nowrap;flex-shrink:0">-฿' + Math.round(p.discount).toLocaleString('th-TH') + '</span></div>';
     if (p.freeGifts && p.freeGifts.length) h += freebieLineHtml_(p.name, p);
   });
   // โปรลดค่าจัดส่งไม่แสดงเป็นบรรทัด "-฿" แยก (ดูเหมือนหักจากยอดสินค้าอีกรอบ ทั้งที่หักในค่าจัดส่งไปแล้ว)
