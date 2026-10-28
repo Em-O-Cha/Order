@@ -2134,7 +2134,7 @@ function updateCartBar(){
   document.getElementById('checkoutBtn').disabled = count === 0;
 }
 
-function backToCatalog(){ excludedPrivilegeRowIndexes = []; pointsToRedeemInput_ = 0; showState('catalogState'); }
+function backToCatalog(){ excludedPrivilegeRowIndexes = []; couponLimitNotice_ = ''; pointsToRedeemInput_ = 0; showState('catalogState'); }
 
 function showHistory(){
   showState('historyState');
@@ -2546,6 +2546,47 @@ function useSpinPrivilegeInstead_(rowIndex){
   renderPaymentDetail();
   refreshDiscounts();
 }
+// ⚡ (28/10/69) คูปองส่วนลด (ลดค่าสินค้า) ใช้ได้ครั้งละ 1 ใบต่อออเดอร์ — ลูกค้าเลือกเองด้วยปุ่ม ใช้ / ไม่ใช้
+// เซิร์ฟเวอร์เลือกใบที่ลดมากสุดในใบที่ไม่ได้กด "ไม่ใช้" (โค้ดที่พิมพ์เองมาก่อน) ส่วนลดค่าส่ง/ของแถมใช้คู่ได้เหมือนเดิม
+var couponLimitNotice_ = '';
+function isLimitedCoupon_(p){ return !!p && (p.productDiscount || 0) > 0 && !p.giftOnly; }
+function limitedCouponInUse_(){
+  var priv = ((lastDiscountInfo && lastDiscountInfo.allPrivileges) || []).filter(function(p){
+    return isLimitedCoupon_(p) && !p.exclusivityDropped && excludedPrivilegeRowIndexes.indexOf(p.rowIndex) === -1;
+  })[0];
+  if (priv) return priv.name;
+  var c = lastDiscountInfo && lastDiscountInfo.coupon;
+  return c && isLimitedCoupon_(c) ? 'โค้ด ' + c.code : '';
+}
+function useLimitedCoupon_(rowIndex){
+  var all = (lastDiscountInfo && lastDiscountInfo.allPrivileges) || [];
+  var target = all.filter(function(p){ return p.rowIndex === rowIndex; })[0];
+  var current = limitedCouponInUse_();
+  couponLimitNotice_ = current && target
+    ? 'ใช้คูปองได้ครั้งละ 1 ใบเท่านั้น — เปลี่ยนมาใช้ "' + target.name + '" แทน "' + current + '" แล้ว (ใบเดิมเก็บไว้ใช้ครั้งหน้าได้)' : '';
+  all.forEach(function(p){
+    if (isLimitedCoupon_(p) && p.rowIndex !== rowIndex && excludedPrivilegeRowIndexes.indexOf(p.rowIndex) === -1) excludedPrivilegeRowIndexes.push(p.rowIndex);
+  });
+  var idx = excludedPrivilegeRowIndexes.indexOf(rowIndex);
+  if (idx !== -1) excludedPrivilegeRowIndexes.splice(idx, 1);
+  if (appliedCouponCode && lastDiscountInfo && isLimitedCoupon_(lastDiscountInfo.coupon)) {   // เลือกคูปองแทนโค้ดที่พิมพ์ไว้
+    appliedCouponCode = '';
+    document.getElementById('couponInput').value = '';
+  }
+  renderDiscountSummary();
+  renderPaymentDetail();
+  refreshDiscounts();
+}
+function notUseLimitedCoupons_(){
+  couponLimitNotice_ = '';
+  ((lastDiscountInfo && lastDiscountInfo.allPrivileges) || []).forEach(function(p){
+    if (isLimitedCoupon_(p) && excludedPrivilegeRowIndexes.indexOf(p.rowIndex) === -1) excludedPrivilegeRowIndexes.push(p.rowIndex);
+  });
+  recomputeAppliedPrivilegesClientSide_();
+  renderDiscountSummary();
+  renderPaymentDetail();
+  refreshDiscounts();
+}
 function undoRemovePrivilege(rowIndex){
   var idx = excludedPrivilegeRowIndexes.indexOf(rowIndex);
   if (idx !== -1) excludedPrivilegeRowIndexes.splice(idx, 1);
@@ -2573,6 +2614,7 @@ function recomputeAppliedPrivilegesClientSide_(){
 function applyCoupon(){
   var code = document.getElementById('couponInput').value.trim();
   if (!code) return;
+  couponLimitNotice_ = '';
   appliedCouponCode = code;
   refreshDiscounts();
 }
@@ -2803,8 +2845,26 @@ function renderDiscountSummary(){
     + productLinesHtml;
 
   var allPrivileges = (lastDiscountInfo && lastDiscountInfo.allPrivileges) || [];
+  var limitedCount_ = allPrivileges.filter(isLimitedCoupon_).length;
+  if (limitedCount_ > 1) h += '<div style="font-weight:700;color:var(--gd);font-size:13px;margin:6px 0 2px">🎟️ คูปองของคุณ (ใช้ได้ครั้งละ 1 ใบ)</div>';
   allPrivileges.forEach(function(p){
     var isExcluded = excludedPrivilegeRowIndexes.indexOf(p.rowIndex) !== -1;
+    // ⚡ (28/10/69) คูปองส่วนลด: ใบที่ใช้อยู่มีปุ่ม "ไม่ใช้" · ใบอื่นมีปุ่ม "ใช้" (ใช้ได้ครั้งละ 1 ใบ)
+    if (isLimitedCoupon_(p)) {
+      var icon_ = p.givenBy === 'แลกด้วยแต้ม' ? '🎯 ' : (p.givenBy === 'วงล้อนำโชค' ? '🎡 ' : '🎁 ');
+      if (isExcluded || p.exclusivityDropped) {
+        h += '<div class="row" style="align-items:center;font-size:12.5px"><span style="flex:1;min-width:0">' + icon_ + escHtml(p.name)
+          + '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">ลดได้ ฿' + Math.round(p.discount).toLocaleString('th-TH') + ' · เก็บไว้ใช้ครั้งหน้าได้</span></span>'
+          + '<span><button type="button" onclick="useLimitedCoupon_(' + p.rowIndex + ')" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1px solid var(--gm);background:#fff;color:var(--gm);cursor:pointer;white-space:nowrap">ใช้</button></span></div>';
+        return;
+      }
+      var limitedBogoNote_ = p.type === 'bogo' ? '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
+      h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">✅ ' + icon_ + escHtml(p.name) + limitedBogoNote_ + '</span>'
+        + '<span style="display:flex;align-items:center;gap:8px;white-space:nowrap;flex-shrink:0"><span style="color:#c62828">-฿' + Math.round(p.discount).toLocaleString('th-TH') + '</span>'
+        + '<button type="button" onclick="notUseLimitedCoupons_()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #c62828;background:#fff;color:#c62828;cursor:pointer">ไม่ใช้</button></span></div>';
+      if (p.freeGifts && p.freeGifts.length) h += freebieLineHtml_(p.name, p);
+      return;
+    }
     var isRedeemable = p.givenBy === 'แลกด้วยแต้ม';
     var isSpinPriv_ = p.givenBy === 'วงล้อนำโชค';
     if (isExcluded) {
@@ -2878,6 +2938,10 @@ function renderDiscountSummary(){
   var couponRow_ = document.getElementById('couponInputRow');
   if (couponRow_) couponRow_.style.display = (lastDiscountInfo && lastDiscountInfo.privilegeLocked) ? 'none' : 'flex';
 
+  var couponLimitMsg_ = couponLimitNotice_ || (lastDiscountInfo && lastDiscountInfo.couponLimitNote) || '';
+  if (couponLimitMsg_) {
+    h += '<div style="font-size:11.5px;color:#c62828;margin:2px 0 6px;line-height:1.4">⚠️ ' + escHtml(couponLimitMsg_) + '</div>';
+  }
   if (lastDiscountInfo && lastDiscountInfo.couponError) {
     h += '<div class="row" style="color:#c62828"><span colspan="2">⚠️ ' + escHtml(lastDiscountInfo.couponError) + '</span></div>';
   }

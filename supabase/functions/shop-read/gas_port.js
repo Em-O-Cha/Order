@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 207 รายการ (142 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 208 รายการ (143 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -2448,8 +2448,30 @@ function promoScopesConflict_(x, y) {
   return x.names.some(function (n) { return y.names.indexOf(n) !== -1; });
 }
 
-function applyPromoExclusivity_(privileges, coupons, items) {
+function isOneCouponLimited_(p) { return !!p && (p.productDiscount || 0) > 0 && !p.giftOnly; }
+
+function applyPromoExclusivity_(privileges, coupons, items, opts) {
   var acceptedPriv = [], acceptedAuto = [], dropped = [], exclusivePrivilegeUsed = false;
+  // ครั้งละ 1 ใบ: โค้ดที่พิมพ์เอง (ลูกค้าเลือกเอง) มาก่อน ไม่งั้นใช้สิทธิ์ที่ลดมากสุดในใบที่ลูกค้าไม่ได้กด "ไม่ใช้"
+  var couponLimitDropped = [], couponLimitByTyped = false;
+  var keepRows_ = opts && opts.keepRows ? opts.keepRows.map(String) : null;
+  if (keepRows_) {
+    privileges = (privileges || []).filter(function (p) {
+      if (!isOneCouponLimited_(p) || keepRows_.indexOf(String(p.rowIndex)) !== -1) return true;
+      couponLimitDropped.push(p);
+      return false;
+    });
+  } else {
+    var typed_ = (coupons || []).filter(function (c) { return c && c.typedOnly && isOneCouponLimited_(c); })[0];
+    var cands_ = (privileges || []).filter(isOneCouponLimited_);
+    var keep_ = typed_ ? null : cands_.reduce(function (best, p) { return !best || (p.productDiscount || 0) > (best.productDiscount || 0) ? p : best; }, null);
+    privileges = (privileges || []).filter(function (p) {
+      if (!isOneCouponLimited_(p) || p === keep_) return true;
+      couponLimitDropped.push(p);
+      return false;
+    });
+    couponLimitByTyped = !!typed_ && cands_.length > 0;
+  }
   // kind: 'priv' = สิทธิ์สมาชิก / 'typed' = โค้ดที่พิมพ์เองที่ติ๊กใช้ร่วมได้ (ตรวจชนแค่กับสิทธิ์) / 'auto' = คูปองอื่นทั้งหมด
   // ⚡ (11/10/69) สิทธิ์จากวงล้อนำโชคใช้ได้ครั้งละ 1 ใบต่อออเดอร์ ไม่ว่าจะติ๊กใช้ร่วมกับโปรอื่นได้หรือไม่
   var spinPrivilegeUsed_ = false;
@@ -2487,7 +2509,8 @@ function applyPromoExclusivity_(privileges, coupons, items) {
   var keep = {};
   list.forEach(function (e) { if (tryAccept(e.c, e.c && e.c.typedOnly && e.c.stackable ? 'typed' : 'auto')) keep[e.i] = true; else dropped.push(e.c); });
   var outCp = (coupons || []).filter(function (c, i) { return keep[i]; });
-  return { privileges: outPriv, coupons: outCp, dropped: dropped, exclusivePrivilegeUsed: exclusivePrivilegeUsed };
+  return { privileges: outPriv, coupons: outCp, dropped: dropped, exclusivePrivilegeUsed: exclusivePrivilegeUsed,
+    couponLimitDropped: couponLimitDropped, couponLimitByTyped: couponLimitByTyped };
 }
 
 function exclusivityDroppedPrivilegeNote_(excl) {
@@ -2570,12 +2593,17 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     var privilegeLock_ = { locked: false, pending: false, note: exclusivityDroppedPrivilegeNote_(excl_) };
     appliedPrivileges = excl_.privileges;
     // หน้าเว็บคำนวณสิทธิ์ชั่วคราวเองตอนกดเอาสิทธิ์ออก/คืน — ใบที่ชนกันแล้วไม่ได้ใช้ต้องไม่ถูกนับกลับเข้าไป
-    var droppedPrivRows_ = {};
+    var droppedPrivRows_ = {}, limitRows_ = {};
     excl_.dropped.forEach(function (p) { if (p && !p.code) droppedPrivRows_[String(p.rowIndex)] = true; });
+    excl_.couponLimitDropped.forEach(function (p) { droppedPrivRows_[String(p.rowIndex)] = true; limitRows_[String(p.rowIndex)] = true; });
     allPrivileges = allPrivileges.map(function (p) {
       if (!droppedPrivRows_[String(p.rowIndex)]) return p;
-      var cp = {}; Object.keys(p).forEach(function (k) { cp[k] = p[k]; }); cp.exclusivityDropped = true; return cp;
+      var cp = {}; Object.keys(p).forEach(function (k) { cp[k] = p[k]; }); cp.exclusivityDropped = true;
+      if (limitRows_[String(p.rowIndex)]) cp.couponLimitDropped = true;
+      return cp;
     });
+    var couponLimitNote_ = excl_.couponLimitByTyped && coupon
+      ? 'ใช้คูปองได้ครั้งละ 1 ใบเท่านั้น — ออเดอร์นี้ใช้โค้ด ' + coupon.code + ' (คูปองอื่นเก็บไว้ใช้ครั้งหน้าได้)' : '';
     if (coupon) {
       var manualAfter_ = excl_.coupons.filter(function (c) { return String(c.rowIndex) === String(coupon.rowIndex); })[0];
       autoCoupons = excl_.coupons.filter(function (c) { return String(c.rowIndex) !== String(coupon.rowIndex); });
@@ -2647,7 +2675,7 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
       editChanges_ = { orderId: existingOrderId, oldAmount: editTarget_.bill.billTotal, lost: editDiff_.lost, returned: editDiff_.returned };
     }
 
-    return { success: true, editChanges: editChanges_, privileges: appliedPrivileges, privilegeDiscount: privilegeDiscount, allPrivileges: allPrivileges, privilegeLockNote: privilegeLock_.note, privilegeLocked: false, coupon: coupon, autoCoupons: autoCoupons, couponError: couponError, shippingCost: shippingCost, shippingDiscount: totalShippingDiscount, finalShippingCost: finalShippingCost, totalWeightG: totalWeightG, repeatPromo: repeatPromo,
+    return { success: true, editChanges: editChanges_, privileges: appliedPrivileges, privilegeDiscount: privilegeDiscount, allPrivileges: allPrivileges, privilegeLockNote: privilegeLock_.note, privilegeLocked: false, couponLimitNote: couponLimitNote_, coupon: coupon, autoCoupons: autoCoupons, couponError: couponError, shippingCost: shippingCost, shippingDiscount: totalShippingDiscount, finalShippingCost: finalShippingCost, totalWeightG: totalWeightG, repeatPromo: repeatPromo,
       memberPoints: memberPointsBalance_, pointsRedeemConfig: getPointsRedeemConfig_(), pointsRedeemDiscount: pointsRedeemResult_.discount, pointsUsed: pointsRedeemResult_.pointsUsed, pointsRedeemError: pointsRedeemResult_.error, adminExtraDiscount: adminExtraDiscount_,
       pointsTierCap: pointsTierCap_(getPointsRedeemConfig_(), pointsTierBase_), pointsTierBase: pointsTierBase_ };
   } catch (e) {
@@ -2842,7 +2870,7 @@ function recalcOrderDiscounts_(lineUid, billInfo, remark, excludeOrderId) {
   }
 
   // ⚡ แก้ (29/9/69) — กติกาเดียวกับ 2 จุดข้างบน: ใช้ช่องติ๊ก "ใช้ร่วมกับโปรอื่นได้" (สิทธิ์สมาชิกก่อนเสมอ)
-  var exclRecalc_ = applyPromoExclusivity_(appliedPrivileges, couponResults, items);
+  var exclRecalc_ = applyPromoExclusivity_(appliedPrivileges, couponResults, items, { keepRows: usedByThisOrder_ });
   appliedPrivileges = exclRecalc_.privileges;
   couponResults = exclRecalc_.coupons;
   couponResults = trimCouponShippingDiscounts_(appliedPrivileges, couponResults, shippingCost);
