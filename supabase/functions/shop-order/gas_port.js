@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 199 รายการ (133 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 200 รายการ (134 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -2117,8 +2117,30 @@ function promoScopesConflict_(x, y) {
   return x.names.some(function (n) { return y.names.indexOf(n) !== -1; });
 }
 
-function applyPromoExclusivity_(privileges, coupons, items) {
+function isOneCouponLimited_(p) { return !!p && (p.productDiscount || 0) > 0 && !p.giftOnly; }
+
+function applyPromoExclusivity_(privileges, coupons, items, opts) {
   var acceptedPriv = [], acceptedAuto = [], dropped = [], exclusivePrivilegeUsed = false;
+  // ครั้งละ 1 ใบ: โค้ดที่พิมพ์เอง (ลูกค้าเลือกเอง) มาก่อน ไม่งั้นใช้สิทธิ์ที่ลดมากสุดในใบที่ลูกค้าไม่ได้กด "ไม่ใช้"
+  var couponLimitDropped = [], couponLimitByTyped = false;
+  var keepRows_ = opts && opts.keepRows ? opts.keepRows.map(String) : null;
+  if (keepRows_) {
+    privileges = (privileges || []).filter(function (p) {
+      if (!isOneCouponLimited_(p) || keepRows_.indexOf(String(p.rowIndex)) !== -1) return true;
+      couponLimitDropped.push(p);
+      return false;
+    });
+  } else {
+    var typed_ = (coupons || []).filter(function (c) { return c && c.typedOnly && isOneCouponLimited_(c); })[0];
+    var cands_ = (privileges || []).filter(isOneCouponLimited_);
+    var keep_ = typed_ ? null : cands_.reduce(function (best, p) { return !best || (p.productDiscount || 0) > (best.productDiscount || 0) ? p : best; }, null);
+    privileges = (privileges || []).filter(function (p) {
+      if (!isOneCouponLimited_(p) || p === keep_) return true;
+      couponLimitDropped.push(p);
+      return false;
+    });
+    couponLimitByTyped = !!typed_ && cands_.length > 0;
+  }
   // kind: 'priv' = สิทธิ์สมาชิก / 'typed' = โค้ดที่พิมพ์เองที่ติ๊กใช้ร่วมได้ (ตรวจชนแค่กับสิทธิ์) / 'auto' = คูปองอื่นทั้งหมด
   // ⚡ (11/10/69) สิทธิ์จากวงล้อนำโชคใช้ได้ครั้งละ 1 ใบต่อออเดอร์ ไม่ว่าจะติ๊กใช้ร่วมกับโปรอื่นได้หรือไม่
   var spinPrivilegeUsed_ = false;
@@ -2156,7 +2178,8 @@ function applyPromoExclusivity_(privileges, coupons, items) {
   var keep = {};
   list.forEach(function (e) { if (tryAccept(e.c, e.c && e.c.typedOnly && e.c.stackable ? 'typed' : 'auto')) keep[e.i] = true; else dropped.push(e.c); });
   var outCp = (coupons || []).filter(function (c, i) { return keep[i]; });
-  return { privileges: outPriv, coupons: outCp, dropped: dropped, exclusivePrivilegeUsed: exclusivePrivilegeUsed };
+  return { privileges: outPriv, coupons: outCp, dropped: dropped, exclusivePrivilegeUsed: exclusivePrivilegeUsed,
+    couponLimitDropped: couponLimitDropped, couponLimitByTyped: couponLimitByTyped };
 }
 
 function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shippingAddress, province, excludePrivilegeName, existingOrderId, purchaseReferrerCode, pointsToRedeem, giftChoices, purchasePurpose) {
