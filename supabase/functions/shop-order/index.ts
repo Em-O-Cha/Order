@@ -125,7 +125,7 @@ function runKind(kind: Kind, tabs: Map<string, Tab>, keys: string[], profile: Re
     // สต๊อก: ไม่เช็ก/ไม่ตัดตอนทำนาย (หน้าร้านจำกัดจำนวนตามสต๊อกอยู่แล้ว) ตัวจริงเช็กกับระบบสต๊อกตอน Apps Script เขียนชีต
     // ถ้าสต๊อกไม่พอตอนนั้น คำขอจะ failed พร้อมข้อความบอกจำนวนที่สั่งได้ (หน้าร้านแสดงจาก orderStatus)
     shopStockCheck_: () => ({ ok: true, plan: null }), shopStockApply_: noop, shopStockRestore_: noop,
-    shopStockSyncMasterIfDirty_: noop,
+    shopStockSyncMasterIfDirty_: noop, shopStockIsDeferred_: () => false, shopStockDefer_: () => true,
   });
   let result: Result;
   try {

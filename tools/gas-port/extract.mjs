@@ -57,6 +57,8 @@ const TARGETS = {
       'deleteExistingOrderRows_', 'reverseRedeemedPointsForOrder_',
       // สต๊อก (ShopStock.gs ใน Apps Script): Supabase ทำนายโดยไม่เช็ก/ไม่ตัดสต๊อก — ตัวจริงเช็กและตัดตอน Apps Script เขียนชีต
       'shopStockCheck_', 'shopStockApply_', 'shopStockRestore_', 'shopStockSyncMasterIfDirty_',
+      // ⚡ (31/10/69) ตัดสต๊อกหลังชำระ (ออเดอร์ที่ยังไม่จ่าย จดไว้ใน Stock_Wait_Pay) — Supabase ไม่ทำ
+      'shopStockIsDeferred_', 'shopStockDefer_',
     ],
   },
   'admin-read': {
