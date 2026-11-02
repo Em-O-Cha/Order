@@ -1,9 +1,9 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 200 รายการ (134 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 204 รายการ (136 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
-          verifyLineIdToken_, logErrorToSheet_, ensureDebugLogSheet_, logSlowAction_, logRegistrationQueueWait_, notifyBuyerOrderConfirmation_, notifyAdminNewOrder_, checkAndGrantReferralOnFirstPurchase_, checkAndGrantPurchaseReferral_, sendLineMessages_, notifyBuyerPendingSlip_, notifyBuyerOrderCancelled_, DriveApp, scheduleSlipFinalize_, deleteExistingOrderRows_, reverseRedeemedPointsForOrder_, shopStockCheck_, shopStockApply_, shopStockRestore_, shopStockSyncMasterIfDirty_ } = env;
+          verifyLineIdToken_, logErrorToSheet_, ensureDebugLogSheet_, logSlowAction_, logRegistrationQueueWait_, notifyBuyerOrderConfirmation_, notifyAdminNewOrder_, checkAndGrantReferralOnFirstPurchase_, checkAndGrantPurchaseReferral_, sendLineMessages_, notifyBuyerPendingSlip_, notifyBuyerOrderCancelled_, DriveApp, scheduleSlipFinalize_, deleteExistingOrderRows_, reverseRedeemedPointsForOrder_, shopStockCheck_, shopStockApply_, shopStockRestore_, shopStockSyncMasterIfDirty_, shopStockIsDeferred_, shopStockDefer_ } = env;
 
 var MEMBERS_SHEET_ID = '15yYmENUcxz5VO1ajhkAgU-seeZ3cMCs43Jm4xlYKvFk';
 
@@ -270,6 +270,25 @@ function normalizeCodConfig_(src) {
     note: String(src.note || COD_CONFIG_DEFAULT_NOTE_),
     allowedTierKeys: Array.isArray(src.allowedTierKeys) ? src.allowedTierKeys.filter(Boolean).map(String) : []
   };
+}
+
+var BULK_AD_ = 'Bulk Buyers';
+
+var BULK_AUTO_PROP_ = 'BULK_AUTO_CASES';
+
+function getBulkAutoCases_() {
+  try {
+    var v = PropertiesService.getScriptProperties().getProperty(BULK_AUTO_PROP_);
+    if (v === null || v === '') return 5;
+    var n = parseFloat(v);
+    return isFinite(n) && n >= 0 ? n : 5;
+  } catch (e) { return 5; }
+}
+
+function shopAdForOrder_(adminExtra, stockCheck) {
+  if (adminExtra) return adminExtra.bulk ? BULK_AD_ : 'LINE Shop';
+  var min = getBulkAutoCases_(), cases = (stockCheck && stockCheck.cases) || 0;
+  return min > 0 && cases >= min - 1e-9 ? BULK_AD_ : 'LINE Shop';
 }
 
 function getCodConfig_() {
@@ -2208,7 +2227,8 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     // ⚡ เพิ่ม (21/10/69) — แอดมินคีย์ออเดอร์ (AdminShop.gs): ราคาเอง / ค่าส่งเอง / ส่วนลดท้ายบิล / ของแถมฟรี / เงินสด
     // หน้าร้านไม่มีค่านี้ (null) ทุกอย่างคิดเหมือนเดิม
     var adminExtra_ = (typeof ADMIN_SHOP_EXTRA_ !== 'undefined' && ADMIN_SHOP_EXTRA_) || null;
-    var stockCheck_ = shopStockCheck_(adminExtra_ && adminExtra_.stockItemsJson ? adminExtra_.stockItemsJson : itemsJson, String(existingOrderId || '').trim());
+    // ⚡ (31/10/69) แอดมินคีย์ออเดอร์ = บันทึกได้แม้สต๊อกไม่พอ (ผู้ใช้ขอ) ตัดเท่าที่มี ส่วนที่ขาดรอตัดเองตอนรับสต๊อกเข้า
+    var stockCheck_ = shopStockCheck_(adminExtra_ && adminExtra_.stockItemsJson ? adminExtra_.stockItemsJson : itemsJson, String(existingOrderId || '').trim(), { noLimit: !!adminExtra_ });
     if (!stockCheck_.ok) return { success: false, error: stockCheck_.error, stockShort: stockCheck_.shortages };
 
     var memberSheet = ensureMembersSheet_();
@@ -2237,6 +2257,15 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
         if (editTarget_.error) return { success: false, error: editTarget_.error, editBlocked: true };
         var refundedPoints_ = reverseRedeemedPointsForOrder_(profile.sub, existingOrderId);
         if (refundedPoints_ > 0) memberPoints += refundedPoints_;
+      }
+    }
+    // ⚡ (31/10/69) แอดมินคีย์ออเดอร์แบบ "ไม่สมัครสมาชิก" (เช่น บริษัทสั่งซื้อ) — ใช้ชื่อ/เบอร์ที่แอดมินกรอก ไม่แตะชีตสมาชิก ไม่ให้แต้ม
+    if (memberRowIndex === -1 && adminExtra_ && adminExtra_.guest) {
+      customerName = String(adminExtra_.guest.name || ''); phone = String(adminExtra_.guest.phone || '');
+      // แอดมินแก้ไขออเดอร์ของลูกค้าที่ไม่ได้เป็นสมาชิก (ไม่มีแต้มให้คืน) — เช็กสิทธิ์แก้ไขแบบเดียวกับสมาชิก
+      if (existingOrderId) {
+        editTarget_ = getEditableShopOrder_(profile.sub, phone, existingOrderId);
+        if (editTarget_.error) return { success: false, error: editTarget_.error, editBlocked: true };
       }
     }
     if (!phone) return { success: false, error: 'กรุณาสมัครสมาชิกก่อนค่ะ' };
@@ -2473,7 +2502,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
         rows.push([
           revenueId, timestamp, item.name, item.qty, item.price, itemDiscount, amt - itemDiscount,
           deliveryColValue_, finalAmount, paymentLabel, codSlipValue_, '', '',
-          customerName, phone, 'LINE Shop (อัตโนมัติ)', 'LINE Shop', campaignValue,
+          customerName, phone, 'LINE Shop (อัตโนมัติ)', shopAdForOrder_(adminExtra_, stockCheck_), campaignValue,
           'สมาชิก LINE', remark, '', '', timestamp, provinceValue,
           address, '', '', '', '', '', codPaymentDateValue_, profile.sub, // ⚡ แก้ (1/9/69) — ย้าย LINE UID จากคอลัมน์ Z (ชนกับ "วันที่พิมพ์ใบจัดส่ง" ของ Revenue Spunky Online) มาไว้คอลัมน์ AF แทน (ถัดจากวันที่ชำระเงินที่ว่างอยู่)
           codStatusValue_, '' // ⚡ เพิ่ม (19/9/69) — AG สถานะเก็บเงินปลายทาง / AH วันที่ได้รับเงินปลายทาง (ว่างทั้งคู่ถ้าไม่ใช่ออเดอร์ COD)
@@ -2504,7 +2533,11 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
          .setNumberFormat('dd/MM/yyyy HH:mm:ss');
     sheet.getRange(startRow, 1, rows.length, REVENUE_TOTAL_COLS_).setValues(rows);
     if (purchasePurpose !== undefined && purchasePurpose !== null && (purposeRes_.value || isEditingExistingOrder)) writePurchasePurpose_(sheet, startRow, purposeRes_.value);
-    shopStockApply_(revenueId, stockCheck_.plan, isEditingExistingOrder); // ⚡ (16/10/69) ตัดสต๊อกอัตโนมัติ
+    // ⚡ (16/10/69) ตัดสต๊อกอัตโนมัติ · ⚡ (31/10/69) ยังไม่จ่าย (ไม่ใช่ปลายทาง / ยอด 0) = จดไว้ ตัดตอนแนบสลิป/จ่ายบัตร (ShopStock.gs)
+    var stockItems_ = adminExtra_ && adminExtra_.stockItemsJson ? adminExtra_.stockItemsJson : itemsJson;
+    var payNow_ = isCodOrder || finalAmount <= 0;
+    if (!payNow_ && (!isEditingExistingOrder || shopStockIsDeferred_(revenueId)) && shopStockDefer_(revenueId, stockItems_)) { /* รอชำระ */ }
+    else shopStockApply_(revenueId, stockCheck_.plan, isEditingExistingOrder);
 
     // ⚡ แก้ (perf) — เดิมยิงเขียนชีตแยก 1 รอบต่อสิทธิ์ 1 ใบ (ลูกค้าที่ใช้สิทธิ์หลายใบพร้อมกันยิ่งรอนาน)
     // เปลี่ยนมาใช้ getRangeList().setValue() ซึ่งเซ็ตค่าเดียวกันให้ทุกช่องพร้อมกันในการยิงรอบเดียว
