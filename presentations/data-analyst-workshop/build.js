@@ -114,6 +114,51 @@ const chartBase = () => ({
   showLegend: false,
 });
 
+
+// tiny native charts used in the summary table and the chart glossary
+function miniChart(s, kind, x, y, w, h) {
+  const base = () => ({ ...chartBase(), x, y, w, h, valAxisHidden: true, catAxisHidden: true, valGridLine: { style: "none" }, catGridLine: { style: "none" },
+    catAxisLineShow: false, showValue: false, showLegend: false, layout: { x: 0.04, y: 0.06, w: 0.92, h: 0.88 }, objectName: nm("mini-" + kind) });
+  const L = (n) => Array.from({ length: n }, (_, i) => String(i + 1));
+  if (kind === "trend") {
+    s.addChart(pres.charts.LINE, [
+      { name: "จริง", labels: L(12), values: [1.2, 1.4, 1.3, 1.6, 2.1, 2.4, 2.2, 1.8, 1.6, 1.5, 1.4, 1.3] },
+      { name: "เป้า", labels: L(12), values: Array(12).fill(1.5) },
+    ], { ...base(), chartColors: [HEX.teal, HEX.coral], lineSize: 1.5, lineDataSymbol: "none", valAxisMinVal: 0.8, valAxisMaxVal: 2.6 });
+  } else if (kind === "variance") {
+    s.addChart(pres.charts.BAR, [{ name: "%", labels: L(6), values: [18, 12, 4, 2, -1, -6] }],
+      { ...base(), barDir: "bar", catAxisOrientation: "maxMin", barGapWidthPct: 30, valAxisMinVal: -8, valAxisMaxVal: 20,
+        chartColors: [HEX.coral, HEX.coral, HEX.gray, HEX.gray, HEX.teal, HEX.teal] });
+  } else if (kind === "donutOtd") {
+    const dw = Math.min(h, w * 0.45);
+    s.addChart(pres.charts.DOUGHNUT, [{ name: "ยอดซื้อ", labels: L(5), values: [35, 25, 22, 10, 8] }],
+      { ...base(), w: dw, y: y + (h - dw) / 2, h: dw, holeSize: 50, chartColors: [HEX.gray, HEX.aqua, HEX.coral, HEX.gray, HEX.aqua], showPercent: false, showLabel: false });
+    s.addChart(pres.charts.BAR, [{ name: "OTD", labels: L(5), values: [97, 96, 82, 94, 89] }],
+      { ...base(), x: x + dw + 0.05, w: w - dw - 0.05, barDir: "col", barGapWidthPct: 30, valAxisMinVal: 60, valAxisMaxVal: 100,
+        chartColors: [HEX.teal, HEX.teal, HEX.coral, HEX.gray, HEX.amber] });
+  } else if (kind === "pareto") {
+    // bars as % share so bars and the cumulative line share one axis (0–100%)
+    s.addChart([
+      { type: pres.charts.BAR, data: [{ name: "สัดส่วน %", labels: L(6), values: [39, 26, 16, 8, 6, 5] }],
+        options: { chartColors: [HEX.teal, HEX.teal, HEX.teal, HEX.gray, HEX.gray, HEX.gray], barGapWidthPct: 25, barDir: "col" } },
+      { type: pres.charts.LINE, data: [{ name: "สะสม %", labels: L(6), values: [39, 65, 81, 89, 95, 100] }],
+        options: { chartColors: [HEX.amber], lineSize: 1.75, lineDataSymbol: "circle", lineDataSymbolSize: 4 } },
+    ], { ...base(), valAxisMinVal: 0, valAxisMaxVal: 105 });
+  } else if (kind === "control") {
+    const v = [500.4, 499.6, 500.9, 500.2, 499.1, 500.6, 501.0, 499.8, 500.3, 500.7, 501.3, 501.6, 501.9, 503.4, 500.8, 500.1, 499.7, 500.5, 500.0, 499.5];
+    s.addChart(pres.charts.LINE, [
+      { name: "ค่าวัด", labels: L(20), values: v },
+      { name: "UCL", labels: L(20), values: Array(20).fill(502.5) },
+      { name: "CL", labels: L(20), values: Array(20).fill(500) },
+      { name: "LCL", labels: L(20), values: Array(20).fill(497.5) },
+    ], { ...base(), chartColors: [HEX.teal, HEX.coral, HEX.gray, HEX.coral], lineSize: 1.25, lineDataSymbol: "none", valAxisMinVal: 497, valAxisMaxVal: 504 });
+  } else if (kind === "funnel") {
+    s.addChart(pres.charts.BAR, [{ name: "โครงการ", labels: L(5), values: [40, 18, 9, 5, 3] }],
+      { ...base(), barDir: "bar", catAxisOrientation: "maxMin", barGapWidthPct: 25, valAxisMinVal: 0, valAxisMaxVal: 40,
+        chartColors: [HEX.aqua, HEX.aqua, HEX.teal, HEX.teal, HEX.amber] });
+  }
+}
+
 let sectionTitle = "";
 function newSlide(masterName) {
   return pres.addSlide({ masterName, sectionTitle });
@@ -758,24 +803,93 @@ async function deptPanel(s, { sources, kpis, action }) {
 
   }
 
-  // 21. Summary matrix
+  // 21. Summary matrix (with mini charts)
   {
     const s = newSlide("CONTENT");
     s.addText("KPI กราฟ และแหล่งข้อมูลของแต่ละแผนก", { placeholder: "title" });
     const H = (t) => ({ text: t, options: { bold: true, color: HEX.white, fill: { color: HEX.deep }, fontSize: 14 } });
     const D = (t) => ({ text: t, options: { bold: true, color: HEX.deep } });
+    const rowH = 0.8, hdrH = 0.5, y0 = 1.4;
+    const colW = [1.2, 3.6, 1.75, 2.85, 2.7];
     s.addTable([
-      [H("แผนก"), H("KPI หลัก"), H("กราฟที่แนะนำ"), H("แหล่งข้อมูล")],
-      [D("HR"), "Turnover %, Time-to-hire, ชม.อบรม", "เส้นแนวโน้ม + เส้นเป้า", "HRIS, Exit interview"],
-      [D("บัญชี"), "Gross Margin, Budget Variance, DSO", "แท่งส่วนต่างจากงบ", "ระบบบัญชี / ERP"],
-      [D("จัดซื้อ"), "OTD %, Cost Saving, % ของเสียซัพพลายเออร์", "โดนัทสัดส่วน + แท่ง OTD", "ERP (PO/GR), IQC"],
-      [D("QA"), "ข้อร้องเรียน PPM, % CAPA ปิดตรงเวลา", "Pareto (แท่ง + เส้นสะสม)", "ระบบร้องเรียน, CAPA log"],
-      [D("QC"), "% ของเสีย, FPY, Cpk", "Control chart", "Check sheet, เครื่องมือวัด"],
-      [D("R&D"), "Time-to-market, % รายได้สินค้าใหม่", "กรวยโครงการ + แผน vs จริง", "Project tracker, ERP"],
-    ], { x: 0.6, y: 1.45, w: 12.1, colW: [1.5, 4.2, 3.4, 3.0], fontSize: 14, color: HEX.ink, rowH: 0.72, valign: "middle",
+      [H("แผนก"), H("KPI หลัก"), H("ภาพตัวอย่าง"), H("กราฟที่แนะนำ"), H("แหล่งข้อมูล")],
+      [D("HR"), "Turnover %, Time-to-hire, ชม.อบรม", "", "เส้นแนวโน้ม + เส้นเป้า", "HRIS, Exit interview"],
+      [D("บัญชี"), "Gross Margin, Budget Variance, DSO", "", "แท่งส่วนต่างจากงบ", "ระบบบัญชี / ERP"],
+      [D("จัดซื้อ"), "OTD %, Cost Saving, % ของเสียซัพพลายเออร์", "", "โดนัทสัดส่วน + แท่ง OTD", "ERP (PO/GR), IQC"],
+      [D("QA"), "ข้อร้องเรียน PPM, % CAPA ปิดตรงเวลา", "", "Pareto (แท่ง + เส้นสะสม)", "ระบบร้องเรียน, CAPA log"],
+      [D("QC"), "% ของเสีย, FPY, Cpk", "", "Control chart", "Check sheet, เครื่องมือวัด"],
+      [D("R&D"), "Time-to-market, % รายได้สินค้าใหม่", "", "กรวยโครงการ + แผน vs จริง", "Project tracker, ERP"],
+    ], { x: 0.6, y: y0, w: 12.1, colW, fontSize: 14, color: HEX.ink, rowH: [hdrH, ...Array(6).fill(rowH)], valign: "middle",
       border: { type: "solid", pt: 0.75, color: HEX.grid }, fill: { color: HEX.white }, objectName: "table-summary" });
-    s.addNotes("สไลด์นี้เป็นแผ่นสรุปให้ผู้ฟังถ่ายรูปเก็บไว้ ชี้ว่ากราฟแต่ละแบบเชื่อมกับหัวข้อ 'เลือกกราฟให้ตรงกับคำถาม' อย่างไร เช่น QA ใช้ Pareto เพราะคำถามคือ 'ปัญหาไหนสำคัญที่สุด' แนะนำให้แต่ละแผนกเริ่มจาก KPI 1–2 ตัวแรกก่อน และเตรียมข้อมูลจริงมาในคอร์สเจาะลึก");
+    const kinds = ["trend", "variance", "donutOtd", "pareto", "control", "funnel"];
+    const cx = 0.6 + colW[0] + colW[1];
+    kinds.forEach((k, i) => miniChart(s, k, cx + 0.1, y0 + hdrH + i * rowH + 0.07, colW[2] - 0.2, rowH - 0.14));
+    s.addNotes("สไลด์นี้เป็นแผ่นสรุปให้ผู้ฟังถ่ายรูปเก็บไว้ คอลัมน์ 'ภาพตัวอย่าง' แสดงหน้าตากราฟที่แนะนำของแต่ละแผนก ชี้ว่ากราฟแต่ละแบบเชื่อมกับหัวข้อ 'เลือกกราฟให้ตรงกับคำถาม' อย่างไร เช่น QA ใช้ Pareto เพราะคำถามคือ 'ปัญหาไหนสำคัญที่สุด' คำศัพท์ในตารางอธิบายไว้ใน 3 สไลด์ถัดไป");
   }
+
+  // 21b. Chart glossary with mini charts
+  {
+    const s = newSlide("CONTENT");
+    s.addText("คำศัพท์: กราฟที่ใช้ในแต่ละแผนก", { placeholder: "title" });
+    const items = [
+      ["trend", "เส้นแนวโน้ม + เส้นเป้า", "Trend line", "ดูทิศทางตามเวลา จุดที่อยู่เหนือหรือใต้เส้นเป้า คือช่วงที่ผิดเป้า"],
+      ["variance", "แท่งส่วนต่างจากงบ", "Variance bar", "แท่งขวา = ใช้เกินงบ แท่งซ้าย = ต่ำกว่างบ สีแดงเฉพาะที่เกินเกณฑ์"],
+      ["donutOtd", "โดนัท + แท่ง OTD", "Donut + Bar", "โดนัทบอกสัดส่วนยอดซื้อ แท่งบอกผลงาน ยอดซื้อสูงแต่ผลงานต่ำ = ความเสี่ยง"],
+      ["pareto", "พาเรโต", "Pareto chart", "แท่งเรียงมาก→น้อย + เส้น % สะสม หลัก 80/20: ปัญหาไม่กี่เรื่องก่อผลส่วนใหญ่"],
+      ["control", "แผนภูมิควบคุม", "Control chart", "ค่าที่วัดตามลำดับเวลา จุดที่หลุดเส้น UCL (บน) / LCL (ล่าง) = ผิดปกติ ต้องหาสาเหตุ"],
+      ["funnel", "กรวยโครงการ", "Funnel / Pipeline", "จำนวนโครงการที่เหลือแต่ละขั้น ดูว่าโครงการหลุดหรือค้างที่ขั้นไหน"],
+    ];
+    const cw = 3.9, ch = 2.55, gx = 0.2, gy = 0.2, y0 = 1.4;
+    items.forEach(([k, th, en, d], i) => {
+      const x = 0.6 + (i % 3) * (cw + gx), y = y0 + Math.floor(i / 3) * (ch + gy);
+      card(s, x, y, cw, ch);
+      T(s, th, { x: x + 0.2, y: y + 0.15, w: cw - 0.4, h: 0.42, fontSize: 16, bold: true, color: C.text2, valign: "middle" });
+      T(s, en, { x: x + 0.2, y: y + 0.55, w: cw - 0.4, h: 0.3, fontSize: 12, italic: true, color: C.accent1 });
+      card(s, x + 0.15, y + 0.95, 1.65, 1.45, C.background1);
+      miniChart(s, k, x + 0.2, y + 1.0, 1.55, 1.35);
+      T(s, d, { x: x + 1.95, y: y + 0.95, w: cw - 2.1, h: 1.45, fontSize: 13, valign: "middle" });
+    });
+    s.addNotes("อธิบายวิธีอ่านกราฟแต่ละแบบ: ให้ผู้ฟังลองตอบว่ากราฟไหนเหมาะกับคำถามแบบไหน UCL = Upper Control Limit (เส้นควบคุมบน) LCL = Lower Control Limit (เส้นควบคุมล่าง) คำนวณจากข้อมูลจริงของกระบวนการ ไม่ใช่สเปกของลูกค้า หลัก 80/20 ของ Pareto คือปัญหาประมาณ 20% ของประเภททั้งหมดมักก่อปัญหาราว 80%");
+  }
+
+  // 21c/21d. Text glossaries
+  const glossary = (title, rows, notes) => {
+    const s = newSlide("CONTENT");
+    s.addText(title, { placeholder: "title" });
+    const cw = 5.95, ch = 0.94, gx = 0.2, gy = 0.15, y0 = 1.4;
+    rows.forEach(([term, full, th], i) => {
+      const x = 0.6 + (i % 2) * (cw + gx), y = y0 + Math.floor(i / 2) * (ch + gy);
+      card(s, x, y, cw, ch);
+      T(s, term, { x: x + 0.2, y: y + 0.07, w: 2.3, h: 0.4, fontSize: 16, bold: true, color: C.accent1, valign: "middle" });
+      T(s, full, { x: x + 0.2, y: y + 0.47, w: 2.35, h: 0.4, fontSize: 11, italic: /^[\x00-\x7F]*$/.test(full), color: C.accent4, valign: "middle" });
+      T(s, th, { x: x + 2.6, y: y + 0.07, w: cw - 2.8, h: ch - 0.14, fontSize: 13, valign: "middle" });
+    });
+    s.addNotes(notes);
+  };
+  glossary("คำศัพท์: ระบบและเอกสารต้นทางของข้อมูล", [
+    ["HRIS", "Human Resource Information System", "ระบบข้อมูลพนักงาน: ประวัติ วันเข้า–ออก ตำแหน่ง เงินเดือน"],
+    ["ERP", "Enterprise Resource Planning", "ระบบหลักขององค์กร รวมจัดซื้อ คลัง ผลิต ขาย และบัญชีไว้ที่เดียว"],
+    ["MES", "Manufacturing Execution System", "ระบบติดตามการผลิตหน้าไลน์: ยอดผลิต ของเสีย เวลาเครื่องหยุด"],
+    ["PO / GR", "Purchase Order / Goods Receipt", "ใบสั่งซื้อ / การรับของเข้าคลัง ใช้เทียบวันส่งจริงกับวันนัดส่ง"],
+    ["IQC / OQC", "Incoming / Outgoing Quality Control", "ตรวจคุณภาพวัตถุดิบขาเข้า / ตรวจสินค้าก่อนส่งถึงลูกค้า"],
+    ["CAPA log", "Corrective and Preventive Action", "ทะเบียนบันทึกการแก้ไขปัญหา และการป้องกันไม่ให้เกิดซ้ำ"],
+    ["Exit interview", "การสัมภาษณ์ก่อนลาออก", "สอบถามเหตุผลการลาออก เพื่อหาสาเหตุที่องค์กรแก้ไขได้"],
+    ["Check sheet", "แบบฟอร์มบันทึกหน้างาน", "ตารางขีดหรือจดข้อมูล ณ จุดที่เกิดเหตุการณ์ เช่น ของเสียแต่ละประเภท"],
+    ["Project tracker", "Stage-Gate", "ตารางติดตามสถานะโครงการ แบ่งเป็นขั้น ต้องผ่านการอนุมัติก่อนไปขั้นถัดไป"],
+    ["GL", "General Ledger", "สมุดบัญชีแยกประเภท: แหล่งตัวเลขรายได้และค่าใช้จ่ายทั้งหมดของบริษัท"],
+  ], "ศัพท์ชุดนี้คือ 'แหล่งข้อมูล' ที่ Data Analyst ต้องรู้ว่าข้อมูลแต่ละตัวมาจากระบบหรือเอกสารใด และใครเป็นเจ้าของ ถามผู้ฟังว่าองค์กรใช้ระบบชื่ออะไรจริง (เช่น SAP, Express, HR โปรแกรมเงินเดือน) เพื่อเชื่อมให้เห็นภาพ");
+  glossary("คำศัพท์: KPI และตัวชี้วัด", [
+    ["Turnover %", "อัตราการลาออก", "ผู้ลาออก ÷ จำนวนพนักงานเฉลี่ย × 100"],
+    ["Time-to-hire", "ระยะเวลาสรรหา", "จำนวนวันตั้งแต่เปิดรับสมัคร จนได้คนเริ่มงาน"],
+    ["Gross Margin", "อัตรากำไรขั้นต้น", "(รายได้ − ต้นทุนขาย) ÷ รายได้ × 100"],
+    ["Budget Variance", "ส่วนต่างจากงบประมาณ", "(ยอดจริง − งบ) ÷ งบ × 100  ค่าบวก = ใช้เกินงบ"],
+    ["DSO", "Days Sales Outstanding", "จำนวนวันเฉลี่ยที่เก็บเงินจากลูกค้าได้ ยิ่งน้อยยิ่งดี"],
+    ["OTD %", "On-Time Delivery", "จำนวนครั้งที่ส่งตรงเวลา ÷ จำนวนส่งทั้งหมด × 100"],
+    ["PPM", "Parts Per Million", "จำนวนต่อล้านชิ้น เช่น 50 PPM = 50 ครั้งต่อสินค้า 1 ล้านชิ้น"],
+    ["FPY", "First Pass Yield", "% งานที่ผ่านตั้งแต่ครั้งแรก โดยไม่ต้องแก้ไขหรือผลิตซ้ำ"],
+    ["Cpk", "Process Capability Index", "ความสามารถของกระบวนการผลิตให้อยู่ในสเปก ค่า ≥ 1.33 ถือว่าดี"],
+    ["Time-to-market", "ระยะเวลาออกสู่ตลาด", "ตั้งแต่เริ่มโครงการ จนสินค้าใหม่วางขายได้จริง"],
+  ], "ทุก KPI ต้องมีสูตรที่ทุกฝ่ายเข้าใจตรงกัน ยกตัวอย่างการคำนวณ 1–2 ตัว เช่น Turnover: เดือนนี้ลาออก 3 คน พนักงานเฉลี่ย 200 คน = 1.5% สำหรับ Cpk อธิบายง่าย ๆ ว่ายิ่งค่าสูง ยิ่งผลิตได้แม่นอยู่กลางสเปก โอกาสเกิดของเสียยิ่งต่ำ");
 
   // =============== Section 06 wrap ===============
   sectionTitle = "นำไปใช้จริง";
