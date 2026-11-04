@@ -720,36 +720,39 @@ async function deptPanel(s, { sources, kpis, action }) {
     s.addNotes("การนำกราฟสัดส่วนยอดซื้อมาคู่กับ OTD ทำให้ผู้บริหารเห็นทั้ง 'ความสำคัญ' และ 'ผลงาน' ซัพพลายเออร์ที่ยอดซื้อสูงแต่ผลงานต่ำคือความเสี่ยงอันดับแรก ต่อยอดได้เป็น Supplier Scorecard ที่รวมราคา คุณภาพ และการส่งมอบ");
   }
 
-  // 18. QA Pareto
+  // 18. QA — sorted bars (no cumulative line) + callout for the top 3
   {
     const s = newSlide("CONTENT");
-    await deptTitle(s, "QA: ข้อร้องเรียนจากลูกค้า (Pareto)");
+    await deptTitle(s, "QA: ข้อร้องเรียนจากลูกค้า");
     headline(s, "3 ปัญหาแรกคิดเป็น 81% ของข้อร้องเรียนทั้งหมด — แก้ 3 เรื่องนี้ก่อน");
     chartCard(s);
     const labels = ["บรรจุภัณฑ์เสียหาย", "ฉลากผิด", "สิ่งแปลกปลอม", "สี/กลิ่นผิดปกติ", "น้ำหนักขาด", "อื่นๆ"];
     const cnt = [42, 28, 17, 9, 7, 5];
-    const tot = cnt.reduce((a, b) => a + b, 0);
-    let run = 0;
-    const cum = cnt.map((v) => Math.round(((run += v) / tot) * 1000) / 10);
-    s.addChart([
-      { type: pres.charts.BAR, data: [{ name: "จำนวนข้อร้องเรียน", labels, values: cnt }],
-        options: { chartColors: [HEX.teal, HEX.teal, HEX.teal, HEX.gray, HEX.gray, HEX.gray], barGapWidthPct: 35, barDir: "col" } },
-      { type: pres.charts.LINE, data: [{ name: "สะสม %", labels, values: cum }],
-        options: { chartColors: [HEX.amber], lineSize: 2.5, lineDataSymbol: "circle", lineDataSymbolSize: 7, dataLabelPosition: "t", secondaryValAxis: true, secondaryCatAxis: true } },
-    ], { ...chartBase(), x: 0.75, y: 2.0, w: 7.6, h: 4.7, showLegend: true, legendPos: "t", catAxisLabelFontSize: 11,
-      showValue: true, dataLabelPosition: "outEnd",
-      valAxes: [
-        { showValAxisTitle: true, valAxisTitle: "จำนวน (ครั้ง)", valAxisMinVal: 0, valAxisMaxVal: 50, valAxisMajorUnit: 10, valAxisTitleFontSize: 11, valAxisTitleColor: HEX.slate, valAxisTitleFontFace: "+mn-lt", valAxisLabelColor: HEX.slate, valAxisLabelFontSize: 11, valAxisLabelFontFace: "+mn-lt", valGridLine: { color: HEX.grid, size: 0.75 } },
-        { showValAxisTitle: true, valAxisTitle: "สะสม (%)", valAxisMinVal: 0, valAxisMaxVal: 100, valAxisMajorUnit: 20, valAxisTitleFontSize: 11, valAxisTitleColor: HEX.slate, valAxisTitleFontFace: "+mn-lt", valAxisLabelColor: HEX.slate, valAxisLabelFontSize: 11, valAxisLabelFontFace: "+mn-lt", valGridLine: { style: "none" } },
-      ],
-      catAxes: [{ catAxisTitle: "ประเภทปัญหา", catAxisLabelColor: HEX.slate, catAxisLabelFontFace: "+mn-lt", catAxisLabelFontSize: 11 }, { catAxisHidden: true }],
-      objectName: "chart-qa-pareto" });
+    const cx = 0.75, cy = 2.0, cw = 7.6, chh = 4.7;
+    const lay = { x: 0.25, y: 0.05, w: 0.71, h: 0.9 };
+    s.addChart(pres.charts.BAR, [{ name: "จำนวนข้อร้องเรียน (ครั้ง)", labels, values: cnt }],
+      { ...chartBase(), x: cx, y: cy, w: cw, h: chh, layout: lay, barDir: "bar", catAxisOrientation: "maxMin", barGapWidthPct: 35,
+        chartColors: [HEX.teal, HEX.teal, HEX.teal, HEX.gray, HEX.gray, HEX.gray],
+        valAxisHidden: true, valGridLine: { style: "none" }, valAxisMinVal: 0, valAxisMaxVal: 76,
+        showValue: true, dataLabelPosition: "outEnd", dataLabelFormatCode: "0\" ครั้ง\"", dataLabelFontSize: 12, catAxisLabelFontSize: 13,
+        objectName: "chart-qa-sorted" });
+    // bracket + callout beside the first three bars
+    const py = cy + lay.y * chh, ph = lay.h * chh, band = ph / 6;
+    const bx = 6.75, top = py + 0.12, bot = py + band * 3 - 0.12;
+    s.addShape(pres.shapes.LINE, { x: bx, y: top, w: 0, h: bot - top, line: { color: HEX.teal, width: 2 }, objectName: nm("bracket") });
+    s.addShape(pres.shapes.LINE, { x: bx - 0.15, y: top, w: 0.15, h: 0, line: { color: HEX.teal, width: 2 }, objectName: nm("bracket") });
+    s.addShape(pres.shapes.LINE, { x: bx - 0.15, y: bot, w: 0.15, h: 0, line: { color: HEX.teal, width: 2 }, objectName: nm("bracket") });
+    T(s, [
+      { text: "3 ปัญหาแรก\n", options: { fontSize: 14, bold: true, color: C.text2 } },
+      { text: "81%\n", options: { fontSize: 32, bold: true, color: C.accent1 } },
+      { text: "87 จาก 108 ครั้ง", options: { fontSize: 12, color: C.accent4 } },
+    ], { x: bx + 0.12, y: top, w: 1.55, h: bot - top, valign: "middle" });
     await deptPanel(s, {
       sources: ["ระบบรับเรื่องร้องเรียนลูกค้า", "บันทึก CAPA (แก้ไข/ป้องกัน)", "ผล Internal / Customer Audit"],
       kpis: ["ข้อร้องเรียน ต่อล้านชิ้น (PPM)", "% CAPA ปิดตรงเวลา", "คะแนน Audit", "ต้นทุนคุณภาพ (Cost of Poor Quality)"],
       action: ["ตั้งทีมแก้บรรจุภัณฑ์ + ฉลาก", "เป้า: ลดข้อร้องเรียน 50% ใน 6 เดือน"],
     });
-    s.addNotes("Pareto (กฎ 80/20) เป็นกราฟสำคัญที่สุดของ QA: แท่งเรียงจากมากไปน้อย เส้นสะสมบอกว่าแก้กี่เรื่องจะครอบคลุมปัญหากี่เปอร์เซ็นต์ เมื่อแก้แล้วให้ทำ Pareto ซ้ำเพื่อแสดงผลก่อน–หลังให้ผู้บริหารเห็น");
+    s.addNotes("กราฟแท่งเรียงจากมากไปน้อย (แนวคิดแบบ Pareto / หลัก 80/20): ข้อร้องเรียนทั้งหมด 108 ครั้ง แบ่งเป็น 6 ประเภท แต่ 3 ประเภทแรก (สีเขียว) รวมกันได้ 42+28+17 = 87 ครั้ง หรือ 81% ของทั้งหมด จึงควรแก้ 3 เรื่องนี้ก่อน ส่วนสีเทาค่อยทำทีหลัง เมื่อแก้แล้วให้ทำกราฟเดิมซ้ำเพื่อแสดงผลก่อน–หลังให้ผู้บริหารเห็น");
   }
 
   // 19. QC control chart
