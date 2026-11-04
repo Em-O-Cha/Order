@@ -9,7 +9,7 @@ const fs = require("fs");
 const { applyTheme } = require(process.env.SKILL + "/scripts/apply_theme.js");
 
 const OUT = process.argv[2] || "deck.pptx";
-const INCLUDE_DEPT = process.env.INCLUDE_DEPT === "1"; // detailed department slides: kept for the per-department courses
+const INCLUDE_DEPT = process.env.INCLUDE_DEPT !== "0"; // department example slides (on by default; INCLUDE_DEPT=0 leaves them out)
 
 const HEX = {
   ink: "1B2631", white: "FFFFFF", deep: "0E3B43", mist: "EEF3F4",
