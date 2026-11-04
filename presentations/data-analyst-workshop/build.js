@@ -137,13 +137,10 @@ function miniChart(s, kind, x, y, w, h) {
       { ...base(), x: x + dw + 0.05, w: w - dw - 0.05, barDir: "col", barGapWidthPct: 30, valAxisMinVal: 60, valAxisMaxVal: 100,
         chartColors: [HEX.teal, HEX.teal, HEX.coral, HEX.gray, HEX.amber] });
   } else if (kind === "pareto") {
-    // bars as % share so bars and the cumulative line share one axis (0–100%)
-    s.addChart([
-      { type: pres.charts.BAR, data: [{ name: "สัดส่วน %", labels: L(6), values: [39, 26, 16, 8, 6, 5] }],
-        options: { chartColors: [HEX.teal, HEX.teal, HEX.teal, HEX.gray, HEX.gray, HEX.gray], barGapWidthPct: 25, barDir: "col" } },
-      { type: pres.charts.LINE, data: [{ name: "สะสม %", labels: L(6), values: [39, 65, 81, 89, 95, 100] }],
-        options: { chartColors: [HEX.amber], lineSize: 1.75, lineDataSymbol: "circle", lineDataSymbolSize: 4 } },
-    ], { ...base(), valAxisMinVal: 0, valAxisMaxVal: 105 });
+    // sorted bars, top 3 highlighted (matches the QA slide: no cumulative line)
+    s.addChart(pres.charts.BAR, [{ name: "จำนวน", labels: L(6), values: [42, 28, 17, 9, 7, 5] }],
+      { ...base(), barDir: "col", barGapWidthPct: 25, valAxisMinVal: 0, valAxisMaxVal: 44,
+        chartColors: [HEX.teal, HEX.teal, HEX.teal, HEX.gray, HEX.gray, HEX.gray] });
   } else if (kind === "control") {
     const v = [500.4, 499.6, 500.9, 500.2, 499.1, 500.6, 501.0, 499.8, 500.3, 500.7, 501.3, 501.6, 501.9, 503.4, 500.8, 500.1, 499.7, 500.5, 500.0, 499.5];
     s.addChart(pres.charts.LINE, [
@@ -819,7 +816,7 @@ async function deptPanel(s, { sources, kpis, action }) {
       [D("HR"), "Turnover %, Time-to-hire, ชม.อบรม", "", "เส้นแนวโน้ม + เส้นเป้า", "HRIS, Exit interview"],
       [D("บัญชี"), "Gross Margin, Budget Variance, DSO", "", "แท่งส่วนต่างจากงบ", "ระบบบัญชี / ERP"],
       [D("จัดซื้อ"), "OTD %, Cost Saving, % ของเสียซัพพลายเออร์", "", "โดนัทสัดส่วน + แท่ง OTD", "ERP (PO/GR), IQC"],
-      [D("QA"), "ข้อร้องเรียน PPM, % CAPA ปิดตรงเวลา", "", "Pareto (แท่ง + เส้นสะสม)", "ระบบร้องเรียน, CAPA log"],
+      [D("QA"), "ข้อร้องเรียน PPM, % CAPA ปิดตรงเวลา", "", "แท่งเรียงมาก → น้อย (Pareto)", "ระบบร้องเรียน, CAPA log"],
       [D("QC"), "% ของเสีย, FPY, Cpk", "", "Control chart", "Check sheet, เครื่องมือวัด"],
       [D("R&D"), "Time-to-market, % รายได้สินค้าใหม่", "", "กรวยโครงการ + แผน vs จริง", "Project tracker, ERP"],
     ], { x: 0.6, y: y0, w: 12.1, colW, fontSize: 14, color: HEX.ink, rowH: [hdrH, ...Array(6).fill(rowH)], valign: "middle",
@@ -827,7 +824,7 @@ async function deptPanel(s, { sources, kpis, action }) {
     const kinds = ["trend", "variance", "donutOtd", "pareto", "control", "funnel"];
     const cx = 0.6 + colW[0] + colW[1];
     kinds.forEach((k, i) => miniChart(s, k, cx + 0.1, y0 + hdrH + i * rowH + 0.07, colW[2] - 0.2, rowH - 0.14));
-    s.addNotes("สไลด์นี้เป็นแผ่นสรุปให้ผู้ฟังถ่ายรูปเก็บไว้ คอลัมน์ 'ภาพตัวอย่าง' แสดงหน้าตากราฟที่แนะนำของแต่ละแผนก ชี้ว่ากราฟแต่ละแบบเชื่อมกับหัวข้อ 'เลือกกราฟให้ตรงกับคำถาม' อย่างไร เช่น QA ใช้ Pareto เพราะคำถามคือ 'ปัญหาไหนสำคัญที่สุด' คำศัพท์ในตารางอธิบายไว้ใน 3 สไลด์ถัดไป");
+    s.addNotes("สไลด์นี้เป็นแผ่นสรุปให้ผู้ฟังถ่ายรูปเก็บไว้ คอลัมน์ 'ภาพตัวอย่าง' แสดงหน้าตากราฟที่แนะนำของแต่ละแผนก ชี้ว่ากราฟแต่ละแบบเชื่อมกับหัวข้อ 'เลือกกราฟให้ตรงกับคำถาม' อย่างไร เช่น QA ใช้กราฟแท่งเรียงมากไปน้อย (Pareto) เพราะคำถามคือ 'ปัญหาไหนสำคัญที่สุด' คำศัพท์ในตารางอธิบายไว้ใน 3 สไลด์ถัดไป");
   }
 
   // 21b. Chart glossary with mini charts
@@ -838,7 +835,7 @@ async function deptPanel(s, { sources, kpis, action }) {
       ["trend", "เส้นแนวโน้ม + เส้นเป้า", "Trend line", "ดูทิศทางตามเวลา จุดที่อยู่เหนือหรือใต้เส้นเป้า คือช่วงที่ผิดเป้า"],
       ["variance", "แท่งส่วนต่างจากงบ", "Variance bar", "แท่งขวา = ใช้เกินงบ แท่งซ้าย = ต่ำกว่างบ สีแดงเฉพาะที่เกินเกณฑ์"],
       ["donutOtd", "โดนัท + แท่ง OTD", "Donut + Bar", "โดนัทบอกสัดส่วนยอดซื้อ แท่งบอกผลงาน ยอดซื้อสูงแต่ผลงานต่ำ = ความเสี่ยง"],
-      ["pareto", "พาเรโต", "Pareto chart", "แท่งเรียงมาก→น้อย + เส้น % สะสม หลัก 80/20: ปัญหาไม่กี่เรื่องก่อผลส่วนใหญ่"],
+      ["pareto", "แท่งเรียงมาก → น้อย", "Pareto (หลัก 80/20)", "เรียงปัญหาจากบ่อยสุดลงมา เน้นสีเรื่องที่ควรแก้ก่อน: ไม่กี่เรื่องก่อผลเสียส่วนใหญ่"],
       ["control", "แผนภูมิควบคุม", "Control chart", "ค่าที่วัดตามลำดับเวลา จุดที่หลุดเส้น UCL (บน) / LCL (ล่าง) = ผิดปกติ ต้องหาสาเหตุ"],
       ["funnel", "กรวยโครงการ", "Funnel / Pipeline", "จำนวนโครงการที่เหลือแต่ละขั้น ดูว่าโครงการหลุดหรือค้างที่ขั้นไหน"],
     ];
@@ -847,12 +844,12 @@ async function deptPanel(s, { sources, kpis, action }) {
       const x = 0.6 + (i % 3) * (cw + gx), y = y0 + Math.floor(i / 3) * (ch + gy);
       card(s, x, y, cw, ch);
       T(s, th, { x: x + 0.2, y: y + 0.15, w: cw - 0.4, h: 0.42, fontSize: 16, bold: true, color: C.text2, valign: "middle" });
-      T(s, en, { x: x + 0.2, y: y + 0.55, w: cw - 0.4, h: 0.3, fontSize: 12, italic: true, color: C.accent1 });
+      T(s, en, { x: x + 0.2, y: y + 0.55, w: cw - 0.4, h: 0.3, fontSize: 12, italic: /^[\x00-\x7F]*$/.test(en), color: C.accent1 });
       card(s, x + 0.15, y + 0.95, 1.65, 1.45, C.background1);
       miniChart(s, k, x + 0.2, y + 1.0, 1.55, 1.35);
       T(s, d, { x: x + 1.95, y: y + 0.95, w: cw - 2.1, h: 1.45, fontSize: 13, valign: "middle" });
     });
-    s.addNotes("อธิบายวิธีอ่านกราฟแต่ละแบบ: ให้ผู้ฟังลองตอบว่ากราฟไหนเหมาะกับคำถามแบบไหน UCL = Upper Control Limit (เส้นควบคุมบน) LCL = Lower Control Limit (เส้นควบคุมล่าง) คำนวณจากข้อมูลจริงของกระบวนการ ไม่ใช่สเปกของลูกค้า หลัก 80/20 ของ Pareto คือปัญหาประมาณ 20% ของประเภททั้งหมดมักก่อปัญหาราว 80%");
+    s.addNotes("อธิบายวิธีอ่านกราฟแต่ละแบบ: ให้ผู้ฟังลองตอบว่ากราฟไหนเหมาะกับคำถามแบบไหน UCL = Upper Control Limit (เส้นควบคุมบน) LCL = Lower Control Limit (เส้นควบคุมล่าง) คำนวณจากข้อมูลจริงของกระบวนการ ไม่ใช่สเปกของลูกค้า กราฟแท่งเรียงมากไปน้อยใช้หลัก 80/20 ของ Pareto คือปัญหาไม่กี่ประเภทมักก่อปัญหาส่วนใหญ่ เช่น ตัวอย่าง QA ที่ 3 ใน 6 ประเภทคิดเป็น 81%");
   }
 
   // 21c/21d. Text glossaries
