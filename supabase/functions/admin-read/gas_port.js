@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 124 รายการ (84 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 127 รายการ (87 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -861,8 +861,8 @@ var BIRTHDAY_PROMO_CONFIG_KEY_ = 'BIRTHDAY_PROMO_CONFIG_V1';
 
 function getBirthdayPromoConfig_() {
   var fallback = {
-    birthday: { enabled: false, notifyDays: 3, beforeDays: 3, afterDays: 3, lineMessage: '', rewards: [] },
-    birthMonth: { enabled: false, notifyDays: 3, lineMessage: '', rewards: [] }
+    birthday: { enabled: false, notifyDays: 3, beforeDays: 3, afterDays: 3, lineMessage: '', rewards: [], cardStyle: '', images: [] },
+    birthMonth: { enabled: false, notifyDays: 3, lineMessage: '', rewards: [], cardStyle: '', images: [] }
   };
   try {
     var raw = PropertiesService.getScriptProperties().getProperty(BIRTHDAY_PROMO_CONFIG_KEY_);
@@ -878,11 +878,36 @@ function getBirthdayPromoConfig_() {
       }
       fallback[mode].lineMessage = String(src.lineMessage || '');
       fallback[mode].rewards = (Array.isArray(src.rewards) ? src.rewards : []).map(normalizeBirthdayPromoReward_);
+      fallback[mode].cardStyle = birthdayCardStyle_(src.cardStyle);
+      fallback[mode].images = birthdayCardImages_(src.images);
+      fallback[mode].look = birthdayCardLook_(src.look);
     });
   } catch (e) {
     Logger.log('getBirthdayPromoConfig_ error: ' + e.toString());
   }
   return fallback;
+}
+
+function birthdayCardStyle_(v) {
+  v = String(v || '');
+  return ['photo', 'list', 'poster', 'ticket', 'ticketphoto'].indexOf(v) !== -1 ? v : '';
+}
+
+function birthdayCardImages_(a) {
+  return (Array.isArray(a) ? a : []).map(function (u) { return String(u || '').trim(); })
+    .filter(function (u) { return /^https:\/\//.test(u); }).slice(0, 6);
+}
+
+function birthdayCardLook_(src) {
+  src = src || {};
+  var col = function (v) { v = String(v || '').trim(); return /^#[0-9a-f]{6}$/i.test(v) ? v : ''; };
+  var txt = function (v, n) { return String(v || '').replace(/\s+/g, ' ').trim().slice(0, n); };
+  return { badge: txt(src.badge, 30), title: txt(src.title, 80), button: txt(src.button, 20),
+    badgeBg: col(src.badgeBg), badgeText: col(src.badgeText), titleColor: col(src.titleColor),
+    buttonBg: col(src.buttonBg), buttonText: col(src.buttonText), frame: col(src.frame),
+    codeText: col(src.codeText), codeBg: col(src.codeBg), codeTagText: col(src.codeTagText), codeHide: src.codeHide === true || src.codeHide === 'true',
+    textPos: ['bottom', 'below'].indexOf(String(src.textPos)) !== -1 ? String(src.textPos) : 'top',
+    titleSize: ['sm', 'lg'].indexOf(String(src.titleSize)) !== -1 ? String(src.titleSize) : 'md' };
 }
 
 function normalizeBirthdayPromoReward_(src) {
@@ -903,7 +928,9 @@ function normalizeBirthdayPromoReward_(src) {
     freeProduct: String(src.freeProduct || '').trim(),
     freeQty: Math.max(0, parseFloat(src.freeQty) || 0),
     // ⚡ เพิ่ม (29/9/69) — ติ๊ก = สิทธิ์วันเกิดใบนี้ใช้ร่วมกับคูปอง/ส่วนลดอื่นได้ (เหมือนช่องติ๊กของสิทธิพิเศษสมาชิก)
-    stackable: src.stackable === true || src.stackable === 'true'
+    stackable: src.stackable === true || src.stackable === 'true',
+    // ⚡ (4/11/69) ใช้สิทธิ์ได้กี่ครั้ง (กี่ออเดอร์) ในช่วงวันเกิด — แจก N ใบ · ว่าง = 1
+    uses: Math.max(1, Math.min(10, parseInt(src.uses, 10) || 1))
   };
 }
 
