@@ -1865,7 +1865,9 @@ function stubMarkup_(label, value){
 // ส่วนกล่องนี้ = โปรร้านที่ลูกค้าทุกคนใช้ได้เหมือนกัน แสดงเป็นการ์ดคูปองแบบตั๋วฉีก (.coupon-ticket) ทีละใบ
 // ⚡ (4/11/69) โปรขายราคาพิเศษที่จำกัดจำนวนชิ้นต่อออเดอร์ (maxQty จากเซิร์ฟเวอร์)
 function priceCapHtml_(c){
-  return c && c.type === 'price' && c.maxQty > 0 ? '<div class="ct-sub">ราคาพิเศษสูงสุด ' + Number(c.maxQty) + ' ชิ้นต่อออเดอร์</div>' : '';
+  return (c && c.type === 'price' && c.maxQty > 0 ? '<div class="ct-sub">ราคาพิเศษสูงสุด ' + Number(c.maxQty) + ' ชิ้นต่อออเดอร์</div>' : '')
+    // ⚡ (4/11/69) สิทธิ์แลกด้วยคะแนน + ชำระเงิน (รางวัลเกมจับคู่ ฯลฯ)
+    + (c && c.pointsCost > 0 ? '<div class="ct-sub" style="color:#e65100;font-weight:600">🎯 ใช้ ' + Number(c.pointsCost) + ' คะแนน + ชำระเงิน</div>' : '');
 }
 function autoPromoValueText_(c){
   if (c.type === 'price' && c.priceSpec) return priceSpecText_(c);
@@ -2564,7 +2566,7 @@ function notUseBtnHtml_(onclick){ return ' <button type="button" class="btn-notu
 function isLimitedCoupon_(p){ return !!p && (p.productDiscount || 0) > 0 && !p.giftOnly; }
 function limitedCouponInUse_(){
   var priv = ((lastDiscountInfo && lastDiscountInfo.allPrivileges) || []).filter(function(p){
-    return isLimitedCoupon_(p) && !p.exclusivityDropped && excludedPrivilegeRowIndexes.indexOf(p.rowIndex) === -1;
+    return isLimitedCoupon_(p) && !p.exclusivityDropped && !p.pointsShort && excludedPrivilegeRowIndexes.indexOf(p.rowIndex) === -1;
   })[0];
   if (priv) return priv.name;
   var c = lastDiscountInfo && lastDiscountInfo.coupon;
@@ -2612,7 +2614,7 @@ function recomputeAppliedPrivilegesClientSide_(){
   if (!lastDiscountInfo || !lastDiscountInfo.allPrivileges) return;
   var applied = lastDiscountInfo.allPrivileges.filter(function(p){
     // ใบที่ชนกับโปรที่ใช้ร่วมกันไม่ได้ (เซิร์ฟเวอร์ตัดออก) ไม่นับกลับเข้าไป — ยอดจริงรอเซิร์ฟเวอร์คำนวณใหม่
-    return excludedPrivilegeRowIndexes.indexOf(p.rowIndex) === -1 && !p.exclusivityDropped;
+    return excludedPrivilegeRowIndexes.indexOf(p.rowIndex) === -1 && !p.exclusivityDropped && !p.pointsShort;
   });
   lastDiscountInfo.privileges = applied;
   lastDiscountInfo.privilegeDiscount = applied.reduce(function(sum, p){ return sum + p.discount; }, 0);
@@ -2861,16 +2863,23 @@ function renderDiscountSummary(){
   if (limitedCount_ > 1) h += '<div style="font-weight:700;color:var(--gd);font-size:13px;margin:6px 0 2px">🎟️ คูปองของคุณ (ใช้ได้ครั้งละ 1 ใบ)</div>';
   allPrivileges.forEach(function(p){
     var isExcluded = excludedPrivilegeRowIndexes.indexOf(p.rowIndex) !== -1;
+    // ⚡ (4/11/69) สิทธิ์ที่ต้องใช้คะแนน แต่คะแนนไม่พอ: ไม่ได้ใช้กับออเดอร์นี้ (สิทธิ์ยังอยู่)
+    if (p.pointsShort) {
+      if (p.discount > 0) h += '<div class="row" style="font-size:12px"><span style="flex:1;min-width:0;color:var(--g6);font-weight:400">🎯 ' + escHtml(p.name)
+        + '<span style="display:block;font-size:10.5px;line-height:1.35">คะแนนไม่พอ (ต้องใช้ ' + Number(p.pointsCost) + ' คะแนน) · เก็บไว้ใช้ครั้งหน้าได้</span></span></div>';
+      return;
+    }
+    var ptsNote_ = p.pointsCost > 0 ? '<span style="display:block;font-size:10.5px;color:#e65100;font-weight:600;line-height:1.35">🎯 ใช้ ' + Number(p.pointsCost) + ' คะแนน (หักตอนชำระเงินสำเร็จ)</span>' : '';
     // ⚡ (28/10/69) คูปองส่วนลด: ใบที่ใช้อยู่มีปุ่ม "ไม่ใช้" · ใบอื่นมีปุ่ม "ใช้" (ใช้ได้ครั้งละ 1 ใบ)
     if (isLimitedCoupon_(p)) {
-      var icon_ = p.givenBy === 'แลกด้วยแต้ม' ? '🎯 ' : (p.givenBy === 'วงล้อนำโชค' ? '🎡 ' : '🎁 ');
+      var icon_ = p.givenBy === 'แลกด้วยแต้ม' ? '🎯 ' : (p.givenBy === 'วงล้อนำโชค' ? '🎡 ' : p.givenBy === 'เกมจับคู่' ? '🎴 ' : '🎁 ');
       if (isExcluded || p.exclusivityDropped) {
         h += '<div class="row" style="align-items:center;font-size:12.5px"><span style="flex:1;min-width:0;color:var(--g6);font-weight:400">' + icon_ + escHtml(p.name) + useBtnHtml_('useLimitedCoupon_(' + p.rowIndex + ')')
           + '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">ลดได้ ฿' + Math.round(p.discount).toLocaleString('th-TH') + ' · เก็บไว้ใช้ครั้งหน้าได้</span></span></div>';
         return;
       }
       var limitedBogoNote_ = p.type === 'bogo' ? '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
-      h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">✅ ' + icon_ + escHtml(p.name) + notUseBtnHtml_('notUseLimitedCoupons_()') + limitedBogoNote_ + '</span>'
+      h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">✅ ' + icon_ + escHtml(p.name) + notUseBtnHtml_('notUseLimitedCoupons_()') + limitedBogoNote_ + ptsNote_ + '</span>'
         + '<span style="color:#c62828;white-space:nowrap;flex-shrink:0">-฿' + Math.round(p.discount).toLocaleString('th-TH') + '</span></div>';
       if (p.freeGifts && p.freeGifts.length) h += freebieLineHtml_(p.name, p);
       return;
@@ -2898,7 +2907,7 @@ function renderDiscountSummary(){
       return;
     }
     var privBogoNote_ = p.type === 'bogo' ? '<span style="display:block;font-size:10.5px;color:var(--g6);font-weight:400;line-height:1.35">(ลดในสินค้าที่ถูกที่สุด)</span>' : '';
-    h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">🎁 ' + escHtml(p.name) + removeBtnHtml + privBogoNote_ + '</span>'
+    h += '<div class="row" style="align-items:flex-start"><span style="flex:1;min-width:0">🎁 ' + escHtml(p.name) + removeBtnHtml + privBogoNote_ + ptsNote_ + '</span>'
       + '<span style="color:#c62828;white-space:nowrap;flex-shrink:0">-฿' + Math.round(p.discount).toLocaleString('th-TH') + '</span></div>';
     if (p.freeGifts && p.freeGifts.length) h += freebieLineHtml_(p.name, p);
   });

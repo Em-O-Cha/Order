@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 209 รายการ (144 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 212 รายการ (147 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1281,7 +1281,8 @@ function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shipp
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
         physicalFreeQty: calc.physicalFreeQty || 0, minPurchase: minPurchase, freeDiscountPercent: calc.freeDiscountPercent || 100,
         stackable: isStackablePrivilegeRow_(row), restriction: String(row[10] || ''), freeGifts: calc.freeGifts,
-        giftOnly: !!promo.giftOnly, shipFreeAmount: calc.shipFreeAmount || 0, shipBaseDiscount: calc.shipBaseDiscount || 0
+        giftOnly: !!promo.giftOnly, shipFreeAmount: calc.shipFreeAmount || 0, shipBaseDiscount: calc.shipBaseDiscount || 0,
+        pointsCost: type === 'price' ? pricePointsCost_(row[11]) : 0
       });
     });
     return results;
@@ -1346,6 +1347,7 @@ function getMyPrivilegesForLineUid_(lineUid) {
       restriction: row[2] === 'price' ? String(row[10] || '') : '', // ขายราคาพิเศษ: หน้าร้านใช้ขึ้นราคาแดงบนการ์ดสินค้า
       priceSpec: row[2] === 'price' ? (parsePriceSpec_(row[11]) || undefined) : undefined, // ⚡ เพิ่ม (1/10/69) — ราคา/ของแถมแยกตามสินค้า
       maxQty: row[2] === 'price' ? priceMaxQty_(row[11]) : 0, // ⚡ (4/11/69) ราคาพิเศษสูงสุดกี่ชิ้นต่อออเดอร์
+      pointsCost: row[2] === 'price' ? pricePointsCost_(row[11]) : 0, // ⚡ (4/11/69) แลกด้วยคะแนน + ชำระเงิน
       detailText: privilegeDetailText_(row) || autoPrivilegeTicketText_(row) || undefined, // ⚡ เพิ่ม (1/10/69) — ข้อความบนตั๋วที่แอดมินพิมพ์เอง (4/10/69: ว่าง = ข้อความอัตโนมัติของ ลด % เฉพาะสินค้า / ชิ้นถัดไปลด %)
       stackable: isStackablePrivilegeRow_(row), // ⚡ เพิ่ม (29/9/69) — หน้าร้านขึ้นป้าย "ใช้ร่วมกับโปรอื่นได้/ไม่ได้" บนตั๋วสิทธิ์
       exclusive: isExclusivePromo_(String(row[2] || ''), row[10], isStackablePrivilegeRow_(row)),
@@ -1979,6 +1981,28 @@ function priceMaxQty_(raw) {
   try { return Math.max(0, parseInt(JSON.parse(s).maxQty, 10) || 0); } catch (e) { return 0; }
 }
 
+function pricePointsCost_(raw) {
+  var s = String(raw || '').trim();
+  if (s.charAt(0) !== '{') return 0;
+  try { return Math.max(0, parseInt(JSON.parse(s).pts, 10) || 0); } catch (e) { return 0; }
+}
+
+function privPointsGate_(privileges, availablePoints) {
+  var left = Math.max(0, parseInt(availablePoints, 10) || 0), short = [];
+  var kept = (privileges || []).filter(function (p) {
+    var need = p.pointsCost || 0;
+    if (!need || !(p.productDiscount > 0)) return true;
+    if (need > left) { short.push(String(p.rowIndex)); return false; }
+    left -= need;
+    return true;
+  });
+  return { privileges: kept, short: short };
+}
+
+function privPointsTotal_(privileges) {
+  return (privileges || []).reduce(function (s, p) { return s + (p.pointsCost && p.productDiscount > 0 ? p.pointsCost : 0); }, 0);
+}
+
 function priceSpecMatch_(spec, itemName) {
   var out = { price: null, gift: null };
   if (!spec) return out;
@@ -2593,6 +2617,18 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     excludeRowIndexes.forEach(function (n) { if (n !== '' && n !== null && n !== undefined) excludeSet_[String(n)] = true; });
     var allPrivileges = getAllPrivilegesWithDiscount_(profile.sub, subtotal, items, priceMap, shippingCost, reservedByEdit_ ? reservedByEdit_.privilegeRows : null);
     var appliedPrivileges = allPrivileges.filter(function (p) { return !excludeSet_[String(p.rowIndex)]; });
+    // ⚡ (4/11/69) สิทธิ์ที่ต้องใช้คะแนน: คะแนนไม่พอ = ไม่ใช้กับออเดอร์นี้ (กติกาเดียวกับ createShopOrder) หน้าเว็บเห็น pointsShort
+    var reservedPoints_ = memberRow_ ? getPendingPointsReservedForPhone_(memberRow_[3], existingOrderId, true) : 0;
+    var memberPointsAvail_ = memberRow_ ? Math.max(0, (parseInt(memberRow_[5], 10) || 0) - reservedPoints_) : 0;
+    var ptsGate_ = privPointsGate_(appliedPrivileges, memberPointsAvail_);
+    appliedPrivileges = ptsGate_.privileges;
+    if (ptsGate_.short.length) {
+      allPrivileges = allPrivileges.map(function (p) {
+        if (ptsGate_.short.indexOf(String(p.rowIndex)) === -1) return p;
+        var cp = {}; Object.keys(p).forEach(function (k) { cp[k] = p[k]; }); cp.pointsShort = true;
+        return cp;
+      });
+    }
     var coupon = null, couponError = null;
     if (couponCode) {
       var manual = validateCoupon_(couponCode, subtotal, items, priceMap, shippingCost, memberTierKey_, profile.sub,
@@ -2679,11 +2715,8 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
     var adminExtraDiscount_ = adminExtra_ ? Math.min(Math.max(0, subtotal - totalProductDiscount_), adminExtra_.extraDiscount || 0) : 0;
     var payableBeforePoints_ = Math.max(0, subtotal - totalProductDiscount_ - adminExtraDiscount_) + finalShippingCost;
 
-    var memberPointsBalance_ = 0;
-    if (memberRow_) {
-      var reservedPoints_ = getPendingPointsReservedForPhone_(memberRow_[3], existingOrderId, true);
-      memberPointsBalance_ = Math.max(0, (memberRow_[5] || 0) - reservedPoints_);
-    }
+    var privilegePoints_ = privPointsTotal_(appliedPrivileges);
+    var memberPointsBalance_ = Math.max(0, memberPointsAvail_ - privilegePoints_);
     var pointsTierBase_ = Math.max(0, subtotal - totalProductDiscount_ - adminExtraDiscount_);
     var pointsRedeemResult_ = calcPointsRedeemDiscount_(pointsToRedeem, memberPointsBalance_, payableBeforePoints_, pointsTierBase_);
 
@@ -2695,7 +2728,7 @@ function checkShopDiscounts(idToken, couponCode, subtotal, itemsJson, excludePri
 
     return { success: true, editChanges: editChanges_, privileges: appliedPrivileges, privilegeDiscount: privilegeDiscount, allPrivileges: allPrivileges, privilegeLockNote: privilegeLock_.note, privilegeLocked: false, couponLimitNote: couponLimitNote_, coupon: coupon, autoCoupons: autoCoupons, couponError: couponError, shippingCost: shippingCost, shippingDiscount: totalShippingDiscount, finalShippingCost: finalShippingCost, totalWeightG: totalWeightG, repeatPromo: repeatPromo,
       memberPoints: memberPointsBalance_, pointsRedeemConfig: getPointsRedeemConfig_(), pointsRedeemDiscount: pointsRedeemResult_.discount, pointsUsed: pointsRedeemResult_.pointsUsed, pointsRedeemError: pointsRedeemResult_.error, adminExtraDiscount: adminExtraDiscount_,
-      pointsTierCap: pointsTierCap_(getPointsRedeemConfig_(), pointsTierBase_), pointsTierBase: pointsTierBase_ };
+      privilegePoints: privilegePoints_, pointsTierCap: pointsTierCap_(getPointsRedeemConfig_(), pointsTierBase_), pointsTierBase: pointsTierBase_ };
   } catch (e) {
     return { success: false, error: e.toString() };
   }

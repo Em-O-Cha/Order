@@ -881,6 +881,7 @@ function getBirthdayPromoConfig_() {
       fallback[mode].cardStyle = birthdayCardStyle_(src.cardStyle);
       fallback[mode].images = birthdayCardImages_(src.images);
       fallback[mode].look = birthdayCardLook_(src.look);
+      fallback[mode].onlyMonth = /^\d{4}-\d{2}$/.test(String(src.onlyMonth || '')) ? String(src.onlyMonth) : '';
     });
   } catch (e) {
     Logger.log('getBirthdayPromoConfig_ error: ' + e.toString());
@@ -902,11 +903,12 @@ function birthdayCardLook_(src) {
   src = src || {};
   var col = function (v) { v = String(v || '').trim(); return /^#[0-9a-f]{6}$/i.test(v) ? v : ''; };
   var txt = function (v, n) { return String(v || '').replace(/\s+/g, ' ').trim().slice(0, n); };
-  return { badge: txt(src.badge, 30), title: txt(src.title, 80), button: txt(src.button, 20),
+  return { badge: txt(src.badge, 30), title: txt(src.title, 80), button: txt(src.button, 20), alt: txt(src.alt, 120),
     badgeBg: col(src.badgeBg), badgeText: col(src.badgeText), titleColor: col(src.titleColor),
     buttonBg: col(src.buttonBg), buttonText: col(src.buttonText), frame: col(src.frame),
     codeText: col(src.codeText), codeBg: col(src.codeBg), codeTagText: col(src.codeTagText), codeHide: src.codeHide === true || src.codeHide === 'true',
     textPos: ['bottom', 'below'].indexOf(String(src.textPos)) !== -1 ? String(src.textPos) : 'top',
+    bigHide: src.bigHide === true || src.bigHide === 'true',
     titleSize: ['sm', 'lg'].indexOf(String(src.titleSize)) !== -1 ? String(src.titleSize) : 'md' };
 }
 
