@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 205 รายการ (137 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 208 รายการ (140 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1302,7 +1302,8 @@ function getAllPrivilegesWithDiscount_(lineUid, subtotal, items, priceMap, shipp
         freeProduct: row[11] || '', freeQty: row[12] || '', freeQtyGranted: calc.freeQtyGranted,
         physicalFreeQty: calc.physicalFreeQty || 0, minPurchase: minPurchase, freeDiscountPercent: calc.freeDiscountPercent || 100,
         stackable: isStackablePrivilegeRow_(row), restriction: String(row[10] || ''), freeGifts: calc.freeGifts,
-        giftOnly: !!promo.giftOnly, shipFreeAmount: calc.shipFreeAmount || 0, shipBaseDiscount: calc.shipBaseDiscount || 0
+        giftOnly: !!promo.giftOnly, shipFreeAmount: calc.shipFreeAmount || 0, shipBaseDiscount: calc.shipBaseDiscount || 0,
+        pointsCost: type === 'price' ? pricePointsCost_(row[11]) : 0
       });
     });
     return results;
@@ -1639,6 +1640,28 @@ function priceMaxQty_(raw) {
   var s = String(raw || '').trim();
   if (s.charAt(0) !== '{') return 0;
   try { return Math.max(0, parseInt(JSON.parse(s).maxQty, 10) || 0); } catch (e) { return 0; }
+}
+
+function pricePointsCost_(raw) {
+  var s = String(raw || '').trim();
+  if (s.charAt(0) !== '{') return 0;
+  try { return Math.max(0, parseInt(JSON.parse(s).pts, 10) || 0); } catch (e) { return 0; }
+}
+
+function privPointsGate_(privileges, availablePoints) {
+  var left = Math.max(0, parseInt(availablePoints, 10) || 0), short = [];
+  var kept = (privileges || []).filter(function (p) {
+    var need = p.pointsCost || 0;
+    if (!need || !(p.productDiscount > 0)) return true;
+    if (need > left) { short.push(String(p.rowIndex)); return false; }
+    left -= need;
+    return true;
+  });
+  return { privileges: kept, short: short };
+}
+
+function privPointsTotal_(privileges) {
+  return (privileges || []).reduce(function (s, p) { return s + (p.pointsCost && p.productDiscount > 0 ? p.pointsCost : 0); }, 0);
 }
 
 function priceSpecMatch_(spec, itemName) {
@@ -2317,6 +2340,9 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     if (adminExtra_ && adminExtra_.shipping !== null) shippingCost = adminExtra_.shipping;
 
     var appliedPrivileges = getAppliedPrivileges_(profile.sub, subtotal, excludeRowIndexes, items, priceMap, shippingCost, reservedByEdit_ ? reservedByEdit_.privilegeRows : null);
+    // ⚡ (4/11/69) สิทธิ์ที่ต้องใช้คะแนน (แลกด้วยคะแนน + ชำระเงิน): คะแนนไม่พอ = ไม่ใช้สิทธิ์นั้น (ห้ามใช้แคช — จุดตัดสินใจจริง)
+    var reservedPointsForOrder_ = memberRowIndex !== -1 ? getPendingPointsReservedForPhone_(phone, existingOrderId) : 0;
+    appliedPrivileges = privPointsGate_(appliedPrivileges, Math.max(0, memberPoints - reservedPointsForOrder_)).privileges;
     var countedCodes_ = reservedByEdit_ ? reservedByEdit_.couponCodes : null;
     var couponResults = [];
     if (couponCode) {
@@ -2382,8 +2408,11 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     cashDiscountOnly_ += repeatBonusDiscount_ + adminExtraDiscount_;
 
     // แลกคะแนนเป็นส่วนลด: จองคะแนนไว้กับออเดอร์ระหว่างรอแนบสลิป แต่จะตัดคะแนนจริงตอนแนบสลิปสำเร็จเท่านั้น
-    var availablePointsForThisOrder_ = Math.max(0, memberPoints - getPendingPointsReservedForPhone_(phone, existingOrderId));
+    var privPointsCost_ = privPointsTotal_(appliedPrivileges);
+    var availablePointsForThisOrder_ = Math.max(0, memberPoints - reservedPointsForOrder_ - privPointsCost_);
     var pointsRedeemResult_ = calcPointsRedeemDiscount_(pointsToRedeem, availablePointsForThisOrder_, Math.max(0, finalAmount), Math.max(0, subtotal - totalDiscount));
+    // คะแนนที่จองกับออเดอร์นี้ = แลกเป็นส่วนลด + สิทธิ์ที่ต้องใช้คะแนน (หักจริงตอนแนบสลิป/ยืนยันรับเงิน ตามระบบเดิม)
+    var pointsToReserve_ = pointsRedeemResult_.pointsUsed + privPointsCost_;
     finalAmount = Math.max(0, finalAmount - pointsRedeemResult_.discount);
     cashDiscountOnly_ += pointsRedeemResult_.discount;
     // ⚡ แก้ — ปัดเศษสตางค์ทิ้งด้วย Math.floor (ไม่ปัดขึ้น) ก่อนบันทึกลงชีต Revenue และส่งกลับไปแสดงผลที่ลูกค้า
@@ -2480,6 +2509,9 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     if (pointsRedeemResult_.pointsUsed > 0) {
       discountNoteParts.push('แลกคะแนน: ' + pointsRedeemResult_.pointsUsed + ' คะแนน (-' + Math.round(pointsRedeemResult_.discount) + ')');
     }
+    appliedPrivileges.forEach(function (p) {
+      if (p.pointsCost && p.productDiscount > 0) discountNoteParts.push('ใช้คะแนนแลกสิทธิ์: ' + cleanPriceGiftText_(p.name) + ' ' + p.pointsCost + ' คะแนน');
+    });
     var shippingLine = (adminExtra_ && adminExtra_.shipCod) ? ('ค่าจัดส่ง: ' + SHIP_COD_NOTE_)
       : totalShippingDiscount > 0
       ? ('ค่าจัดส่ง: ' + Math.round(shippingCost) + ' บาท ลด ' + Math.round(totalShippingDiscount) + ' บาท เหลือ ' + Math.round(finalShippingCost) + ' บาท')
@@ -2492,7 +2524,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     var purchaseReferrerCodeClean_ = String(purchaseReferrerCode || '').trim();
     var remark = shippingLine + ' (น้ำหนักรวม ' + totalWeightG + ' กรัม) | ' + (isCodOrder ? COD_REMARK_PENDING_ : 'รอแนบสลิป - LINE Shop')
       + (discountNoteParts.length ? ' | ' + discountNoteParts.join(', ') : '')
-      + (pointsRedeemResult_.pointsUsed > 0 ? ' | 🎯 คะแนนรอหัก: ' + pointsRedeemResult_.pointsUsed + ' คะแนน (-฿' + Math.round(pointsRedeemResult_.discount) + ')' : '')
+      + (pointsToReserve_ > 0 ? ' | 🎯 คะแนนรอหัก: ' + pointsToReserve_ + ' คะแนน (-฿' + Math.round(pointsRedeemResult_.discount) + ')' : '')
       + (freebieNoteParts.length ? ' | 🎁 แถม (ลดราคาแล้ว): ' + freebieNoteParts.join(', ') : '')
       + (physicalFreebieNoteParts.length ? ' | 📦 ต้องหยิบของแถมเพิ่ม: ' + physicalFreebieNoteParts.join(', ') : '')
       + (purchaseReferrerCodeClean_ ? ' | 🤝 รหัสแนะนำซื้อ: ' + purchaseReferrerCodeClean_ : '');
@@ -2621,10 +2653,10 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     var promoNote_ = promoNoteParts_.length ? ('— รวม ' + promoNoteParts_.join(', ')) : '';
 
     // ยอด 0 บาทไม่มีขั้นตอนแนบสลิป จึงถือว่าสำเร็จทันทีและตัดคะแนนในจุดนี้
-    if (finalAmount <= 0 && pointsRedeemResult_.pointsUsed > 0 && memberRowIndex !== -1) {
-      memberPoints = Math.max(0, memberPoints - pointsRedeemResult_.pointsUsed);
+    if (finalAmount <= 0 && pointsToReserve_ > 0 && memberRowIndex !== -1) {
+      memberPoints = Math.max(0, memberPoints - pointsToReserve_);
       memberSheet.getRange(memberRowIndex, 6).setValue(memberPoints);
-      logPointsTransaction_(profile.sub, 'redeem', '[' + revenueId + '] แลกคะแนนเป็นส่วนลด ' + Math.round(pointsRedeemResult_.discount) + ' บาท', -pointsRedeemResult_.pointsUsed, memberPoints);
+      logPointsTransaction_(profile.sub, 'redeem', '[' + revenueId + '] ' + (privPointsCost_ > 0 ? 'ใช้คะแนนแลกสิทธิ์' + (pointsRedeemResult_.pointsUsed > 0 ? '/' : '') : '') + (pointsRedeemResult_.pointsUsed > 0 ? 'แลกคะแนนเป็นส่วนลด ' + Math.round(pointsRedeemResult_.discount) + ' บาท' : ''), -pointsToReserve_, memberPoints);
     }
 
     if (finalAmount <= 0) {
@@ -2990,7 +3022,7 @@ function uploadShopSlip(orderId, base64Data, fileName, mimeType, presetSlipValue
       var pointsAfterDeduct_ = pointsBeforeDeduct_ - pendingPoints_.points;
       invalidatePendingPointsCache_(pendingPhone_); // ตัดคะแนนจริงแล้ว คะแนนที่ "รอหัก" ของเบอร์นี้เปลี่ยนไป
       ensureMembersSheet_().getRange(pendingBuyerRow_, 6).setValue(pointsAfterDeduct_);
-      logPointsTransaction_(pendingBuyerUid_, 'redeem', '[' + orderId + '] แลกคะแนนเป็นส่วนลด ' + Math.round(pendingPoints_.discount) + ' บาท', -pendingPoints_.points, pointsAfterDeduct_);
+      logPointsTransaction_(pendingBuyerUid_, 'redeem', '[' + orderId + '] ' + (pendingPoints_.discount > 0 ? 'แลกคะแนนเป็นส่วนลด ' + Math.round(pendingPoints_.discount) + ' บาท' : 'ใช้คะแนนแลกสิทธิ์'), -pendingPoints_.points, pointsAfterDeduct_);
       existingRemark_ = existingRemark_.replace(/🎯 คะแนนรอหัก:\s*\d+\s*คะแนน\s*\(-฿[\d.]+\)/, '🎯 หักคะแนนแล้ว: ' + pendingPoints_.points + ' คะแนน (-฿' + Math.round(pendingPoints_.discount) + ')');
     }
 
