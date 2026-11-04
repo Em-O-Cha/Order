@@ -1838,6 +1838,7 @@ function renderMyPrivileges_(r){
         + '<div class="coupon-ticket-body">'
           + '<div class="ct-title">' + escHtml(p.name || '') + '</div>'
           + (p.detailText ? '<div class="ct-sub" style="white-space:normal">' + escHtml(p.detailText) + '</div>' : (p.type === 'price' && p.priceSpec ? priceSpecLinesHtml_(p) : ''))
+          + priceCapHtml_(p)
           + '<div class="ct-sub">' + ((p.expiry && p.expiry !== 'ไม่มีวันหมดอายุ') ? ('ใช้ได้ถึง ' + escHtml(p.expiry)) : 'ไม่มีวันหมดอายุ') + '</div>'
           + promoStackBadge_(p)
         + '</div>'
@@ -1862,6 +1863,10 @@ function stubMarkup_(label, value){
 // ⚡ เพิ่ม — กล่องแยกต่างหากสำหรับคูปองร้าน (autoApply) ที่ใช้อัตโนมัติตอนนี้ ไม่ปนกับกล่อง "สิทธิพิเศษของคุณ"
 // ด้านบน เพราะเป็นคนละความหมาย: สิทธิพิเศษของคุณ = ของเฉพาะตัวลูกค้าคนนั้น (สมัครสมาชิก/แนะนำเพื่อน/แลกแต้ม)
 // ส่วนกล่องนี้ = โปรร้านที่ลูกค้าทุกคนใช้ได้เหมือนกัน แสดงเป็นการ์ดคูปองแบบตั๋วฉีก (.coupon-ticket) ทีละใบ
+// ⚡ (4/11/69) โปรขายราคาพิเศษที่จำกัดจำนวนชิ้นต่อออเดอร์ (maxQty จากเซิร์ฟเวอร์)
+function priceCapHtml_(c){
+  return c && c.type === 'price' && c.maxQty > 0 ? '<div class="ct-sub">ราคาพิเศษสูงสุด ' + Number(c.maxQty) + ' ชิ้นต่อออเดอร์</div>' : '';
+}
 function autoPromoValueText_(c){
   if (c.type === 'price' && c.priceSpec) return priceSpecText_(c);
   if (c.type === 'price') return 'ราคาพิเศษ ' + Number(c.value).toLocaleString('th-TH') + ' บาท/ชิ้น';
@@ -1931,6 +1936,7 @@ function renderAutoPromoBox_(coupons){
       : (c.type === 'price' && c.priceSpec
         ? priceSpecLinesHtml_(c) + (minPurchaseText ? '<div class="ct-sub">' + escHtml(minPurchaseText) + '</div>' : '')
         : (subText ? '<div class="ct-sub">' + escHtml(subText) + '</div>' : ''));
+    detailHtml += priceCapHtml_(c);
     h += '<div class="coupon-ticket">'
       + '<div class="coupon-ticket-notch top"></div>'
       + '<div class="coupon-ticket-notch bottom"></div>'

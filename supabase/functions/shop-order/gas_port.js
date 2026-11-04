@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 204 รายการ (136 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 205 รายการ (137 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1635,6 +1635,12 @@ function parsePriceSpec_(raw) {
   return { mode: o.mode === 'order' ? 'order' : 'item', items: items };
 }
 
+function priceMaxQty_(raw) {
+  var s = String(raw || '').trim();
+  if (s.charAt(0) !== '{') return 0;
+  try { return Math.max(0, parseInt(JSON.parse(s).maxQty, 10) || 0); } catch (e) { return 0; }
+}
+
 function priceSpecMatch_(spec, itemName) {
   var out = { price: null, gift: null };
   if (!spec) return out;
@@ -1818,13 +1824,23 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
     // ⚡ เพิ่ม (1/10/69) — ราคา/ของแถมแยกตามสินค้า (ไม่มี = ราคาเดียว value เหมือนเดิม)
     var priceSpec = parsePriceSpec_(promo.freeProduct);
     var priceDiscount = 0, gifts = [], giftIndex = {}, giftOrderDone = {};
+    // ⚡ (4/11/69) จำกัดจำนวนชิ้นที่ได้ราคาพิเศษต่อออเดอร์ (maxQty) — ให้ชิ้นที่ลดได้มากที่สุดก่อน ที่เหลือราคาปกติ
+    var maxQtyLeft = priceMaxQty_(promo.freeProduct) || Infinity;
+    var priceLines = [];
     (items || []).forEach(function (it) {
       var name = String(it.name).toLowerCase();
       if (!keywordsPrice.some(function (k) { return name.indexOf(k) !== -1; })) return;
       var m = priceSpecMatch_(priceSpec, it.name);
       var unitPrice = m.price !== null ? m.price : value;
-      var qty = parseFloat(it.qty) || 0;
-      priceDiscount += Math.max(0, (parseFloat(it.price) || 0) - unitPrice) * qty;
+      priceLines.push({ it: it, m: m, per: Math.max(0, (parseFloat(it.price) || 0) - unitPrice) });
+    });
+    priceLines.sort(function (a, b) { return b.per - a.per; });
+    priceLines.forEach(function (pl) {
+      var it = pl.it, m = pl.m;
+      var qty = Math.min(parseFloat(it.qty) || 0, maxQtyLeft);
+      if (qty <= 0) return;
+      maxQtyLeft -= qty;
+      priceDiscount += pl.per * qty;
       if (!m.gift || qty <= 0) return;
       // ต่อออเดอร์ = ของแถมของสินค้ารายการนั้นได้ครั้งเดียว ไม่ว่าจะซื้อกี่ชิ้น / ต่อชิ้น = คูณจำนวนที่ซื้อ
       var giftQty = priceSpec.mode === 'order' ? (giftOrderDone[m.gift.p] ? 0 : m.gift.giftQty) : m.gift.giftQty * qty;
