@@ -2119,14 +2119,8 @@ function preorderBalance_(){
 }
 // "PRE-ORDER 7 วัน" (ตั้งระยะเวลาไว้) / "PRE-ORDER"
 function preorderLabel_(){ return 'PRE-ORDER' + (preorderCfg_ && preorderCfg_.leadDays > 0 ? ' ' + preorderCfg_.leadDays + ' วัน' : ''); }
-// วันส่ง: ข้อความที่แอดมินพิมพ์ไว้ ไม่มี = วันนี้ + ระยะเวลา Pre-order
-function preorderShipHint_(){
-  if (!preorderCfg_) return '';
-  if (preorderCfg_.shipText) return preorderCfg_.shipText;
-  if (!(preorderCfg_.leadDays > 0)) return '';
-  var d = new Date(Date.now() + preorderCfg_.leadDays * 86400000);
-  return 'ส่งประมาณ ' + d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
-}
+// ⚡ ผู้ใช้ขอไม่แสดงวันที่ส่ง — แสดงแค่ "PRE-ORDER 7 วัน"
+function preorderShipHint_(){ return ''; }
 function preorderTagHtml_(v){
   if (!v || !v.preorder) return '';
   var hint = preorderShipHint_();
