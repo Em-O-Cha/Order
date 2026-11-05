@@ -1791,6 +1791,7 @@ function promoGiftHint_(skuName){
   });
   return hint;
 }
+// ⚡ (5/11/69) ป้ายราคาปัดเศษทิ้ง (Math.floor) แบบเดียวกับยอดสุทธิหน้าชำระเงิน — เดิม Math.round ทำให้ 332.5 ขึ้น ฿333 แต่จ่ายจริง ฿332
 function getBestPromoPrice_(skuName, price){
   var best = null;
   activeAutoCoupons.concat(myPricePrivileges_).forEach(function(c){
@@ -2082,7 +2083,7 @@ function renderCatalog(){
       // ⚡ แก้ — ระบุ font-size:18px ตรงๆ ในทั้ง 2 span แทนที่จะปล่อยให้สืบทอดจาก .prod-price เฉยๆ กันกรณี
       // เบราว์เซอร์/บริบทไหนไม่สืบทอดขนาดตัวอักษรให้ ราคาที่ลด (ตัวแดง) จะได้ใหญ่เท่าราคาปกติเสมอ
       var priceHtml = promoPrice !== null
-        ? '<span style="font-size:18px;text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="font-size:18px;color:#c62828;font-weight:700">฿' + Math.round(promoPrice).toLocaleString('th-TH') + '</span>'
+        ? '<span style="font-size:18px;text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="font-size:18px;color:#c62828;font-weight:700">฿' + Math.floor(promoPrice + 1e-9).toLocaleString('th-TH') + '</span>'
         : '฿' + v.price.toLocaleString('th-TH');
       var giftHint = promoGiftHint_(v.skuName);
       var soldOut_ = v.stock && v.stock.left <= 0;
