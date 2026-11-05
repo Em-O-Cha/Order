@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 127 รายการ (87 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 132 รายการ (91 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -606,6 +606,7 @@ function getShopProducts() {
     var stockLimited_ = shopStockLimitTester_();
     var hidden_ = {};
     shopHiddenProducts_().forEach(function (n) { hidden_[n] = true; });
+    var preCfg_ = getPreorderConfig_(); // ⚡ (5/11/69) สินค้า Pre-order มัดจำ
 
     var categoryMap = {};
     var order = [];
@@ -638,6 +639,7 @@ function getShopProducts() {
                            unit: unitWordM_ ? unitWordM_[1] : 'ชิ้น' };
       }
       if (hidden_[skuName] || hidden_[category]) variant_.hidden = true;
+      if (preorderMatch_(preCfg_, skuName)) variant_.preorder = true;
       categoryMap[category].variants.push(variant_);
     });
 
@@ -646,6 +648,7 @@ function getShopProducts() {
       if (hidden_[c.name] || c.variants.every(function (v) { return v.hidden; })) c.hidden = true;
     });
     var result = { success: true, categories: categories };
+    if (preCfg_.enabled) result.preorder = { depositPct: preCfg_.depositPct, shipText: preCfg_.shipText };
     try { cache.put(SHOP_PRODUCTS_CACHE_KEY_, JSON.stringify(result), 180); } catch (e) {}
     return result;
   } catch (e) {
@@ -1322,6 +1325,42 @@ function listRedemptionLog(pin) {
   } catch (e) {
     return { success: false, error: e.toString() };
   }
+}
+
+var PREORDER_CONFIG_PROP_ = 'PREORDER_CONFIG_V1';
+
+function preorderDefaultConfig_() {
+  return { enabled: false, depositPct: 50, products: [], shipText: '', remindDays: 2, maxReminds: 3 };
+}
+
+function normalizePreorderConfig_(c) {
+  c = c || {};
+  var pct = Math.round(parseFloat(c.depositPct));
+  if (!isFinite(pct)) pct = 50;
+  return {
+    enabled: c.enabled === true || c.enabled === 'true',
+    depositPct: Math.max(10, Math.min(90, pct)),
+    products: (Array.isArray(c.products) ? c.products : String(c.products || '').split(','))
+      .map(function (x) { return String(x || '').replace(/,/g, ' ').trim(); }).filter(function (x) { return x; }).slice(0, 100),
+    shipText: String(c.shipText || '').trim().substring(0, 60),
+    remindDays: Math.max(1, Math.min(14, Math.round(parseFloat(c.remindDays)) || 2)),
+    maxReminds: Math.max(0, Math.min(10, isFinite(parseInt(c.maxReminds, 10)) ? parseInt(c.maxReminds, 10) : 3))
+  };
+}
+
+function getPreorderConfig_() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(PREORDER_CONFIG_PROP_);
+    return raw ? normalizePreorderConfig_(JSON.parse(raw)) : preorderDefaultConfig_();
+  } catch (e) {
+    return preorderDefaultConfig_();
+  }
+}
+
+function preorderMatch_(cfg, itemName) {
+  if (!cfg || !cfg.enabled || !cfg.products.length) return false;
+  var n = String(itemName || '').toLowerCase();
+  return cfg.products.some(function (k) { return n.indexOf(String(k).toLowerCase()) !== -1; });
 }
 
 var COUPONS_RAW_CACHE_KEY_ = 'coupons_raw_v3';

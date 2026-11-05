@@ -97,7 +97,8 @@ async function kickAppsScript(url: string, orderId: string): Promise<string> {
 async function createLink(p: P) {
   const orderId = String(p.orderId || "");
   const amount = num(p.amount);
-  if (!/^REV\d{4,}$/.test(orderId)) return json({ success: false, error: "เลขที่ออเดอร์ไม่ถูกต้อง" });
+  // ⚡ (5/11/69) "REV…-B" = ชำระส่วนที่เหลือของออเดอร์ Pre-order (Apps Script Preorder.gs)
+  if (!/^REV\d{4,}(-B)?$/.test(orderId)) return json({ success: false, error: "เลขที่ออเดอร์ไม่ถูกต้อง" });
   if (!(amount > 0)) return json({ success: false, error: "ยอดชำระไม่ถูกต้อง" });
   const prov = p.testProvider === "mock" ? getProvider("mock") : provider;
   const st = prov.ready();
