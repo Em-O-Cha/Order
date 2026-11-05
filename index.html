@@ -2064,12 +2064,15 @@ function renderCatalog(){
     h += '<div class="cat-card">';
     // ⚡ (5/11/69) Pre-order: ป้ายบนรูปสินค้า + ชื่อสินค้า (มีขนาดไหนเป็น Pre-order ก็ขึ้นป้าย)
     var catPre_ = preorderCfg_ && cat.variants.some(function(x){ return x.preorder; });
-    var preRibbon_ = catPre_ ? '<div style="position:absolute;left:10px;top:10px;background:linear-gradient(135deg,#ef6c00,#ff9800);color:#fff;font-weight:700;font-size:12.5px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.25)">📦 PRE-ORDER' + (preorderCfg_.shipText ? ' · ' + escHtml(preorderCfg_.shipText) : '') + '</div>' : '';
+    var preHint_ = catPre_ ? preorderShipHint_() : '';
+    var preRibbon_ = catPre_ ? '<div style="position:absolute;left:10px;top:10px;background:linear-gradient(135deg,#ef6c00,#ff9800);color:#fff;font-weight:700;font-size:12.5px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.25)">📦 ' + preorderLabel_() + (preHint_ ? ' · ' + escHtml(preHint_) : '') + '</div>' : '';
     if (cat.image) {
       h += '<div style="position:relative"><img class="cat-img" src="' + escHtml(cat.image) + '" alt="' + escHtml(cat.name) + '" onerror="this.style.display=\'none\'">' + preRibbon_ + '</div>';
     }
-    h += '<div class="cat-name">' + escHtml(cat.name) + (catPre_ ? ' <span style="display:inline-block;vertical-align:2px;background:#ef6c00;color:#fff;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px">PRE-ORDER</span>' : '') + '</div>'
-      + (catPre_ ? '<div style="margin:0 14px 4px;font-size:12px;color:#8d4a00;background:#fff8e1;border-radius:8px;padding:5px 9px">💰 จ่ายมัดจำ ' + preorderCfg_.depositPct + '% ตอนสั่ง ที่เหลือจ่ายเมื่อสินค้าพร้อมส่ง</div>' : '');
+    h += '<div class="cat-name">' + escHtml(cat.name) + (catPre_ ? ' <span style="display:inline-block;vertical-align:2px;background:#ef6c00;color:#fff;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px">' + preorderLabel_() + '</span>' : '') + '</div>'
+      + (catPre_ ? '<div style="margin:0 14px 4px;font-size:12px;color:#8d4a00;background:#fff8e1;border-radius:8px;padding:5px 9px">'
+        + (preorderCfg_.leadDays > 0 ? '⏱️ สินค้า Pre-order รอสินค้า ' + preorderCfg_.leadDays + ' วัน' + (preHint_ ? ' (' + escHtml(preHint_) + ')' : '') + '<br>' : '')
+        + '💰 จ่ายมัดจำ ' + preorderCfg_.depositPct + '% ตอนสั่ง ที่เหลือจ่ายเมื่อสินค้าพร้อมส่ง</div>' : '');
     cat.variants.forEach(function(v){
       var idx = variantList.length;
       v._pool = cat.name;   // ขนาดต่าง ๆ ของสินค้าเดียวกันใช้สต๊อกก้อนเดียวกัน
@@ -2114,9 +2117,20 @@ function preorderBalance_(){
   var cap = Math.floor(getFinalTotalBeforeCod_()) - 1;
   return Math.max(0, Math.min(bal, cap));
 }
+// "PRE-ORDER 7 วัน" (ตั้งระยะเวลาไว้) / "PRE-ORDER"
+function preorderLabel_(){ return 'PRE-ORDER' + (preorderCfg_ && preorderCfg_.leadDays > 0 ? ' ' + preorderCfg_.leadDays + ' วัน' : ''); }
+// วันส่ง: ข้อความที่แอดมินพิมพ์ไว้ ไม่มี = วันนี้ + ระยะเวลา Pre-order
+function preorderShipHint_(){
+  if (!preorderCfg_) return '';
+  if (preorderCfg_.shipText) return preorderCfg_.shipText;
+  if (!(preorderCfg_.leadDays > 0)) return '';
+  var d = new Date(Date.now() + preorderCfg_.leadDays * 86400000);
+  return 'ส่งประมาณ ' + d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+}
 function preorderTagHtml_(v){
   if (!v || !v.preorder) return '';
-  return '<div class="stock-tag" style="background:#ef6c00;color:#fff">PRE-ORDER' + (preorderCfg_ && preorderCfg_.shipText ? ' · ' + escHtml(preorderCfg_.shipText) : '') + '</div>';
+  var hint = preorderShipHint_();
+  return '<div class="stock-tag" style="background:#ef6c00;color:#fff">' + preorderLabel_() + (hint ? ' · ' + escHtml(hint) : '') + '</div>';
 }
 function preorderNoticeHtml_(payNow, balance){
   // ⚡ (5/11/69) แยกยอด "ชำระตอนนี้" เป็นรายการ: มัดจำสินค้า Pre-order + สินค้าปกติ + ค่าส่ง - ส่วนลด (+ ค่าธรรมเนียม)
@@ -2144,7 +2158,8 @@ function preorderNoticeHtml_(payNow, balance){
     + '<div style="background:#fff;border-radius:8px;padding:6px 9px;margin-top:6px">' + rows
     + '<div style="display:flex;justify-content:space-between;border-top:1px dashed #f0c27a;margin-top:4px;padding-top:4px"><b>💰 ชำระตอนนี้</b><b style="font-size:19px;color:#e65100">฿' + payNow.toLocaleString('th-TH') + '</b></div></div>'
     + '<div style="display:flex;justify-content:space-between;margin-top:6px"><span>⏳ ชำระเมื่อพร้อมส่ง <span style="font-size:11px">(Pre-order ส่วนที่เหลือ ' + (100 - preorderCfg_.depositPct) + '%)</span></span><b>฿' + balance.toLocaleString('th-TH') + '</b></div>'
-    + (preorderCfg_.shipText ? '<div style="font-size:11.5px;color:#8d4a00">🚚 ' + escHtml(preorderCfg_.shipText) + '</div>' : '')
+    + (preorderCfg_.leadDays > 0 ? '<div style="font-size:12px;color:#8d4a00">⏱️ Pre-order ' + preorderCfg_.leadDays + ' วัน</div>' : '')
+    + (preorderShipHint_() ? '<div style="font-size:11.5px;color:#8d4a00">🚚 ' + escHtml(preorderShipHint_()) + '</div>' : '')
     + '</div>';
 }
 

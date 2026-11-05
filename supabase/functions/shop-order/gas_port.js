@@ -610,7 +610,7 @@ function getShopProducts() {
       if (hidden_[c.name] || c.variants.every(function (v) { return v.hidden; })) c.hidden = true;
     });
     var result = { success: true, categories: categories };
-    if (preCfg_.enabled) result.preorder = { depositPct: preCfg_.depositPct, shipText: preCfg_.shipText };
+    if (preCfg_.enabled) result.preorder = { depositPct: preCfg_.depositPct, shipText: preCfg_.shipText, leadDays: preCfg_.leadDays };
     try { cache.put(SHOP_PRODUCTS_CACHE_KEY_, JSON.stringify(result), 180); } catch (e) {}
     return result;
   } catch (e) {
@@ -1648,7 +1648,7 @@ function priceMaxQty_(raw) {
 var PREORDER_CONFIG_PROP_ = 'PREORDER_CONFIG_V1';
 
 function preorderDefaultConfig_() {
-  return { enabled: false, depositPct: 50, products: [], shipText: '', remindDays: 2, maxReminds: 3 };
+  return { enabled: false, depositPct: 50, products: [], shipText: '', leadDays: 0, remindDays: 2, maxReminds: 3 };
 }
 
 function normalizePreorderConfig_(c) {
@@ -1661,6 +1661,7 @@ function normalizePreorderConfig_(c) {
     products: (Array.isArray(c.products) ? c.products : String(c.products || '').split(','))
       .map(function (x) { return String(x || '').replace(/,/g, ' ').trim(); }).filter(function (x) { return x; }).slice(0, 100),
     shipText: String(c.shipText || '').trim().substring(0, 60),
+    leadDays: Math.max(0, Math.min(90, Math.round(parseFloat(c.leadDays)) || 0)), // ⚡ ระยะเวลา Pre-order (วัน) ขึ้นในหน้าสั่งสินค้า
     remindDays: Math.max(1, Math.min(14, Math.round(parseFloat(c.remindDays)) || 2)),
     maxReminds: Math.max(0, Math.min(10, isFinite(parseInt(c.maxReminds, 10)) ? parseInt(c.maxReminds, 10) : 3))
   };
