@@ -2115,7 +2115,8 @@ function preorderBalance_(){
   Object.keys(cart).forEach(function(name){ var v = findVariant(name); if (v && v.preorder) sub += cart[name] * v.price; });
   if (!sub) return 0;
   // ส่วนลด/คะแนนเฉลี่ยตามสัดส่วนราคา แล้วแบ่งตาม %มัดจำ (สูตรเดียวกับ preorderCalc_ ฝั่งเซิร์ฟเวอร์)
-  var bal = Math.round(sub * preorderNetRatio_() * (100 - preorderCfg_.depositPct) / 100);
+  // ⚡ (5/11/69) มัดจำ = ครึ่งหนึ่งของยอดหลังหักส่วนลด ปัดขึ้น · ส่วนที่เหลือปัดลง (333 → มัดจำ 167 / เหลือ 166)
+  var bal = Math.floor(Math.round(sub * preorderNetRatio_()) * (100 - preorderCfg_.depositPct) / 100 + 1e-9);
   var cap = Math.floor(getFinalTotalBeforeCod_()) - 1;
   return Math.max(0, Math.min(bal, cap));
 }
