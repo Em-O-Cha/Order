@@ -2804,7 +2804,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
   if (immediateNotifyData_) {
     try {
       var billInfoNow_ = getBillDataForNotify_(sheet, startRow);
-      notifyBuyerOrderConfirmation_(immediateNotifyData_.lineUid, immediateNotifyData_.revenueId, billInfoNow_.items, immediateNotifyData_.paymentLabel, billInfoNow_.subtotal, billInfoNow_.discountTotal, billInfoNow_.shippingCost, billInfoNow_.billTotal, billInfoNow_.freebieItems, billInfoNow_.physicalFreebieItems, billInfoNow_.shipCod);
+      notifyBuyerOrderConfirmation_(immediateNotifyData_.lineUid, immediateNotifyData_.revenueId, billInfoNow_.items, immediateNotifyData_.paymentLabel, billInfoNow_.subtotal, billInfoNow_.discountTotal, billInfoNow_.shippingCost, billInfoNow_.billTotal, billInfoNow_.freebieItems, billInfoNow_.physicalFreebieItems, billInfoNow_.shipCod, billInfoNow_.remark);
       notifyAdminNewOrder_(immediateNotifyData_.revenueId, billInfoNow_.customerName, billInfoNow_.phone, billInfoNow_.items, immediateNotifyData_.paymentLabel, billInfoNow_.billTotal, billInfoNow_.address, billInfoNow_.province, billInfoNow_.freebieItems, billInfoNow_.slipImageUrl, billInfoNow_.physicalFreebieItems, billInfoNow_);
     } catch (immediateNotifyErr) {
       Logger.log('createShopOrder: แจ้งเตือนออเดอร์ที่ไม่ต้องแนบสลิปไม่สำเร็จ: ' + immediateNotifyErr.toString());
