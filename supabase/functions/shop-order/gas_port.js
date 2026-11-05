@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 215 รายการ (146 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 216 รายการ (147 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -1698,12 +1698,49 @@ function preorderCalc_(items, cfg, adminNames, maxBalance, netRatio) {
     out.subtotal += amount;
   });
   if (!out.subtotal) return out;
+  // ⚡ (5/11/69) netRatio เป็น object = แยกส่วนลดตามสินค้าที่โปรใช้ได้จริง (โปรของสินค้าปกติไม่มาลดสินค้า Pre-order)
+  if (netRatio && typeof netRatio === 'object') {
+    netRatio = preorderAllocNet_(items, function (it) {
+      return adminSet ? !!adminSet[String(it.name)] : preorderMatch_(cfg, it.name);
+    }, netRatio) / out.subtotal;
+  }
   var ratio = (netRatio === undefined || netRatio === null || !isFinite(netRatio)) ? 1 : Math.max(0, Math.min(1, netRatio));
   // ⚡ (5/11/69) มัดจำ = ครึ่งหนึ่งของยอดหลังหักส่วนลด "ปัดขึ้น" ส่วนที่เหลือปัดลง (เช่น 333 → มัดจำ 167 / เหลือ 166)
   var net_ = Math.round(out.subtotal * ratio);
   out.balance = Math.floor(net_ * (100 - out.pct) / 100 + 1e-9);
   if (maxBalance !== undefined && maxBalance !== null) out.balance = Math.max(0, Math.min(out.balance, Math.floor(maxBalance) - 1));
   return out;
+}
+
+function preorderAllocNet_(items, isPre, d) {
+  var all = 0, pre = 0;
+  var rows = (items || []).map(function (it) {
+    var amt = (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0);
+    var p = amt > 0 && isPre(it);
+    all += amt; if (p) pre += amt;
+    return { name: String(it.name || ''), amt: amt, pre: p };
+  });
+  if (!(pre > 0)) return 0;
+  var preDisc = 0, totDisc = 0;
+  ((d && d.entries) || []).forEach(function (e) {
+    var pd = parseFloat(e && e.productDiscount) || 0;
+    if (pd <= 0) return;
+    var r = String(e.restriction || '').trim(), el = 0, elPre = 0;
+    rows.forEach(function (x) {
+      if (r && !promoMatchesItem_(r, x.name)) return;
+      el += x.amt; if (x.pre) elPre += x.amt;
+    });
+    if (!(el > 0)) { el = all; elPre = pre; }
+    preDisc += pd * elPre / el; totDisc += pd;
+  });
+  var whole = parseFloat(d && d.whole) || 0;
+  if (whole > 0 && all > 0) { preDisc += whole * pre / all; totDisc += whole; }
+  var preNet = Math.max(0, pre - preDisc);
+  var pts = parseFloat(d && d.points) || 0;
+  var base = Math.max(0, all - totDisc) + (parseFloat(d && d.ship) || 0);
+  if (pts > 0 && base > 0) preNet = Math.max(0, preNet - pts * preNet / base);
+  // ปัดส่วนลดแบบเดียวกับที่หน้าชำระเงินแสดง (17.5 → ลด 18) ให้ยอดสุทธิเป็นจำนวนเต็มบาท
+  return Math.max(0, pre - Math.round(pre - preNet));
 }
 
 function preorderRemarkToken_(info) {
@@ -2493,7 +2530,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     // (กันคนแก้หน้าเว็บเองแล้วสั่งซื้อทั้งที่ร้านปิดรับ/ถูกบล็อก/ยอดไม่เข้าเงื่อนไข) แล้วค่อยบวกค่าธรรมเนียม
     // ⚡ (5/11/69) Pre-order: สินค้า Pre-order จ่ายมัดจำตอนสั่ง ส่วนที่เหลือ (ค้างชำระ) จ่ายเมื่อพร้อมส่ง — ยอดทั้งบิลไม่เปลี่ยน
     var preorderInfo_ = preorderCalc_(items, getPreorderConfig_(), adminExtra_ && Array.isArray(adminExtra_.preorder) ? adminExtra_.preorder : null, finalAmount,
-      subtotal > 0 ? Math.max(0, finalAmount - finalShippingCost) / subtotal : 1);
+      { entries: appliedPrivileges.concat(couponResults), whole: repeatBonusDiscount_ + adminExtraDiscount_, points: pointsRedeemResult_.discount, ship: finalShippingCost });
     if (preorderInfo_.balance > 0 && String(paymentMethod || '') === 'cod') return { success: false, error: 'ออเดอร์ที่มีสินค้า Pre-order ชำระแบบเก็บเงินปลายทางไม่ได้ กรุณาเลือกโอน/พร้อมเพย์ หรือบัตร' };
     var isCodOrder = String(paymentMethod || '') === 'cod';
     var codFee = 0;
