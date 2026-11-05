@@ -2114,7 +2114,8 @@ function preorderBalance_(){
   var sub = 0;
   Object.keys(cart).forEach(function(name){ var v = findVariant(name); if (v && v.preorder) sub += cart[name] * v.price; });
   if (!sub) return 0;
-  var bal = Math.round(sub * (100 - preorderCfg_.depositPct) / 100);
+  // ส่วนลด/คะแนนเฉลี่ยตามสัดส่วนราคา แล้วแบ่งตาม %มัดจำ (สูตรเดียวกับ preorderCalc_ ฝั่งเซิร์ฟเวอร์)
+  var bal = Math.round(sub * preorderNetRatio_() * (100 - preorderCfg_.depositPct) / 100);
   var cap = Math.floor(getFinalTotalBeforeCod_()) - 1;
   return Math.max(0, Math.min(bal, cap));
 }
@@ -2122,6 +2123,11 @@ function preorderBalance_(){
 function preorderLabel_(){ return 'PRE-ORDER' + (preorderCfg_ && preorderCfg_.leadDays > 0 ? ' ' + preorderCfg_.leadDays + ' วัน' : ''); }
 // ⚡ ผู้ใช้ขอไม่แสดงวันที่ส่ง — แสดงแค่ "PRE-ORDER 7 วัน"
 function preorderShipHint_(){ return ''; }
+function preorderNetRatio_(){
+  var cartTotal = getCartTotal();
+  if (!(cartTotal > 0)) return 1;
+  return Math.max(0, Math.min(1, (getFinalTotalBeforeCod_() - getFinalShippingCost()) / cartTotal));
+}
 function preorderTagHtml_(v){
   if (!v || !v.preorder) return '';
   var hint = preorderShipHint_();
@@ -2135,24 +2141,27 @@ function preorderNoticeHtml_(payNow, balance){
     var amt = cart[name] * v.price;
     if (v.preorder) { preSub += amt; preLines.push(name + ' x' + cart[name]); } else { normalSub += amt; normLines.push(name + ' x' + cart[name]); }
   });
-  var deposit = preSub - balance;
+  var depositGross = Math.round(preSub * preorderCfg_.depositPct / 100);  // มัดจำก่อนหักส่วนลด
+  var laterGross = preSub - depositGross;                                // ส่วนที่เหลือก่อนหักส่วนลด
+  var laterDisc = Math.max(0, laterGross - balance);                     // ส่วนลดที่ไปหักตอนจ่ายส่วนที่เหลือ
   var ship = Math.round(getFinalShippingCost() || 0);
   var fee = codFeeAmount_() + cardFeeAmount_();
-  var disc = Math.max(0, Math.round(deposit + normalSub + ship + fee - payNow));
+  var disc = Math.max(0, Math.round(depositGross + normalSub + ship + fee - payNow)); // ส่วนลดที่หักตอนนี้
   var row = function(label, amt, sub){
     return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px"><span>' + label + (sub ? '<span style="display:block;font-size:11px;color:#8d4a00">' + sub + '</span>' : '') + '</span><span style="white-space:nowrap">' + amt + '</span></div>';
   };
   var fmt = function(n){ return '฿' + Math.round(n).toLocaleString('th-TH'); };
-  var rows = row('📦 มัดจำ ' + preorderCfg_.depositPct + '% สินค้า Pre-order', fmt(deposit), escHtml(preLines.join(', ')) + ' (เต็ม ' + fmt(preSub) + ')');
+  var rows = row('📦 มัดจำ ' + preorderCfg_.depositPct + '% สินค้า Pre-order', fmt(depositGross), escHtml(preLines.join(', ')) + ' (เต็ม ' + fmt(preSub) + ')');
   if (normalSub > 0) rows += row('🛒 สินค้าปกติ (จ่ายเต็ม)', fmt(normalSub), escHtml(normLines.join(', ')));
   if (ship > 0) rows += row('🚚 ค่าจัดส่ง', fmt(ship));
   if (fee > 0) rows += row('💳 ค่าธรรมเนียม', fmt(fee));
-  if (disc > 0) rows += row('🏷️ ส่วนลด/คะแนน', '<span style="color:#c62828">-' + fmt(disc) + '</span>');
+  if (disc > 0) rows += row('🏷️ ส่วนลด/คะแนน' + (laterDisc > 0 ? ' (ส่วนของตอนนี้)' : ''), '<span style="color:#c62828">-' + fmt(disc) + '</span>', laterDisc > 0 ? 'ส่วนลดของสินค้า Pre-order แบ่งครึ่ง: ลดตอนนี้ครึ่งหนึ่ง ลดตอนจ่ายส่วนที่เหลืออีกครึ่ง' : '');
   return '<div style="border:2px dashed #ef6c00;background:#fff8e1;border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:13px;color:#5a3200;line-height:1.6">'
     + '📦 <b style="color:#e65100">ออเดอร์นี้มีสินค้า Pre-order</b><br>ชำระมัดจำ ' + preorderCfg_.depositPct + '% ของสินค้า Pre-order (สินค้าปกติชำระเต็ม) รวมจ่ายครั้งเดียวตอนนี้ ส่วนที่เหลือชำระเมื่อสินค้าพร้อมส่ง'
     + '<div style="background:#fff;border-radius:8px;padding:6px 9px;margin-top:6px">' + rows
     + '<div style="display:flex;justify-content:space-between;border-top:1px dashed #f0c27a;margin-top:4px;padding-top:4px"><b>💰 ชำระตอนนี้</b><b style="font-size:19px;color:#e65100">฿' + payNow.toLocaleString('th-TH') + '</b></div></div>'
-    + '<div style="display:flex;justify-content:space-between;margin-top:6px"><span>⏳ ชำระเมื่อพร้อมส่ง <span style="font-size:11px">(Pre-order ส่วนที่เหลือ ' + (100 - preorderCfg_.depositPct) + '%)</span></span><b>฿' + balance.toLocaleString('th-TH') + '</b></div>'
+    + '<div style="display:flex;justify-content:space-between;margin-top:6px"><span>⏳ ชำระเมื่อพร้อมส่ง <span style="font-size:11px">(Pre-order ส่วนที่เหลือ ' + (100 - preorderCfg_.depositPct) + '%)</span>'
+      + (laterDisc > 0 ? '<span style="display:block;font-size:11px;color:#8d4a00">' + fmt(laterGross) + ' − ส่วนลด ' + fmt(laterDisc) + '</span>' : '') + '</span><b>฿' + balance.toLocaleString('th-TH') + '</b></div>'
     + (preorderCfg_.leadDays > 0 ? '<div style="font-size:12px;color:#8d4a00">⏱️ Pre-order ' + preorderCfg_.leadDays + ' วัน</div>' : '')
     + (preorderShipHint_() ? '<div style="font-size:11.5px;color:#8d4a00">🚚 ' + escHtml(preorderShipHint_()) + '</div>' : '')
     + '</div>';

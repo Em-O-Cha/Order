@@ -1682,7 +1682,7 @@ function preorderMatch_(cfg, itemName) {
   return cfg.products.some(function (k) { return n.indexOf(String(k).toLowerCase()) !== -1; });
 }
 
-function preorderCalc_(items, cfg, adminNames, maxBalance) {
+function preorderCalc_(items, cfg, adminNames, maxBalance, netRatio) {
   var out = { lines: [], subtotal: 0, balance: 0, pct: cfg ? cfg.depositPct : 50 };
   if (!cfg) return out;
   var adminSet = null;
@@ -1698,7 +1698,8 @@ function preorderCalc_(items, cfg, adminNames, maxBalance) {
     out.subtotal += amount;
   });
   if (!out.subtotal) return out;
-  out.balance = Math.round(out.subtotal * (100 - out.pct) / 100);
+  var ratio = (netRatio === undefined || netRatio === null || !isFinite(netRatio)) ? 1 : Math.max(0, Math.min(1, netRatio));
+  out.balance = Math.round(out.subtotal * ratio * (100 - out.pct) / 100);
   if (maxBalance !== undefined && maxBalance !== null) out.balance = Math.max(0, Math.min(out.balance, Math.floor(maxBalance) - 1));
   return out;
 }
@@ -2489,7 +2490,8 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     // ⚡ เพิ่ม (19/9/69) — เก็บเงินปลายทาง: เช็คสิทธิ์ซ้ำฝั่ง backend เสมอ ไม่เชื่อค่าที่ส่งมาจากหน้าเว็บ
     // (กันคนแก้หน้าเว็บเองแล้วสั่งซื้อทั้งที่ร้านปิดรับ/ถูกบล็อก/ยอดไม่เข้าเงื่อนไข) แล้วค่อยบวกค่าธรรมเนียม
     // ⚡ (5/11/69) Pre-order: สินค้า Pre-order จ่ายมัดจำตอนสั่ง ส่วนที่เหลือ (ค้างชำระ) จ่ายเมื่อพร้อมส่ง — ยอดทั้งบิลไม่เปลี่ยน
-    var preorderInfo_ = preorderCalc_(items, getPreorderConfig_(), adminExtra_ && Array.isArray(adminExtra_.preorder) ? adminExtra_.preorder : null, finalAmount);
+    var preorderInfo_ = preorderCalc_(items, getPreorderConfig_(), adminExtra_ && Array.isArray(adminExtra_.preorder) ? adminExtra_.preorder : null, finalAmount,
+      subtotal > 0 ? Math.max(0, finalAmount - finalShippingCost) / subtotal : 1);
     if (preorderInfo_.balance > 0 && String(paymentMethod || '') === 'cod') return { success: false, error: 'ออเดอร์ที่มีสินค้า Pre-order ชำระแบบเก็บเงินปลายทางไม่ได้ กรุณาเลือกโอน/พร้อมเพย์ หรือบัตร' };
     var isCodOrder = String(paymentMethod || '') === 'cod';
     var codFee = 0;
