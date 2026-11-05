@@ -1699,7 +1699,9 @@ function preorderCalc_(items, cfg, adminNames, maxBalance, netRatio) {
   });
   if (!out.subtotal) return out;
   var ratio = (netRatio === undefined || netRatio === null || !isFinite(netRatio)) ? 1 : Math.max(0, Math.min(1, netRatio));
-  out.balance = Math.round(out.subtotal * ratio * (100 - out.pct) / 100);
+  // ⚡ (5/11/69) มัดจำ = ครึ่งหนึ่งของยอดหลังหักส่วนลด "ปัดขึ้น" ส่วนที่เหลือปัดลง (เช่น 333 → มัดจำ 167 / เหลือ 166)
+  var net_ = Math.round(out.subtotal * ratio);
+  out.balance = Math.floor(net_ * (100 - out.pct) / 100 + 1e-9);
   if (maxBalance !== undefined && maxBalance !== null) out.balance = Math.max(0, Math.min(out.balance, Math.floor(maxBalance) - 1));
   return out;
 }
