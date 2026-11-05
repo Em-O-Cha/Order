@@ -2063,7 +2063,8 @@ function renderCatalog(){
   categories.forEach(function(cat){
     h += '<div class="cat-card">';
     // ⚡ (5/11/69) Pre-order: ป้ายบนรูปสินค้า + ชื่อสินค้า (มีขนาดไหนเป็น Pre-order ก็ขึ้นป้าย)
-    var catPre_ = preorderCfg_ && cat.variants.some(function(x){ return x.preorder; });
+    // ⚡ ผู้ใช้ขอให้ขึ้นจุดเดียว (ป้ายใต้ราคาของแต่ละขนาด) — ไม่ขึ้นป้ายบนรูป/ข้างชื่อ/ใต้ชื่อ
+    var catPre_ = false;
     var preHint_ = catPre_ ? preorderShipHint_() : '';
     var preRibbon_ = catPre_ ? '<div style="position:absolute;left:10px;top:10px;background:linear-gradient(135deg,#ef6c00,#ff9800);color:#fff;font-weight:700;font-size:12.5px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.25)">📦 ' + preorderLabel_() + (preHint_ ? ' · ' + escHtml(preHint_) : '') + '</div>' : '';
     if (cat.image) {
