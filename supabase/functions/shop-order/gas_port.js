@@ -1988,6 +1988,22 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
     return result;
   }
 
+  // ⚡ (5/11/69) ลด % เฉพาะสินค้า: คิดราคาต่อชิ้นแล้วปัดเป็นบาทตามหลักสากล (.50 ปัดขึ้น — เหมือนป้ายราคาหน้าร้าน)
+  // แล้วคูณจำนวน เช่น 350 ลด 5% = 333 · 90 ลด 5% = ชิ้นละ 86 → 2 ชิ้น 172
+  if (type === 'percent' && String(restriction || '').trim()) {
+    var kwPct = String(restriction).split(',').map(function (k) { return k.trim().toLowerCase(); }).filter(Boolean);
+    var pctDiscount = 0;
+    (items || []).forEach(function (it) {
+      var name = String(it.name).toLowerCase();
+      if (!kwPct.some(function (k) { return name.indexOf(k) !== -1; })) return;
+      var unit = parseFloat(it.price) || 0, q = parseFloat(it.qty) || 0;
+      if (unit <= 0 || q <= 0) return;
+      var unitAfter = Math.max(0, Math.round(unit * (100 - value) / 100 + 1e-9));
+      pctDiscount += (unit - unitAfter) * q;
+    });
+    result.productDiscount = pctDiscount;
+    return result;
+  }
   var eligibleInfo = computeEligibleInfo_(items, restriction);
   result.productDiscount = calcDiscountAmount_(type, value, eligibleInfo, !!restriction);
   return result;

@@ -1791,7 +1791,7 @@ function promoGiftHint_(skuName){
   });
   return hint;
 }
-// ⚡ (5/11/69) ป้ายราคาปัดเศษทิ้ง (Math.floor) แบบเดียวกับยอดสุทธิหน้าชำระเงิน — เดิม Math.round ทำให้ 332.5 ขึ้น ฿333 แต่จ่ายจริง ฿332
+// ⚡ (5/11/69) ลด % ปัดราคาต่อชิ้นตามหลักสากล (.50 ปัดขึ้น) ตรงกับที่เซิร์ฟเวอร์คิด (calcPromoDiscount_) — 350 ลด 5% = ฿333
 function getBestPromoPrice_(skuName, price){
   var best = null;
   activeAutoCoupons.concat(myPricePrivileges_).forEach(function(c){
@@ -1801,7 +1801,7 @@ function getBestPromoPrice_(skuName, price){
     var matches = keywords.some(function(kw){ return skuName.indexOf(kw) !== -1; });
     if (!matches) return;
     // price = ขายราคาพิเศษต่อชิ้น (มูลค่าคือราคาขาย ไม่ใช่ส่วนลด) — ราคาปกติถูกกว่าอยู่แล้วไม่ขึ้นป้าย
-    var discounted = c.type === 'percent' ? price * (1 - c.value / 100)
+    var discounted = c.type === 'percent' ? Math.round(price * (100 - c.value) / 100 + 1e-9)
       : (c.type === 'price' ? Math.min(price, promoUnitPrice_(c, skuName)) : Math.max(0, price - c.value));
     if (discounted >= price) return;
     if (best === null || discounted < best) best = discounted;
@@ -2083,7 +2083,7 @@ function renderCatalog(){
       // ⚡ แก้ — ระบุ font-size:18px ตรงๆ ในทั้ง 2 span แทนที่จะปล่อยให้สืบทอดจาก .prod-price เฉยๆ กันกรณี
       // เบราว์เซอร์/บริบทไหนไม่สืบทอดขนาดตัวอักษรให้ ราคาที่ลด (ตัวแดง) จะได้ใหญ่เท่าราคาปกติเสมอ
       var priceHtml = promoPrice !== null
-        ? '<span style="font-size:18px;text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="font-size:18px;color:#c62828;font-weight:700">฿' + Math.floor(promoPrice + 1e-9).toLocaleString('th-TH') + '</span>'
+        ? '<span style="font-size:18px;text-decoration:line-through;color:#999;margin-right:6px">฿' + v.price.toLocaleString('th-TH') + '</span><span style="font-size:18px;color:#c62828;font-weight:700">฿' + Math.round(promoPrice + 1e-9).toLocaleString('th-TH') + '</span>'
         : '฿' + v.price.toLocaleString('th-TH');
       var giftHint = promoGiftHint_(v.skuName);
       var soldOut_ = v.stock && v.stock.left <= 0;
