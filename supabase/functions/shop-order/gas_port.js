@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 208 รายการ (140 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 215 รายการ (146 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -568,6 +568,7 @@ function getShopProducts() {
     var stockLimited_ = shopStockLimitTester_();
     var hidden_ = {};
     shopHiddenProducts_().forEach(function (n) { hidden_[n] = true; });
+    var preCfg_ = getPreorderConfig_(); // ⚡ (5/11/69) สินค้า Pre-order มัดจำ
 
     var categoryMap = {};
     var order = [];
@@ -600,6 +601,7 @@ function getShopProducts() {
                            unit: unitWordM_ ? unitWordM_[1] : 'ชิ้น' };
       }
       if (hidden_[skuName] || hidden_[category]) variant_.hidden = true;
+      if (preorderMatch_(preCfg_, skuName)) variant_.preorder = true;
       categoryMap[category].variants.push(variant_);
     });
 
@@ -608,6 +610,7 @@ function getShopProducts() {
       if (hidden_[c.name] || c.variants.every(function (v) { return v.hidden; })) c.hidden = true;
     });
     var result = { success: true, categories: categories };
+    if (preCfg_.enabled) result.preorder = { depositPct: preCfg_.depositPct, shipText: preCfg_.shipText };
     try { cache.put(SHOP_PRODUCTS_CACHE_KEY_, JSON.stringify(result), 180); } catch (e) {}
     return result;
   } catch (e) {
@@ -1642,6 +1645,68 @@ function priceMaxQty_(raw) {
   try { return Math.max(0, parseInt(JSON.parse(s).maxQty, 10) || 0); } catch (e) { return 0; }
 }
 
+var PREORDER_CONFIG_PROP_ = 'PREORDER_CONFIG_V1';
+
+function preorderDefaultConfig_() {
+  return { enabled: false, depositPct: 50, products: [], shipText: '', remindDays: 2, maxReminds: 3 };
+}
+
+function normalizePreorderConfig_(c) {
+  c = c || {};
+  var pct = Math.round(parseFloat(c.depositPct));
+  if (!isFinite(pct)) pct = 50;
+  return {
+    enabled: c.enabled === true || c.enabled === 'true',
+    depositPct: Math.max(10, Math.min(90, pct)),
+    products: (Array.isArray(c.products) ? c.products : String(c.products || '').split(','))
+      .map(function (x) { return String(x || '').replace(/,/g, ' ').trim(); }).filter(function (x) { return x; }).slice(0, 100),
+    shipText: String(c.shipText || '').trim().substring(0, 60),
+    remindDays: Math.max(1, Math.min(14, Math.round(parseFloat(c.remindDays)) || 2)),
+    maxReminds: Math.max(0, Math.min(10, isFinite(parseInt(c.maxReminds, 10)) ? parseInt(c.maxReminds, 10) : 3))
+  };
+}
+
+function getPreorderConfig_() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(PREORDER_CONFIG_PROP_);
+    return raw ? normalizePreorderConfig_(JSON.parse(raw)) : preorderDefaultConfig_();
+  } catch (e) {
+    return preorderDefaultConfig_();
+  }
+}
+
+function preorderMatch_(cfg, itemName) {
+  if (!cfg || !cfg.enabled || !cfg.products.length) return false;
+  var n = String(itemName || '').toLowerCase();
+  return cfg.products.some(function (k) { return n.indexOf(String(k).toLowerCase()) !== -1; });
+}
+
+function preorderCalc_(items, cfg, adminNames, maxBalance) {
+  var out = { lines: [], subtotal: 0, balance: 0, pct: cfg ? cfg.depositPct : 50 };
+  if (!cfg) return out;
+  var adminSet = null;
+  if (Array.isArray(adminNames)) { adminSet = {}; adminNames.forEach(function (n) { adminSet[String(n)] = true; }); }
+  if (!adminSet && !cfg.enabled) return out;
+  (items || []).forEach(function (it) {
+    var qty = parseFloat(it.qty) || 0;
+    if (qty <= 0) return;
+    var isPre = adminSet ? !!adminSet[String(it.name)] : preorderMatch_(cfg, it.name);
+    if (!isPre) return;
+    var amount = qty * (parseFloat(it.price) || 0);
+    out.lines.push({ name: String(it.name), qty: qty, amount: amount });
+    out.subtotal += amount;
+  });
+  if (!out.subtotal) return out;
+  out.balance = Math.round(out.subtotal * (100 - out.pct) / 100);
+  if (maxBalance !== undefined && maxBalance !== null) out.balance = Math.max(0, Math.min(out.balance, Math.floor(maxBalance) - 1));
+  return out;
+}
+
+function preorderRemarkToken_(info) {
+  var names = info.lines.map(function (l) { return cleanPriceGiftText_(l.name).replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim() + ' x' + l.qty; }).join(', ');
+  return '🧾 Pre-order: ค้างชำระ ฿' + Math.round(info.balance) + ' (มัดจำ ' + info.pct + '% ของ ฿' + Math.round(info.subtotal) + ' · ' + names + ')';
+}
+
 function pricePointsCost_(raw) {
   var s = String(raw || '').trim();
   if (s.charAt(0) !== '{') return 0;
@@ -2422,6 +2487,9 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
 
     // ⚡ เพิ่ม (19/9/69) — เก็บเงินปลายทาง: เช็คสิทธิ์ซ้ำฝั่ง backend เสมอ ไม่เชื่อค่าที่ส่งมาจากหน้าเว็บ
     // (กันคนแก้หน้าเว็บเองแล้วสั่งซื้อทั้งที่ร้านปิดรับ/ถูกบล็อก/ยอดไม่เข้าเงื่อนไข) แล้วค่อยบวกค่าธรรมเนียม
+    // ⚡ (5/11/69) Pre-order: สินค้า Pre-order จ่ายมัดจำตอนสั่ง ส่วนที่เหลือ (ค้างชำระ) จ่ายเมื่อพร้อมส่ง — ยอดทั้งบิลไม่เปลี่ยน
+    var preorderInfo_ = preorderCalc_(items, getPreorderConfig_(), adminExtra_ && Array.isArray(adminExtra_.preorder) ? adminExtra_.preorder : null, finalAmount);
+    if (preorderInfo_.balance > 0 && String(paymentMethod || '') === 'cod') return { success: false, error: 'ออเดอร์ที่มีสินค้า Pre-order ชำระแบบเก็บเงินปลายทางไม่ได้ กรุณาเลือกโอน/พร้อมเพย์ หรือบัตร' };
     var isCodOrder = String(paymentMethod || '') === 'cod';
     var codFee = 0;
     if (isCodOrder) {
@@ -2525,6 +2593,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     var remark = shippingLine + ' (น้ำหนักรวม ' + totalWeightG + ' กรัม) | ' + (isCodOrder ? COD_REMARK_PENDING_ : 'รอแนบสลิป - LINE Shop')
       + (discountNoteParts.length ? ' | ' + discountNoteParts.join(', ') : '')
       + (pointsToReserve_ > 0 ? ' | 🎯 คะแนนรอหัก: ' + pointsToReserve_ + ' คะแนน (-฿' + Math.round(pointsRedeemResult_.discount) + ')' : '')
+      + (preorderInfo_.balance > 0 ? ' | ' + preorderRemarkToken_(preorderInfo_) : '')
       + (freebieNoteParts.length ? ' | 🎁 แถม (ลดราคาแล้ว): ' + freebieNoteParts.join(', ') : '')
       + (physicalFreebieNoteParts.length ? ' | 📦 ต้องหยิบของแถมเพิ่ม: ' + physicalFreebieNoteParts.join(', ') : '')
       + (purchaseReferrerCodeClean_ ? ' | 🤝 รหัสแนะนำซื้อ: ' + purchaseReferrerCodeClean_ : '');
@@ -2720,7 +2789,8 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     }
 
     invalidatePendingPointsCache_(phone); // เพิ่งจองคะแนนก้อนใหม่ลงชีต ตัวเลขที่แคชไว้ใช้ไม่ได้แล้ว
-    var finalReturnPayload_ = { success: true, orderId: revenueId, subtotal: subtotal, discount: totalDiscount, cashDiscount: cashDiscountOnly_, shippingCost: deliveryColValue_, codFee: codFee, isCod: isCodOrder, cardFee: cardFee, isCard: isCardOrder, totalAmount: finalAmount, pointsEarned: pointsEarned, skipSlipUpload: skipSlipUpload, freebieItems: freebieNoteParts, physicalFreebieItems: physicalFreebieNoteParts, discountDetail: discountNoteParts, pointsRedeemed: pointsRedeemResult_.pointsUsed, pointsRedeemDiscount: pointsRedeemResult_.discount, isEdit: isEditingExistingOrder, editChanges: editChanges_ };
+    var finalReturnPayload_ = { success: true, orderId: revenueId, subtotal: subtotal, discount: totalDiscount, cashDiscount: cashDiscountOnly_, shippingCost: deliveryColValue_, codFee: codFee, isCod: isCodOrder, cardFee: cardFee, isCard: isCardOrder, totalAmount: finalAmount, pointsEarned: pointsEarned, skipSlipUpload: skipSlipUpload, freebieItems: freebieNoteParts, physicalFreebieItems: physicalFreebieNoteParts, discountDetail: discountNoteParts, pointsRedeemed: pointsRedeemResult_.pointsUsed, pointsRedeemDiscount: pointsRedeemResult_.discount, isEdit: isEditingExistingOrder, editChanges: editChanges_,
+      preorderBalance: preorderInfo_.balance, payNow: Math.max(0, finalAmount - preorderInfo_.balance) };
   } catch (e) {
     return { success: false, error: e.toString() };
   } finally {
@@ -2955,6 +3025,7 @@ function getBillDataForNotify_(sheet, targetRow) {
     shipCod: String(mainRow[19] || '').indexOf('ค่าจัดส่ง: ' + SHIP_COD_NOTE_) !== -1,
     purchaseReferrerCode: parsePurchaseReferrerCodeFromRemark_(mainRow[19]),
     slipImageUrl: String(mainRow[10] || ''),
+    remark: String(mainRow[19] || ''), // ⚡ (5/11/69) Pre-order: ยอดที่ต้องจ่ายตอนสั่ง = preorderPayNow_(billTotal, remark)
     orderTime: mainRow[1] || '', // คอลัมน์ B: เวลาสั่งซื้อ
     lineUid: String(mainRow[31] || '') // ⚡ คอลัมน์ AF: LINE UID ที่บันทึกไว้ตอนสั่งซื้อ (ย้ายมาจากคอลัมน์ Z เดิมเมื่อ 1/9/69 กันชนกับ Revenue Spunky Online — ออเดอร์เก่าก่อนแก้จะว่าง ให้ fallback ไปหาเบอร์โทรแทน)
   };
