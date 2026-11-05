@@ -2062,10 +2062,14 @@ function renderCatalog(){
   var h = '';
   categories.forEach(function(cat){
     h += '<div class="cat-card">';
+    // ⚡ (5/11/69) Pre-order: ป้ายบนรูปสินค้า + ชื่อสินค้า (มีขนาดไหนเป็น Pre-order ก็ขึ้นป้าย)
+    var catPre_ = preorderCfg_ && cat.variants.some(function(x){ return x.preorder; });
+    var preRibbon_ = catPre_ ? '<div style="position:absolute;left:10px;top:10px;background:linear-gradient(135deg,#ef6c00,#ff9800);color:#fff;font-weight:700;font-size:12.5px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.25)">📦 PRE-ORDER' + (preorderCfg_.shipText ? ' · ' + escHtml(preorderCfg_.shipText) : '') + '</div>' : '';
     if (cat.image) {
-      h += '<img class="cat-img" src="' + escHtml(cat.image) + '" alt="' + escHtml(cat.name) + '" onerror="this.style.display=\'none\'">';
+      h += '<div style="position:relative"><img class="cat-img" src="' + escHtml(cat.image) + '" alt="' + escHtml(cat.name) + '" onerror="this.style.display=\'none\'">' + preRibbon_ + '</div>';
     }
-    h += '<div class="cat-name">' + escHtml(cat.name) + '</div>';
+    h += '<div class="cat-name">' + escHtml(cat.name) + (catPre_ ? ' <span style="display:inline-block;vertical-align:2px;background:#ef6c00;color:#fff;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px">PRE-ORDER</span>' : '') + '</div>'
+      + (catPre_ ? '<div style="margin:0 14px 4px;font-size:12px;color:#8d4a00;background:#fff8e1;border-radius:8px;padding:5px 9px">💰 จ่ายมัดจำ ' + preorderCfg_.depositPct + '% ตอนสั่ง ที่เหลือจ่ายเมื่อสินค้าพร้อมส่ง</div>' : '');
     cat.variants.forEach(function(v){
       var idx = variantList.length;
       v._pool = cat.name;   // ขนาดต่าง ๆ ของสินค้าเดียวกันใช้สต๊อกก้อนเดียวกัน
