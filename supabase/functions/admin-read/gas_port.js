@@ -881,8 +881,8 @@ function getBirthdayPromoConfig_() {
       }
       fallback[mode].lineMessage = String(src.lineMessage || '');
       fallback[mode].rewards = (Array.isArray(src.rewards) ? src.rewards : []).map(normalizeBirthdayPromoReward_);
-      fallback[mode].cardStyle = src.cardStyle === 'deal' ? 'deal' : birthdayCardStyle_(src.cardStyle);
-      if (fallback[mode].cardStyle === 'deal') fallback[mode].deal = birthdayDealGet_(mode);   // ⚡ (6/11/69) แบบ K (เก็บแยก property)
+      fallback[mode].cardStyle = (src.cardStyle === 'deal' || src.cardStyle === 'dealL') ? src.cardStyle : birthdayCardStyle_(src.cardStyle);
+      if (/^deal/.test(fallback[mode].cardStyle)) fallback[mode].deal = birthdayDealGet_(mode);   // ⚡ (6/11/69) แบบ K (เก็บแยก property)
       fallback[mode].images = birthdayCardImages_(src.images);
       fallback[mode].look = birthdayCardLook_(src.look);
       fallback[mode].onlyMonth = /^\d{4}-\d{2}$/.test(String(src.onlyMonth || '')) ? String(src.onlyMonth) : '';
