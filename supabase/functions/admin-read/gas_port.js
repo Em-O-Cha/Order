@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 132 รายการ (91 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 134 รายการ (92 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -881,7 +881,8 @@ function getBirthdayPromoConfig_() {
       }
       fallback[mode].lineMessage = String(src.lineMessage || '');
       fallback[mode].rewards = (Array.isArray(src.rewards) ? src.rewards : []).map(normalizeBirthdayPromoReward_);
-      fallback[mode].cardStyle = birthdayCardStyle_(src.cardStyle);
+      fallback[mode].cardStyle = src.cardStyle === 'deal' ? 'deal' : birthdayCardStyle_(src.cardStyle);
+      if (fallback[mode].cardStyle === 'deal') fallback[mode].deal = birthdayDealGet_(mode);   // ⚡ (6/11/69) แบบ K (เก็บแยก property)
       fallback[mode].images = birthdayCardImages_(src.images);
       fallback[mode].look = birthdayCardLook_(src.look);
       fallback[mode].onlyMonth = /^\d{4}-\d{2}$/.test(String(src.onlyMonth || '')) ? String(src.onlyMonth) : '';
@@ -890,6 +891,12 @@ function getBirthdayPromoConfig_() {
     Logger.log('getBirthdayPromoConfig_ error: ' + e.toString());
   }
   return fallback;
+}
+
+var BIRTHDAY_DEAL_PROP_ = 'BIRTHDAY_DEAL_CARD_';
+
+function birthdayDealGet_(mode) {
+  try { var raw = PropertiesService.getScriptProperties().getProperty(BIRTHDAY_DEAL_PROP_ + mode); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }   // ตัวสร้างการ์ด (DealCard.gs) ตรวจค่าเองอีกชั้น
 }
 
 function birthdayCardStyle_(v) {
