@@ -3533,7 +3533,8 @@ function codFeeAmount_(){
 // ⚡ เพิ่ม (8/10/69) — ค่าธรรมเนียมชำระด้วยบัตร (ถ้าร้านตั้งให้ลูกค้าจ่าย) สูตรเดียวกับ calcCardFee_ ใน Members.gs
 function cardFeeAmount_(){
   if (selectedPayment !== 'card' || !cardInfo_ || !cardInfo_.fee) return 0;
-  var base = getFinalTotalBeforeCod_();
+  // ⚡ (9/11/69) Pre-order: คิดจากยอดที่รูดบัตรตอนนี้เท่านั้น (ส่วนค้างชำระคิดค่าธรรมเนียมตอนจ่ายส่วนนั้น)
+  var base = getFinalTotalBeforeCod_() - (shopMode_ === 'bulk' ? 0 : preorderBalance_());
   if (base <= 0) return 0;
   if (cardInfo_.feeFreeFrom > 0 && base >= cardInfo_.feeFreeFrom) return 0; // ยอดถึงเกณฑ์ ฟรีค่าธรรมเนียม
   if (cardInfo_.feeType === 'fixed') return Math.round(cardInfo_.fee);

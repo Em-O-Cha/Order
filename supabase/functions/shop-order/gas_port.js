@@ -2709,7 +2709,8 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     if (isCardOrder) {
       var cardEligibility_ = evaluateCardEligibility_(finalAmount, null, phone);
       if (!cardEligibility_.allowed) return { success: false, error: cardEligibility_.reason };
-      cardFee = calcCardFee_(finalAmount);
+      // ⚡ (9/11/69) Pre-order: ค่าธรรมเนียมคิดจากยอดที่รูดบัตรตอนนี้เท่านั้น (ไม่รวมส่วนค้างชำระ — ส่วนนั้นคิดตอนจ่ายจริงใน Preorder.gs)
+      cardFee = calcCardFee_(Math.max(0, finalAmount - (preorderInfo_.balance || 0)));
       finalAmount = finalAmount + cardFee;
     }
 
