@@ -2471,7 +2471,7 @@ function pbSetMethod_(m){
     var fee = r.cardFee || 0;
     box.innerHTML = '<div class="bank-box" style="text-align:center"><p style="font-weight:600;color:#5b2c9c">💳 ชำระด้วยบัตรเครดิต/เดบิต</p>'
       + '<p style="font-size:24px;font-weight:700;color:#5b2c9c;margin-top:6px">฿' + (r.balance + fee).toLocaleString('th-TH') + '</p>'
-      + (fee ? '<p style="font-size:12px;color:var(--g6)">(รวมค่าธรรมเนียมบัตร' + (cardFeePctText_() || r.cardFeePct || '') + ' ฿' + fee.toLocaleString('th-TH') + ')</p>' : '') + '</div>'
+      + (fee ? '<p style="font-size:12px;color:var(--g6)">(รวมค่าธรรมเนียมบัตร' + (r.cardFeePct || '') + ' ฿' + fee.toLocaleString('th-TH') + ')</p>' : '') + '</div>'
       + '<button type="button" class="btn btn-block" id="pbCardBtn" style="margin-top:12px" onclick="pbStartCard_()">💳 ไปหน้าชำระเงิน</button>';
     return;
   }
@@ -3542,14 +3542,21 @@ function codFeeAmount_(){
 }
 
 // ⚡ เพิ่ม (8/10/69) — ค่าธรรมเนียมชำระด้วยบัตร (ถ้าร้านตั้งให้ลูกค้าจ่าย) สูตรเดียวกับ calcCardFee_ ใน Members.gs
+// ⚡ (9/11/69) Pre-order: คิดจากยอดที่รูดบัตรตอนนี้เท่านั้น (ส่วนค้างชำระคิดค่าธรรมเนียมตอนจ่ายส่วนนั้น)
+function cardFeeBase_(){ return getFinalTotalBeforeCod_() - (shopMode_ === 'bulk' ? 0 : preorderBalance_()); }
+// บิลเล็ก: ยอดที่รูดต่ำกว่า smallUnder บวกเพิ่ม smallFee บาท (สูตรเดียวกับ calcCardFee_ ใน Members.gs)
+function cardSmallApplies_(base){
+  return !!cardInfo_ && cardInfo_.smallFee > 0 && cardInfo_.smallUnder > 0 && base > 0 && base < cardInfo_.smallUnder
+    && !(cardInfo_.feeFreeFrom > 0 && base >= cardInfo_.feeFreeFrom);
+}
 function cardFeeAmount_(){
-  if (selectedPayment !== 'card' || !cardInfo_ || !cardInfo_.fee) return 0;
-  // ⚡ (9/11/69) Pre-order: คิดจากยอดที่รูดบัตรตอนนี้เท่านั้น (ส่วนค้างชำระคิดค่าธรรมเนียมตอนจ่ายส่วนนั้น)
-  var base = getFinalTotalBeforeCod_() - (shopMode_ === 'bulk' ? 0 : preorderBalance_());
+  if (selectedPayment !== 'card' || !cardInfo_) return 0;
+  var base = cardFeeBase_();
   if (base <= 0) return 0;
   if (cardInfo_.feeFreeFrom > 0 && base >= cardInfo_.feeFreeFrom) return 0; // ยอดถึงเกณฑ์ ฟรีค่าธรรมเนียม
-  if (cardInfo_.feeType === 'fixed') return Math.round(cardInfo_.fee);
-  return Math.round(base * cardInfo_.fee / 100);
+  var fee = !cardInfo_.fee ? 0 : cardInfo_.feeType === 'fixed' ? Math.round(cardInfo_.fee) : Math.round(base * cardInfo_.fee / 100);
+  if (cardSmallApplies_(base)) fee += Math.round(cardInfo_.smallFee);
+  return fee;
 }
 // เหตุผลที่ยังชำระด้วยบัตรกับบิลนี้ไม่ได้ ('' = ใช้ได้) — ลำดับเดียวกับ evaluateCardEligibility_
 function cardUnavailableReason_(){
@@ -3580,13 +3587,16 @@ function codUnavailableReason_(){
 // จะสลับกลับไปพร้อมเพย์ให้อัตโนมัติ กันกดสั่งซื้อแล้วเซิร์ฟเวอร์ปฏิเสธ
 // ⚡ (9/11/69) " 3%" ต่อท้ายคำว่าค่าธรรมเนียมบัตร (ตั้งแบบ % เท่านั้น · แบบบาทคงที่ = '')
 function cardFeePctText_(){
-  if (!cardInfo_ || !(cardInfo_.fee > 0) || cardInfo_.feeType === 'fixed') return '';
-  return ' ' + (Math.round(cardInfo_.fee * 100) / 100) + '%';
+  if (!cardInfo_) return '';
+  var t = cardInfo_.fee > 0 && cardInfo_.feeType !== 'fixed' ? ' ' + (Math.round(cardInfo_.fee * 100) / 100) + '%' : '';
+  try { if (selectedPayment === 'card' && cardSmallApplies_(cardFeeBase_())) t += (t ? ' +' : '') + ' ฿' + Math.round(cardInfo_.smallFee) + ' (ยอดต่ำกว่า ฿' + Math.round(cardInfo_.smallUnder) + ')'; } catch (e) {}
+  return t;
 }
 function updatePaymentMethodsUi_(){
   try {
     var subCard_ = document.querySelector('#optCard .payment-method-sub');
-    if (subCard_) subCard_.textContent = cardFeePctText_() ? 'ค่าธรรมเนียม' + cardFeePctText_() : 'Visa / Mastercard';
+    var pctOnly_ = cardInfo_ && cardInfo_.fee > 0 && cardInfo_.feeType !== 'fixed' ? ' ' + (Math.round(cardInfo_.fee * 100) / 100) + '%' : '';
+    if (subCard_) subCard_.textContent = pctOnly_ ? 'ค่าธรรมเนียม' + pctOnly_ : 'Visa / Mastercard';
   } catch (e) {}
   var codBtn = document.getElementById('optCod');
   if (!codBtn) return;

@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 228 รายการ (153 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 229 รายการ (154 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -347,6 +347,9 @@ function normalizeCardConfig_(src) {
     fee: Math.max(0, parseFloat(src.fee) || 0),               // 0 = ร้านรับค่าธรรมเนียมเอง
     feeType: src.feeType === 'fixed' ? 'fixed' : 'percent',
     feeFreeFrom: Math.max(0, parseFloat(src.feeFreeFrom) || 0), // ยอดตั้งแต่เท่านี้ขึ้นไปไม่คิดค่าธรรมเนียม (0 = คิดทุกบิล)
+    // ⚡ (9/11/69) บิลเล็ก: ยอดที่รูดต่ำกว่า smallUnder บาท บวกเพิ่ม smallFee บาท (ค่าเริ่มต้น ต่ำกว่า 200 บวก 10)
+    smallUnder: src.smallUnder === undefined || src.smallUnder === '' ? 200 : Math.max(0, parseFloat(src.smallUnder) || 0),
+    smallFee: src.smallFee === undefined || src.smallFee === '' ? 10 : Math.max(0, parseFloat(src.smallFee) || 0),
     note: String(src.note || CARD_CONFIG_DEFAULT_NOTE_),
     // โหมดทดสอบ (คีย์ทดสอบของผู้ให้บริการ ไม่มีเงินจริง): เห็นปุ่ม/จ่ายได้เฉพาะเบอร์ผู้ทดสอบ — ตั้งให้เองตอนบันทึก
     testOnly: src.testOnly === true || String(src.testOnly) === 'true',
@@ -377,10 +380,16 @@ function getCardConfig_() {
 
 function calcCardFee_(amountBeforeFee, cfg) {
   cfg = cfg || getCardConfig_();
-  if (!cfg.fee) return 0;
-  if (cfg.feeFreeFrom > 0 && (parseFloat(amountBeforeFee) || 0) >= cfg.feeFreeFrom) return 0; // ยอดถึงเกณฑ์ ฟรีค่าธรรมเนียม
-  if (cfg.feeType === 'percent') return Math.round((parseFloat(amountBeforeFee) || 0) * cfg.fee / 100);
-  return Math.round(cfg.fee);
+  var amt = parseFloat(amountBeforeFee) || 0;
+  if (cfg.feeFreeFrom > 0 && amt >= cfg.feeFreeFrom) return 0; // ยอดถึงเกณฑ์ ฟรีค่าธรรมเนียม
+  var fee = !cfg.fee ? 0 : cfg.feeType === 'percent' ? Math.round(amt * cfg.fee / 100) : Math.round(cfg.fee);
+  if (cardSmallApplies_(amt, cfg)) fee += Math.round(cfg.smallFee); // ⚡ (9/11/69) บิลเล็ก บวกเพิ่ม
+  return fee;
+}
+
+function cardSmallApplies_(amt, cfg) {
+  cfg = cfg || getCardConfig_();
+  return cfg.smallFee > 0 && cfg.smallUnder > 0 && amt > 0 && amt < cfg.smallUnder && !(cfg.feeFreeFrom > 0 && amt >= cfg.feeFreeFrom);
 }
 
 function evaluateCardEligibility_(amountBeforeFee, cfg, phone) {
