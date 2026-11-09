@@ -2272,7 +2272,7 @@ function renderBulkSummary_(wrap){
     var it = bulkByKey_[k]; if (!it) return;
     var price = it.tiers[Math.max(0, idx)], q = cart[k];
     if (it.retail > price) save += (it.retail - price) * q;
-    h += '<div class="row"><span>' + escHtml(it.name) + (it.size ? ' ' + escHtml(it.size) : '') + ' × ' + q + ' ลัง</span><span>฿' + (price * q).toLocaleString('th-TH') + '</span></div>';
+    h += '<div class="row"><span>' + escHtml(it.name) + (it.size ? ' ' + escHtml(it.size) : '') + ' <b style="color:#e65100">x' + q + ' ลัง</b></span><span>฿' + (price * q).toLocaleString('th-TH') + '</span></div>';
   });
   h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><b>ยอดสินค้า (' + cases + ' ลัง)</b><b>฿' + getCartTotal().toLocaleString('th-TH') + '</b></div>';
   if (save > 0) h += '<div class="row" style="color:#c62828;font-size:13px"><span>ประหยัดกว่าราคาปลีก</span><span>฿' + Math.round(save).toLocaleString('th-TH') + '</span></div>';
