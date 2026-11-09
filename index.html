@@ -32,6 +32,26 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .state .ico{font-size:40px;margin-bottom:12px;}
 #errorMsg{white-space:pre-line;text-align:left;font-size:13px;line-height:1.6;background:#fff3e0;border-radius:8px;padding:12px;}
 .sh{display:none !important;}
+/* ⚡ (9/11/69) ขายส่งยกลัง */
+.seg-mode{display:flex;background:#fff;border-radius:999px;padding:4px;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:12px}
+.seg-mode button{flex:1;border:0 !important;background:transparent !important;box-shadow:none !important;border-radius:999px;padding:9px 0;font-family:'Kanit',sans-serif;font-weight:600;font-size:15px;color:#777 !important;cursor:pointer;margin:0;height:auto;min-height:0}
+.seg-mode button.on{background:#a50d0c !important;color:#fff !important}
+.bulk-info{background:#fff8e1;border:1.5px dashed #f0b44c;border-radius:12px;padding:10px 12px;font-size:13px;color:#6b4300;line-height:1.6;margin-bottom:10px}
+.bulk-tiers{background:#fff;border-radius:12px;padding:10px;margin-bottom:12px}
+.bulk-tiers .trow{display:flex;gap:4px}
+.bulk-tiers .trow div{flex:1;text-align:center;border-radius:8px;padding:5px 0;font-size:12.5px;background:#f2f2f2;color:#888;font-weight:600}
+.bulk-tiers .trow .cur{background:var(--gm);color:#fff}
+.bulk-card{background:#fff;border-radius:14px;padding:10px;display:flex;gap:10px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.bulk-card img,.bulk-card .ph{width:84px;height:84px;border-radius:10px;object-fit:cover;flex:0 0 auto;background:#ffe9d6}
+.bulk-card .nm{font-weight:600;font-size:15px;line-height:1.3}
+.bulk-card .pk{font-size:12.5px;color:#888}
+.bulk-card .pr{font-size:18px;font-weight:700;color:var(--gd)}
+.bulk-card .pr s{font-size:12.5px;color:#aaa;font-weight:400;margin-left:4px}
+.bulk-card .pr b{font-size:11.5px;background:#fdecea;color:#c62828;border-radius:6px;padding:1px 6px;margin-left:4px}
+.bulk-card .mini{font-size:11.5px;color:#777;margin-top:2px;line-height:1.5}
+.limit-modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
+.limit-modal div{background:#fff;border-radius:16px;padding:20px 18px;max-width:340px;text-align:center;font-size:15.5px;line-height:1.6;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+.limit-modal button{margin-top:14px;background:var(--gm);color:#fff;border:0;border-radius:10px;padding:9px 30px;font-family:'Kanit',sans-serif;font-size:15px;cursor:pointer}
 
 .prod-item{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid #eee;}
 .prod-item:last-child{border-bottom:none;}
@@ -346,11 +366,13 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
     </div>
     <div id="catalogState" class="sh">
       <div class="history-link"><button type="button" onclick="showHistory()">🛒 รถเข็น<span class="cart-count sh" id="cartCount"></span></button></div>
+      <div id="shopModeSwitch" class="sh"></div>
       <div id="myPrivileges" class="sh" style="margin-bottom:16px"></div>
       <div id="autoPromoBox" class="sh"></div>
       <div id="pointsMultiplierBox" class="sh"></div>
       <div id="repeatPromoBox" class="sh"></div>
       <div id="prodList"></div>
+      <div id="bulkList" class="sh"></div>
     </div>
 
     <div id="historyState" class="sh">
@@ -421,7 +443,7 @@ button:disabled,.btn:disabled{opacity:.5;box-shadow:none;}
   </div>
   <div class="cart-bar sh" id="cartBar">
     <span class="edit-bar-tag"></span>
-    <div class="cart-total">รวม <span id="cartCount">0</span> ชิ้น<b id="cartTotal">฿0</b></div>
+    <div class="cart-total">รวม <span id="cartCount">0</span> <span id="cartUnit">ชิ้น</span><b id="cartTotal">฿0</b></div>
     <button class="btn btn-outline" onclick="goToCheckout()" id="checkoutBtn" disabled>ไปหน้าชำระเงิน</button>
   </div>
   <div class="cart-bar sh" id="checkoutBar">
@@ -898,6 +920,8 @@ function startEditOrder_(orderId, fromState, btnEl){
   }).then(function(d){
     restoreBtn_();
     if (!d || !d.success) { showMiniToast_('แก้ไขออเดอร์นี้ไม่ได้: ' + ((d && d.error) || 'ไม่ทราบสาเหตุ')); return; }
+    if ((d.items || []).some(function(it){ return /\(ขายส่ง\)/.test(String(it.name)); })) { showMiniToast_('ออเดอร์ขายส่งแก้ไขรายการไม่ได้ — ยกเลิกแล้วสั่งใหม่ได้เลยค่ะ'); return; }
+    if (shopMode_ === 'bulk') setShopMode_('retail');
     var snapshot = {
       cart: JSON.parse(JSON.stringify(cart)), coupon: appliedCouponCode, payment: selectedPayment,
       points: pointsToRedeemInput_, excluded: excludedPrivilegeRowIndexes.slice(),
@@ -1614,6 +1638,7 @@ function applyShopBootstrap_(r){
   if (r.card) cardInfo_ = r.card;
   if (r.purchasePurpose) purposeInfo_ = r.purchasePurpose;
   preorderCfg_ = r.preorder || null; // ⚡ (5/11/69) Pre-order มัดจำ
+  applyBulkInfo_(r.bulk || null);    // ⚡ (9/11/69) ขายส่งยกลัง
 
   warmOrderHistory_();
   handleCardPayReturn_();
@@ -2106,6 +2131,151 @@ function renderCatalog(){
 
 function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+// ==================== ⚡ (9/11/69) ขายส่งยกลัง (Apps Script: Members.gs หัวข้อ "ขายส่งยกลัง" · แท็บ SKU Bulk) ====================
+// ปุ่มสลับ ขายปลีก | ขายส่งยกลัง — ตะกร้าแยกกัน (สลับแล้วตะกร้าอีกฝั่งยังอยู่) · ราคาตามขั้นจากลังรวมทั้งบิล คละได้
+// ไม่ใช้คูปอง/สิทธิ์/แลกคะแนน · ค่าส่งชำระปลายทาง · ได้คะแนนตามจำนวนลัง · เซิร์ฟเวอร์คิดราคาซ้ำตอนสั่งจริงเสมอ
+var shopMode_ = 'retail', bulkInfo_ = null, bulkByKey_ = {}, bulkKeys_ = [], otherCart_ = {};
+function showLimitModal_(html){
+  var m = document.createElement('div');
+  m.className = 'limit-modal';
+  m.innerHTML = '<div>⚠️ ' + html + '<br><button type="button">ตกลง</button></div>';
+  m.querySelector('button').onclick = function(){ m.remove(); };
+  m.onclick = function(e){ if (e.target === m) m.remove(); };
+  document.body.appendChild(m);
+}
+function applyBulkInfo_(b){
+  bulkInfo_ = (b && (b.items || []).some(function(i){ return !i.hidden; })) ? b : null;
+  bulkByKey_ = {};
+  if (bulkInfo_) bulkInfo_.items.forEach(function(it){ if (!it.hidden) bulkByKey_[it.key] = it; });
+  if (!bulkInfo_ && shopMode_ === 'bulk') setShopMode_('retail');
+  renderShopModeSwitch_();
+  if (shopMode_ === 'bulk') renderBulk_();
+}
+function bulkCases_(){
+  var n = 0;
+  Object.keys(cart).forEach(function(k){ if (bulkByKey_[k]) n += cart[k]; });
+  return n;
+}
+function bulkTierIdx_(cases){
+  var t = (bulkInfo_ && bulkInfo_.tiers) || [];
+  for (var i = t.length - 1; i >= 0; i--) if (cases >= t[i]) return i;
+  return -1;
+}
+function bulkTierText_(i){
+  var t = bulkInfo_.tiers;
+  return t[i] + (i + 1 < t.length ? '–' + (t[i + 1] - 1) : '+');
+}
+function bulkVariantFor_(key){
+  var it = bulkByKey_[key];
+  if (!it) return undefined;
+  var idx = Math.max(0, bulkTierIdx_(bulkCases_()));
+  return { skuName: key, label: it.name + ' ' + it.pack, price: it.tiers[idx], weightG: it.weightG, bulk: true };
+}
+function renderShopModeSwitch_(){
+  var el = document.getElementById('shopModeSwitch');
+  if (!el) return;
+  var editing_ = typeof editingOrderId_ !== 'undefined' && editingOrderId_;
+  if (!bulkInfo_ || editing_) { el.classList.add('sh'); return; }
+  el.classList.remove('sh');
+  el.innerHTML = '<div class="seg-mode"><button type="button" class="' + (shopMode_ === 'retail' ? 'on' : '') + '" onclick="setShopMode_(\'retail\')">🛍️ ขายปลีก</button>'
+    + '<button type="button" class="' + (shopMode_ === 'bulk' ? 'on' : '') + '" onclick="setShopMode_(\'bulk\')">📦 ขายส่งยกลัง</button></div>';
+}
+function setShopMode_(m){
+  if (m === shopMode_ || (m === 'bulk' && !bulkInfo_)) return;
+  var tmp = cart; cart = otherCart_; otherCart_ = tmp;
+  shopMode_ = m;
+  var bulk = m === 'bulk';
+  ['myPrivileges', 'autoPromoBox', 'pointsMultiplierBox', 'repeatPromoBox', 'prodList'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.style.display = bulk ? 'none' : '';
+  });
+  document.getElementById('bulkList').classList.toggle('sh', !bulk);
+  renderShopModeSwitch_();
+  if (bulk) renderBulk_(); else if (variantList.length) renderCatalog();
+  updateCartBar();
+  window.scrollTo(0, 0);
+}
+function renderBulk_(){
+  var box = document.getElementById('bulkList');
+  if (!box || !bulkInfo_) return;
+  var cases = bulkCases_(), idx = bulkTierIdx_(cases), showIdx = Math.max(0, idx), t = bulkInfo_.tiers;
+  var h = '<div class="bulk-info">📦 ราคาต่อ 1 ลัง · สั่งขั้นต่ำ <b>' + bulkInfo_.min + ' ลัง</b> คละสินค้า/รสได้<br>🚚 ค่าส่ง <b>ชำระปลายทาง</b>'
+    + (bulkInfo_.pointsPerCase > 0 ? ' · ⭐ ได้ <b>' + bulkInfo_.pointsPerCase + ' คะแนน / ลัง</b>' : '') + '</div>';
+  h += '<div class="bulk-tiers"><div style="font-size:13px;font-weight:600;color:#555;margin-bottom:6px">ขั้นราคา (นับลังรวมทั้งบิล) · ตอนนี้ ' + cases + ' ลัง</div><div class="trow">'
+    + t.map(function(n, i){ return '<div class="' + (i === idx ? 'cur' : '') + '">' + bulkTierText_(i) + '</div>'; }).join('') + '</div>';
+  if (cases < bulkInfo_.min) h += '<div style="font-size:12.5px;color:#c62828;margin-top:6px;text-align:center;font-weight:600">สั่งอีก ' + (bulkInfo_.min - cases) + ' ลัง ถึงขั้นต่ำ ' + bulkInfo_.min + ' ลัง</div>';
+  else if (idx + 1 < t.length) h += '<div style="font-size:12.5px;color:#e65100;margin-top:6px;text-align:center;font-weight:600">สั่งเพิ่มอีก ' + (t[idx + 1] - cases) + ' ลัง ได้ราคาขั้นถัดไป (' + bulkTierText_(idx + 1) + ' ลัง)</div>';
+  h += '</div>';
+  bulkKeys_ = [];
+  bulkInfo_.items.forEach(function(it){
+    if (it.hidden) return;
+    var i = bulkKeys_.length; bulkKeys_.push(it.key);
+    var price = it.tiers[showIdx], q = cart[it.key] || 0;
+    var off = it.retail > price ? Math.round((1 - price / it.retail) * 100) : 0;
+    h += '<div class="bulk-card">' + (it.image ? '<img src="' + escHtml(it.image) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '<div class="ph"></div>')
+      + '<div style="flex:1;min-width:0"><div class="nm">' + escHtml(it.name) + '</div><div class="pk">' + escHtml(it.pack) + '</div>'
+      + '<div class="pr">฿' + price.toLocaleString('th-TH') + (off > 0 ? '<s>฿' + Math.round(it.retail).toLocaleString('th-TH') + '</s><b>-' + off + '%</b>' : '') + '</div>'
+      + '<div class="mini">' + t.map(function(n, k){ return bulkTierText_(k) + ': ' + it.tiers[k].toLocaleString('th-TH'); }).join(' · ') + '</div>'
+      + '<div class="qty-ctl" style="justify-content:flex-end;margin-top:6px"><button class="qty-btn" onclick="bulkChange_(' + i + ',-1)">−</button>'
+      + '<span class="qty-val">' + q + '</span><button class="qty-btn" onclick="bulkChange_(' + i + ',1)">+</button></div></div></div>';
+  });
+  box.innerHTML = h;
+}
+function bulkChange_(i, delta){
+  var key = bulkKeys_[i];
+  if (!key) return;
+  var q = Math.max(0, (cart[key] || 0) + delta);
+  if (q) cart[key] = q; else delete cart[key];
+  renderBulk_();
+  updateCartBar();
+}
+// ส่วนของหน้าชำระเงินที่ขายส่งไม่ใช้ (คูปอง/แลกคะแนน/รหัสแนะนำ) — ซ่อนตอนขายส่ง คืนตอนกลับขายปลีก
+function bulkCheckoutUi_(bulk){
+  ['couponInputRow', 'purchaseReferrerField'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.style.visibility = '', el.style.display = bulk ? 'none' : '';
+  });
+  var cr = document.getElementById('couponInputRow'); if (cr && !bulk) cr.style.display = 'flex';
+  var pr = document.getElementById('pointsRedeemBox'); if (pr && bulk) pr.classList.add('sh');
+}
+function goToBulkCheckout_(){
+  var cases = bulkCases_();
+  if (!bulkInfo_ || cases < bulkInfo_.min) { showLimitModal_('ขายส่งสั่งขั้นต่ำ ' + (bulkInfo_ ? bulkInfo_.min : 5) + ' ลัง (ตอนนี้ ' + cases + ' ลัง)'); return; }
+  clearInlineCheckoutError_();
+  discountLoadError_ = '';
+  appliedCouponCode = ''; pointsToRedeemInput_ = 0; excludedPrivilegeRowIndexes = [];
+  lastDiscountInfo = { success: true, privileges: [], autoCoupons: [], coupon: null, shippingCost: 0, shippingDiscount: 0, finalShippingCost: 0, pointsRedeemDiscount: 0 };
+  if (selectedPayment === 'cod') selectPayment('promptpay');
+  bulkCheckoutUi_(true);
+  renderDiscountSummary();
+  showState('checkoutState');
+  getFreshIdToken().then(function(idToken){
+    var calls = [loadSavedAddress(idToken)];
+    if (!paymentInfo) calls.push(callApi('getShopPaymentInfo').then(function(r){ if (r && r.success) { paymentInfo = r; renderPaymentDetail(); } }));
+    return Promise.all(calls);
+  }).catch(function(e){ showInlineCheckoutError_(e && e.message ? e.message : 'โหลดข้อมูลไม่สำเร็จ'); });
+}
+function renderBulkSummary_(wrap){
+  var cases = bulkCases_(), idx = bulkTierIdx_(cases), save = 0, h = '<div class="bank-box">';
+  h += '<div style="font-weight:700;color:#a50d0c;margin-bottom:6px">📦 สรุปออเดอร์ขายส่ง · ราคาขั้น ' + (idx >= 0 ? bulkTierText_(idx) : '-') + ' ลัง</div>';
+  Object.keys(cart).forEach(function(k){
+    var it = bulkByKey_[k]; if (!it) return;
+    var price = it.tiers[Math.max(0, idx)], q = cart[k];
+    if (it.retail > price) save += (it.retail - price) * q;
+    h += '<div class="row"><span>' + escHtml(it.name) + (it.size ? ' ' + escHtml(it.size) : '') + ' × ' + q + ' ลัง</span><span>฿' + (price * q).toLocaleString('th-TH') + '</span></div>';
+  });
+  h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><b>ยอดสินค้า (' + cases + ' ลัง)</b><b>฿' + getCartTotal().toLocaleString('th-TH') + '</b></div>';
+  if (save > 0) h += '<div class="row" style="color:#c62828;font-size:13px"><span>ประหยัดกว่าราคาปลีก</span><span>฿' + Math.round(save).toLocaleString('th-TH') + '</span></div>';
+  if (bulkInfo_.pointsPerCase > 0) h += '<div class="row" style="color:#e65100;font-size:13px"><span>⭐ คะแนนที่จะได้</span><span>+' + (cases * bulkInfo_.pointsPerCase).toLocaleString('th-TH') + ' คะแนน</span></div>';
+  var cardFee_ = cardFeeAmount_();
+  if (cardFee_ > 0) h += '<div class="row"><span>💳 ค่าธรรมเนียมชำระด้วยบัตร</span><span>฿' + cardFee_.toLocaleString('th-TH') + '</span></div>';
+  h += '<div class="row" style="align-items:center"><span>🚚 ค่าจัดส่ง</span><span style="color:#1565c0;font-weight:600">ชำระปลายทาง</span></div>';
+  h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px;align-items:center"><span><b>ชำระค่าสินค้าตอนนี้</b></span><span style="font-size:22px;font-weight:700;color:#e65100">฿' + getFinalTotal().toLocaleString('th-TH') + '</span></div></div>';
+  h += '<div style="background:#e3f2fd;border-radius:12px;padding:10px 12px;font-size:13px;color:#0d47a1;margin-top:10px">🚚 <b>ค่าจัดส่ง: ชำระปลายทาง</b><br>จ่ายค่าส่งกับพนักงานขนส่งตอนรับสินค้า</div>';
+  wrap.innerHTML = h;
+  document.getElementById('checkoutBarTotal').textContent = '฿' + getFinalTotal().toLocaleString('th-TH');
+  updatePaymentMethodsUi_();
+}
+
+
 // ==================== ⚡ เพิ่ม (5/11/69) — Pre-order มัดจำ (Apps Script: Preorder.gs + ส่วนคำนวณใน Members.gs) ====================
 // สินค้าที่ v.preorder = จ่ายมัดจำ depositPct% ตอนสั่ง (สินค้าปกติจ่ายเต็ม รวมเป็นยอดเดียว) ส่วนที่เหลือจ่ายเมื่อพร้อมส่ง
 // สูตรเดียวกับ preorderCalc_ ฝั่งเซิร์ฟเวอร์: ค้างชำระ = ปัด((ราคาปกติ x จำนวน ของสินค้า Pre-order) x (100 - มัดจำ%) / 100)
@@ -2326,7 +2496,7 @@ function pbDone_(msg){
 function closePreorderPay_(){ document.getElementById('preorderPayModal').classList.remove('show'); }
 
 function findVariant(skuName){
-  return variantList.find(function(v){ return v.skuName === skuName; });
+  return variantList.find(function(v){ return v.skuName === skuName; }) || bulkVariantFor_(skuName);
 }
 
 // ⚡ เพิ่ม (16/10/69) — สต๊อก: v.stock = { left ชุดที่สั่งได้, units หน่วยย่อยทั้งหมดของสินค้านั้น, per หน่วยย่อยต่อชุด, unit }
@@ -2361,6 +2531,12 @@ function showStockMsg_(idx, text){
 function changeQty(idx, delta){
   var skuName = variantList[idx].skuName;
   var cur = cart[skuName] || 0;
+  // ⚡ (9/11/69) จำกัดจำนวนต่อออเดอร์ (คอลัมน์ "จำกัดต่อออเดอร์" ใน Master — ขนาดยกลังค่าเริ่มต้น 4 ลัง)
+  var lim_ = variantList[idx].maxQty;
+  if (delta > 0 && lim_ > 0 && cur + delta > lim_) {
+    showLimitModal_('ขออภัยท่านกดเกินจำนวนที่กำหนด<br>สามารถเพิ่มได้ไม่เกิน ' + lim_ + ' ' + (/ยกลัง/.test(variantList[idx].label) ? 'ลัง' : 'ชิ้น'));
+    return;
+  }
   var max_ = delta > 0 ? stockMaxFor_(variantList[idx]) : null;
   if (max_ !== null && cur + delta > max_) {
     var unit_ = variantList[idx].stock.unit || 'ชิ้น';
@@ -2383,9 +2559,10 @@ function updateCartBar(){
     count += cart[skuName];
     total += cart[skuName] * v.price;
   });
-  document.getElementById('cartCount').textContent = count;
+  var cc_ = document.querySelector('#cartBar #cartCount') || document.getElementById('cartCount'); if (cc_) cc_.textContent = count;   // ⚡ (9/11/69) id ซ้ำกับป้ายรถเข็นด้านบน
   document.getElementById('cartTotal').textContent = '฿' + total.toLocaleString('th-TH');
-  document.getElementById('checkoutBtn').disabled = count === 0;
+  document.getElementById('checkoutBtn').disabled = count === 0 || (shopMode_ === 'bulk' && bulkInfo_ && count < bulkInfo_.min);
+  var cu_ = document.getElementById('cartUnit'); if (cu_) cu_.textContent = shopMode_ === 'bulk' ? 'ลัง' : 'ชิ้น';
 }
 
 function backToCatalog(){ excludedPrivilegeRowIndexes = []; couponLimitNotice_ = ''; pointsToRedeemInput_ = 0; showState('catalogState'); }
@@ -2611,6 +2788,8 @@ function withTimeout_(promise, ms, message){
 }
 
 function goToCheckout(){
+  if (shopMode_ === 'bulk') return goToBulkCheckout_();
+  bulkCheckoutUi_(false);
   var btn = document.getElementById('checkoutBtn');
   btn.disabled = true; var originalBtnText = btn.textContent; btn.textContent = '⏳ กำลังโหลด...';
 
@@ -3076,6 +3255,7 @@ function getFinalShippingCost(){
 
 function renderDiscountSummary(){
   var wrap = document.getElementById('discountSummary');
+  if (shopMode_ === 'bulk') { renderBulkSummary_(wrap); return; }
   giftPickerReg_ = [];
   var subtotal = getCartTotal();
   var h = '';
@@ -3336,6 +3516,7 @@ function cardUnavailableReason_(){
 // เหตุผลที่ยังใช้เก็บเงินปลายทางกับบิลนี้ไม่ได้ ('' = ใช้ได้) — ลำดับการเช็คตรงกับ evaluateCodEligibility_
 // ฝั่งเซิร์ฟเวอร์ เพื่อให้ข้อความที่ลูกค้าเห็นตรงกันทั้ง 2 ฝั่ง
 function codUnavailableReason_(){
+  if (shopMode_ === 'bulk') return 'ขายส่งชำระค่าสินค้าด้วยโอน/พร้อมเพย์ หรือบัตร';
   if (!codInfo_ || !codInfo_.enabled) return 'ขณะนี้ร้านปิดรับชำระแบบเก็บเงินปลายทาง';
   if (preorderBalance_() > 0) return 'ออเดอร์ที่มีสินค้า Pre-order ชำระแบบเก็บเงินปลายทางไม่ได้';
   if (codInfo_.blocked) return 'บัญชีของคุณถูกระงับการชำระแบบเก็บเงินปลายทาง กรุณาติดต่อทีมงาน';
@@ -3626,7 +3807,7 @@ function confirmSubmitOrder(){
   errBox.classList.add('sh');
 
   var items = Object.keys(cart).map(function(name){
-    return { name: name, qty: cart[name] };
+    return shopMode_ === 'bulk' ? { name: name, qty: cart[name], bulk: true } : { name: name, qty: cart[name] };
   });
   if (!items.length) { closeAddressConfirmModal(); showInlineCheckoutError_('ไม่มีสินค้าในตะกร้า'); return; }
 

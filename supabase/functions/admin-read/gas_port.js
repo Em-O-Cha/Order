@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target admin-read) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 134 รายการ (92 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 142 รายการ (94 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -589,6 +589,72 @@ function shopHiddenProducts_() {
   } catch (e) { return []; }
 }
 
+var BULK_TAB_ = 'SKU Bulk';
+
+var BULK_TIERS_ = [5, 10, 20, 30, 50];
+
+var BULK_CONFIG_PROP_ = 'BULK_SHOP_CONFIG_V1';
+
+var BULK_NAME_TAG_ = '(ขายส่ง)';
+
+function bulkConfig_() {
+  var c = {};
+  try { c = JSON.parse(PropertiesService.getScriptProperties().getProperty(BULK_CONFIG_PROP_) || '{}') || {}; } catch (e) { c = {}; }
+  var pts = parseFloat(c.pointsPerCase);
+  return {
+    pointsPerCase: isFinite(pts) && pts >= 0 ? Math.min(1000, Math.round(pts)) : 5,
+    hidden: Array.isArray(c.hidden) ? c.hidden.map(String) : [],
+    stock: Array.isArray(c.stock) ? c.stock.map(String) : []
+  };
+}
+
+function bulkProductsFor_(retailCats) {
+  var cfg = bulkConfig_(), hidden = {}, stockSet = {};
+  cfg.hidden.forEach(function (k) { hidden[k] = true; });
+  cfg.stock.forEach(function (k) { stockSet[k] = true; });
+  var sheet = SpreadsheetApp.openById(MASTER_SHEET_ID_SHOP).getSheetByName(BULK_TAB_);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+  var seen = {};
+  rows.forEach(function (r) { var k = String(r[0] || '').trim() + '|' + String(r[1] || '').trim(); seen[k] = (seen[k] || 0) + 1; });
+  var items = [];
+  rows.forEach(function (r) {
+    var name = String(r[0] || '').trim(), pack = String(r[1] || '').trim();
+    if (!name || !pack) return;
+    var tiers = [2, 3, 4, 5, 6].map(function (c) { return parseFloat(String(r[c]).replace(/,/g, '')) || 0; });
+    if (!tiers.some(function (t) { return t > 0; })) return;
+    for (var i = 0; i < tiers.length; i++) if (!(tiers[i] > 0)) tiers[i] = tiers[i - 1] || tiers.filter(function (t) { return t > 0; })[0];
+    var um = pack.match(/(\d+)\s*(ซอง|ถ้วย|กระปุก|ใบ|แพ็ค|แพค|ชิ้น)/);
+    var units = um ? Math.max(1, Number(um[1])) : 1, unitWord = um ? um[2] : 'ชิ้น';
+    var weight = parseFloat(String(r[8]).replace(/,/g, '')) || 0;
+    // ขนาด (เช่น พริกผัด 120 / 230 กรัม): จากช่องบรรจุ หรือคำนวณจากน้ำหนักต่อลัง ÷ จำนวน เมื่อชื่อ+บรรจุซ้ำกัน
+    var gm = pack.match(/(\d+)\s*กรัม/), size = gm ? gm[1] + ' กรัม' : '';
+    if (!size && seen[name + '|' + pack] > 1 && weight > 0) size = Math.round(weight / units) + ' กรัม';
+    var packClean = pack.replace(/\s*\(ยกลัง\)\s*/g, ' ').replace(/\s*\d+\s*กรัม/, '').replace(/\s+/g, ' ').trim();
+    var key = name + (size ? ' ' + size : '') + ' ' + packClean + ' ' + BULK_NAME_TAG_;
+    var retail = 0;
+    (retailCats || []).forEach(function (cat) {
+      if (retail || String(cat.name).trim() !== name) return;
+      cat.variants.forEach(function (v) {
+        if (retail) return;
+        var vu_ = String(v.label).match(/(\d+)\s*(ซอง|ถ้วย|กระปุก|ใบ|แพ็ค|แพค|ชิ้น)/);
+        if (!size && /ยกลัง/.test(v.label) && vu_ && Number(vu_[1]) === units) retail = v.price;
+        else if (size && v.label.indexOf(size) !== -1) retail = v.price * units;
+      });
+    });
+    var item = { key: key, name: name, size: size, pack: units + ' ' + unitWord + (size ? ' · ' + size : ''), units: units, unitWord: unitWord,
+      tiers: tiers, image: toDirectImageUrl_(String(r[7] || '').trim()), weightG: weight, retail: retail };
+    if (hidden[key]) item.hidden = true;
+    if (stockSet[key]) item.stock = true;
+    items.push(item);
+  });
+  return { items: items, tiers: BULK_TIERS_, min: BULK_TIERS_[0], pointsPerCase: cfg.pointsPerCase };
+}
+
+var SHOP_MAX_QTY_HEADER_ = 'จำกัดต่อออเดอร์';
+
+var SHOP_MAX_CASE_DEFAULT_ = 4;
+
 var SHOP_PRODUCTS_CACHE_KEY_ = 'shop_products_v3';
 
 function getShopProducts() {
@@ -603,6 +669,13 @@ function getShopProducts() {
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return { success: true, categories: [] };
     var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
+    // ⚡ (9/11/69) คอลัมน์ "จำกัดต่อออเดอร์" (หาจากหัวตาราง ไม่มี = ใช้ค่าเริ่มต้น)
+    var maxCol_ = [];
+    try {
+      var hdr_ = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function (h) { return String(h || '').trim(); });
+      var mi_ = hdr_.indexOf(SHOP_MAX_QTY_HEADER_);
+      if (mi_ !== -1) maxCol_ = sheet.getRange(2, mi_ + 1, lastRow - 1, 1).getValues();
+    } catch (mxErr) { maxCol_ = []; }
     var stockLimited_ = shopStockLimitTester_();
     var hidden_ = {};
     shopHiddenProducts_().forEach(function (n) { hidden_[n] = true; });
@@ -610,7 +683,7 @@ function getShopProducts() {
 
     var categoryMap = {};
     var order = [];
-    data.forEach(function (row) {
+    data.forEach(function (row, rowIdx_) {
       var category = row[7] ? String(row[7]).trim() : '';
       var variantLabel = row[8] ? String(row[8]).trim() : '';
       if (!category || !variantLabel) return;
@@ -630,6 +703,9 @@ function getShopProducts() {
       var stockText_ = String(row[12] || '');
       var leftM_ = stockText_.match(/ขายได้\s*(\d+)/);
       var variant_ = { skuName: skuName, label: variantLabel, price: price, weightG: weightG };
+      var maxQ_ = parseInt(maxCol_[rowIdx_] && maxCol_[rowIdx_][0], 10);
+      if (maxQ_ > 0) variant_.maxQty = maxQ_;
+      else if (/ยกลัง/.test(variantLabel)) variant_.maxQty = SHOP_MAX_CASE_DEFAULT_;
       if (leftM_ && stockLimited_(category)) {
         var packM_ = variantLabel.match(/(\d+)\s*(ซอง|ถ้วย|กระปุก|ใบ|แพ็ค|แพค|ชิ้น)/);
         var per_ = packM_ ? Math.max(1, Number(packM_[1])) : 1;
@@ -649,6 +725,7 @@ function getShopProducts() {
     });
     var result = { success: true, categories: categories };
     if (preCfg_.enabled) result.preorder = { depositPct: preCfg_.depositPct, shipText: preCfg_.shipText, leadDays: preCfg_.leadDays };
+    try { var bulk_ = bulkProductsFor_(categories); if (bulk_) result.bulk = bulk_; } catch (bkErr) { Logger.log('bulkProductsFor_: ' + bkErr); }
     try { cache.put(SHOP_PRODUCTS_CACHE_KEY_, JSON.stringify(result), 180); } catch (e) {}
     return result;
   } catch (e) {

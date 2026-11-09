@@ -1,5 +1,5 @@
 // สร้างอัตโนมัติจาก Members.gs ด้วย tools/gas-port/extract.mjs (target shop-order) — ห้ามแก้ไฟล์นี้ตรงๆ
-// ให้รันสคริปต์ใหม่แทน — 216 รายการ (147 ฟังก์ชัน)
+// ให้รันสคริปต์ใหม่แทน — 228 รายการ (153 ฟังก์ชัน)
 /* eslint-disable */
 export function createGas(env) {
   const { SpreadsheetApp, CacheService, PropertiesService, Utilities, Logger, LockService, Session, Date,
@@ -551,6 +551,115 @@ function shopHiddenProducts_() {
   } catch (e) { return []; }
 }
 
+var BULK_TAB_ = 'SKU Bulk';
+
+var BULK_TIERS_ = [5, 10, 20, 30, 50];
+
+var BULK_CONFIG_PROP_ = 'BULK_SHOP_CONFIG_V1';
+
+var BULK_NAME_TAG_ = '(ขายส่ง)';
+
+function bulkConfig_() {
+  var c = {};
+  try { c = JSON.parse(PropertiesService.getScriptProperties().getProperty(BULK_CONFIG_PROP_) || '{}') || {}; } catch (e) { c = {}; }
+  var pts = parseFloat(c.pointsPerCase);
+  return {
+    pointsPerCase: isFinite(pts) && pts >= 0 ? Math.min(1000, Math.round(pts)) : 5,
+    hidden: Array.isArray(c.hidden) ? c.hidden.map(String) : [],
+    stock: Array.isArray(c.stock) ? c.stock.map(String) : []
+  };
+}
+
+function bulkTierIndex_(cases) {
+  for (var i = BULK_TIERS_.length - 1; i >= 0; i--) if (cases >= BULK_TIERS_[i]) return i;
+  return -1;
+}
+
+function bulkTierLabel_(i) {
+  if (i < 0) return '';
+  return BULK_TIERS_[i] + (i + 1 < BULK_TIERS_.length ? '–' + (BULK_TIERS_[i + 1] - 1) : '+') + ' ลัง';
+}
+
+function bulkProductsFor_(retailCats) {
+  var cfg = bulkConfig_(), hidden = {}, stockSet = {};
+  cfg.hidden.forEach(function (k) { hidden[k] = true; });
+  cfg.stock.forEach(function (k) { stockSet[k] = true; });
+  var sheet = SpreadsheetApp.openById(MASTER_SHEET_ID_SHOP).getSheetByName(BULK_TAB_);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+  var seen = {};
+  rows.forEach(function (r) { var k = String(r[0] || '').trim() + '|' + String(r[1] || '').trim(); seen[k] = (seen[k] || 0) + 1; });
+  var items = [];
+  rows.forEach(function (r) {
+    var name = String(r[0] || '').trim(), pack = String(r[1] || '').trim();
+    if (!name || !pack) return;
+    var tiers = [2, 3, 4, 5, 6].map(function (c) { return parseFloat(String(r[c]).replace(/,/g, '')) || 0; });
+    if (!tiers.some(function (t) { return t > 0; })) return;
+    for (var i = 0; i < tiers.length; i++) if (!(tiers[i] > 0)) tiers[i] = tiers[i - 1] || tiers.filter(function (t) { return t > 0; })[0];
+    var um = pack.match(/(\d+)\s*(ซอง|ถ้วย|กระปุก|ใบ|แพ็ค|แพค|ชิ้น)/);
+    var units = um ? Math.max(1, Number(um[1])) : 1, unitWord = um ? um[2] : 'ชิ้น';
+    var weight = parseFloat(String(r[8]).replace(/,/g, '')) || 0;
+    // ขนาด (เช่น พริกผัด 120 / 230 กรัม): จากช่องบรรจุ หรือคำนวณจากน้ำหนักต่อลัง ÷ จำนวน เมื่อชื่อ+บรรจุซ้ำกัน
+    var gm = pack.match(/(\d+)\s*กรัม/), size = gm ? gm[1] + ' กรัม' : '';
+    if (!size && seen[name + '|' + pack] > 1 && weight > 0) size = Math.round(weight / units) + ' กรัม';
+    var packClean = pack.replace(/\s*\(ยกลัง\)\s*/g, ' ').replace(/\s*\d+\s*กรัม/, '').replace(/\s+/g, ' ').trim();
+    var key = name + (size ? ' ' + size : '') + ' ' + packClean + ' ' + BULK_NAME_TAG_;
+    var retail = 0;
+    (retailCats || []).forEach(function (cat) {
+      if (retail || String(cat.name).trim() !== name) return;
+      cat.variants.forEach(function (v) {
+        if (retail) return;
+        var vu_ = String(v.label).match(/(\d+)\s*(ซอง|ถ้วย|กระปุก|ใบ|แพ็ค|แพค|ชิ้น)/);
+        if (!size && /ยกลัง/.test(v.label) && vu_ && Number(vu_[1]) === units) retail = v.price;
+        else if (size && v.label.indexOf(size) !== -1) retail = v.price * units;
+      });
+    });
+    var item = { key: key, name: name, size: size, pack: units + ' ' + unitWord + (size ? ' · ' + size : ''), units: units, unitWord: unitWord,
+      tiers: tiers, image: toDirectImageUrl_(String(r[7] || '').trim()), weightG: weight, retail: retail };
+    if (hidden[key]) item.hidden = true;
+    if (stockSet[key]) item.stock = true;
+    items.push(item);
+  });
+  return { items: items, tiers: BULK_TIERS_, min: BULK_TIERS_[0], pointsPerCase: cfg.pointsPerCase };
+}
+
+function bulkOrderPlan_(itemsJson, bulk) {
+  var input = [];
+  try { input = JSON.parse(itemsJson || '[]') || []; } catch (e) { return { error: 'ข้อมูลตะกร้าไม่ถูกต้อง' }; }
+  if (!bulk || !bulk.items) return { error: 'ยังไม่เปิดขายส่ง' };
+  if (input.some(function (it) { return !it || !it.bulk; })) return { error: 'สินค้าขายส่งกับขายปลีกต้องแยกสั่งคนละออเดอร์' };
+  var byKey = {};
+  bulk.items.forEach(function (it) { byKey[it.key] = it; });
+  var lines = [], cases = 0;
+  for (var i = 0; i < input.length; i++) {
+    var b = byKey[String(input[i].name)], qty = Math.floor(parseFloat(input[i].qty) || 0);
+    if (!b || b.hidden) return { error: 'ไม่พบสินค้าขายส่ง: ' + input[i].name + ' (กรุณาโหลดหน้าใหม่)' };
+    if (qty <= 0) continue;
+    lines.push({ b: b, qty: qty });
+    cases += qty;
+  }
+  if (cases < bulk.min) return { error: 'ขายส่งสั่งขั้นต่ำ ' + bulk.min + ' ลัง (ตอนนี้ ' + cases + ' ลัง)' };
+  var idx = bulkTierIndex_(cases), subtotal = 0, weight = 0, stockItems = [];
+  var items = lines.map(function (l) {
+    var price = l.b.tiers[idx];
+    subtotal += price * l.qty; weight += l.b.weightG * l.qty;
+    if (l.b.stock) stockItems.push({ name: l.b.name + (l.b.size ? ' ' + l.b.size : '') + ' (' + l.b.units + ' ' + l.b.unitWord + ')', qty: l.qty });
+    return { name: l.b.key, qty: l.qty, price: price };
+  });
+  var points = Math.round(cases * bulk.pointsPerCase);
+  return { items: items, cases: cases, tierIdx: idx, subtotal: subtotal, weight: weight, points: points, stockJson: JSON.stringify(stockItems),
+    token: '📦 ขายส่งยกลัง: ' + cases + ' ลัง ราคาขั้น ' + bulkTierLabel_(idx) + ' (+' + points + ' คะแนน)' };
+}
+
+var SHOP_MAX_QTY_HEADER_ = 'จำกัดต่อออเดอร์';
+
+var SHOP_MAX_CASE_DEFAULT_ = 4;
+
+function shopMaxQtyMessage_(max, label) {
+  var unit = /ยกลัง/.test(String(label || '')) ? 'ลัง' : 'ชิ้น';
+  return 'ขออภัยท่านกดเกินจำนวนที่กำหนด สามารถเพิ่มได้ไม่เกิน ' + max + ' ' + unit;
+}
+
 var SHOP_PRODUCTS_CACHE_KEY_ = 'shop_products_v3';
 
 function getShopProducts() {
@@ -565,6 +674,13 @@ function getShopProducts() {
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return { success: true, categories: [] };
     var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
+    // ⚡ (9/11/69) คอลัมน์ "จำกัดต่อออเดอร์" (หาจากหัวตาราง ไม่มี = ใช้ค่าเริ่มต้น)
+    var maxCol_ = [];
+    try {
+      var hdr_ = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function (h) { return String(h || '').trim(); });
+      var mi_ = hdr_.indexOf(SHOP_MAX_QTY_HEADER_);
+      if (mi_ !== -1) maxCol_ = sheet.getRange(2, mi_ + 1, lastRow - 1, 1).getValues();
+    } catch (mxErr) { maxCol_ = []; }
     var stockLimited_ = shopStockLimitTester_();
     var hidden_ = {};
     shopHiddenProducts_().forEach(function (n) { hidden_[n] = true; });
@@ -572,7 +688,7 @@ function getShopProducts() {
 
     var categoryMap = {};
     var order = [];
-    data.forEach(function (row) {
+    data.forEach(function (row, rowIdx_) {
       var category = row[7] ? String(row[7]).trim() : '';
       var variantLabel = row[8] ? String(row[8]).trim() : '';
       if (!category || !variantLabel) return;
@@ -592,6 +708,9 @@ function getShopProducts() {
       var stockText_ = String(row[12] || '');
       var leftM_ = stockText_.match(/ขายได้\s*(\d+)/);
       var variant_ = { skuName: skuName, label: variantLabel, price: price, weightG: weightG };
+      var maxQ_ = parseInt(maxCol_[rowIdx_] && maxCol_[rowIdx_][0], 10);
+      if (maxQ_ > 0) variant_.maxQty = maxQ_;
+      else if (/ยกลัง/.test(variantLabel)) variant_.maxQty = SHOP_MAX_CASE_DEFAULT_;
       if (leftM_ && stockLimited_(category)) {
         var packM_ = variantLabel.match(/(\d+)\s*(ซอง|ถ้วย|กระปุก|ใบ|แพ็ค|แพค|ชิ้น)/);
         var per_ = packM_ ? Math.max(1, Number(packM_[1])) : 1;
@@ -611,6 +730,7 @@ function getShopProducts() {
     });
     var result = { success: true, categories: categories };
     if (preCfg_.enabled) result.preorder = { depositPct: preCfg_.depositPct, shipText: preCfg_.shipText, leadDays: preCfg_.leadDays };
+    try { var bulk_ = bulkProductsFor_(categories); if (bulk_) result.bulk = bulk_; } catch (bkErr) { Logger.log('bulkProductsFor_: ' + bkErr); }
     try { cache.put(SHOP_PRODUCTS_CACHE_KEY_, JSON.stringify(result), 180); } catch (e) {}
     return result;
   } catch (e) {
@@ -2388,8 +2508,17 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     // ⚡ เพิ่ม (21/10/69) — แอดมินคีย์ออเดอร์ (AdminShop.gs): ราคาเอง / ค่าส่งเอง / ส่วนลดท้ายบิล / ของแถมฟรี / เงินสด
     // หน้าร้านไม่มีค่านี้ (null) ทุกอย่างคิดเหมือนเดิม
     var adminExtra_ = (typeof ADMIN_SHOP_EXTRA_ !== 'undefined' && ADMIN_SHOP_EXTRA_) || null;
+    // ⚡ (9/11/69) ขายส่งยกลัง: ตะกร้าที่ติด bulk:true ทุกชิ้น — ราคาตามขั้น ไม่ใช้โปร/คูปอง/แลกคะแนน ค่าส่งชำระปลายทาง
+    var bulkPlan_ = null;
+    try { if (!adminExtra_ && JSON.parse(itemsJson || '[]').some(function (it) { return it && it.bulk; })) bulkPlan_ = {}; } catch (bkE) {}
+    if (bulkPlan_) {
+      bulkPlan_ = bulkOrderPlan_(itemsJson, (getShopProducts() || {}).bulk);
+      if (bulkPlan_.error) return { success: false, error: bulkPlan_.error };
+      if (String(paymentMethod || '') === 'cod') return { success: false, error: 'ขายส่งชำระค่าสินค้าด้วยโอน/พร้อมเพย์ หรือบัตร (ค่าส่งชำระปลายทาง)' };
+      couponCode = ''; pointsToRedeem = 0; excludePrivilegeName = '';
+    }
     // ⚡ (31/10/69) แอดมินคีย์ออเดอร์ = บันทึกได้แม้สต๊อกไม่พอ (ผู้ใช้ขอ) ตัดเท่าที่มี ส่วนที่ขาดรอตัดเองตอนรับสต๊อกเข้า
-    var stockCheck_ = shopStockCheck_(adminExtra_ && adminExtra_.stockItemsJson ? adminExtra_.stockItemsJson : itemsJson, String(existingOrderId || '').trim(), { noLimit: !!adminExtra_ });
+    var stockCheck_ = shopStockCheck_(bulkPlan_ ? bulkPlan_.stockJson : (adminExtra_ && adminExtra_.stockItemsJson ? adminExtra_.stockItemsJson : itemsJson), String(existingOrderId || '').trim(), { noLimit: !!adminExtra_ || !!bulkPlan_ });
     if (!stockCheck_.ok) return { success: false, error: stockCheck_.error, stockShort: stockCheck_.shortages };
 
     var memberSheet = ensureMembersSheet_();
@@ -2448,20 +2577,33 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       cat.variants.forEach(function (v) { priceMap[v.skuName] = v.price; weightMap[v.skuName] = v.weightG || 0; });
     });
     if (adminExtra_) adminShopApplyPrices_(priceMap, adminExtra_);
+    // ⚡ (9/11/69) จำกัดจำนวนขายปลีกต่อออเดอร์ (แอดมินคีย์ออเดอร์ / ขายส่ง ไม่จำกัด)
+    if (!adminExtra_ && !bulkPlan_) {
+      var maxBySku_ = {};
+      productsResult.categories.forEach(function (cat) { cat.variants.forEach(function (v) { if (v.maxQty > 0) maxBySku_[v.skuName] = v; }); });
+      for (var mq_ = 0; mq_ < itemsInput.length; mq_++) {
+        var mv_ = maxBySku_[itemsInput[mq_].name];
+        if (mv_ && (parseFloat(itemsInput[mq_].qty) || 0) > mv_.maxQty) return { success: false, error: shopMaxQtyMessage_(mv_.maxQty, mv_.label) + ' (' + itemsInput[mq_].name + ')' };
+      }
+    }
 
     var subtotal = 0;
     var totalWeightG = 0;
-    var items = itemsInput.map(function (item) {
+    var items = bulkPlan_ ? bulkPlan_.items : itemsInput.map(function (item) {
       var qty = parseFloat(item.qty) || 0;
       var price = priceMap.hasOwnProperty(item.name) ? priceMap[item.name] : 0;
       subtotal += qty * price;
       totalWeightG += qty * (weightMap.hasOwnProperty(item.name) ? weightMap[item.name] : 0);
       return { name: item.name, qty: qty, price: price };
     });
-    var shippingCost = calcShippingCost_(totalWeightG);
+    if (bulkPlan_) {
+      subtotal = bulkPlan_.subtotal; totalWeightG = bulkPlan_.weight;
+      items.forEach(function (it) { priceMap[it.name] = it.price; });
+    }
+    var shippingCost = bulkPlan_ ? 0 : calcShippingCost_(totalWeightG);
     if (adminExtra_ && adminExtra_.shipping !== null) shippingCost = adminExtra_.shipping;
 
-    var appliedPrivileges = getAppliedPrivileges_(profile.sub, subtotal, excludeRowIndexes, items, priceMap, shippingCost, reservedByEdit_ ? reservedByEdit_.privilegeRows : null);
+    var appliedPrivileges = bulkPlan_ ? [] : getAppliedPrivileges_(profile.sub, subtotal, excludeRowIndexes, items, priceMap, shippingCost, reservedByEdit_ ? reservedByEdit_.privilegeRows : null);
     // ⚡ (4/11/69) สิทธิ์ที่ต้องใช้คะแนน (แลกด้วยคะแนน + ชำระเงิน): คะแนนไม่พอ = ไม่ใช้สิทธิ์นั้น (ห้ามใช้แคช — จุดตัดสินใจจริง)
     var reservedPointsForOrder_ = memberRowIndex !== -1 ? getPendingPointsReservedForPhone_(phone, existingOrderId) : 0;
     appliedPrivileges = privPointsGate_(appliedPrivileges, Math.max(0, memberPoints - reservedPointsForOrder_)).privileges;
@@ -2475,7 +2617,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       // ⚡ แก้ (25/9/69) — โค้ดที่พิมพ์เองลดเพิ่มจากคูปองอัตโนมัติทุกใบ (กติกาเดียวกับ checkShopDiscounts)
       var rawAutoForOrder_ = findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKeyForCoupon_, false, countedCodes_);
       couponResults = couponResults.concat(manualResult ? withoutSameCoupon_(rawAutoForOrder_, manualResult) : rawAutoForOrder_);
-    } else {
+    } else if (!bulkPlan_) {
       couponResults = findAutoCoupons_(subtotal, items, priceMap, shippingCost, memberTierKeyForCoupon_, false, countedCodes_);
     }
 
@@ -2505,7 +2647,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
 
     var nowForPromoCheck_ = new Date();
     // อ่านประวัติออเดอร์เฉพาะเมื่อมีโปรซื้อซ้ำที่ใช้ได้กับตะกร้านี้จริงเท่านั้น
-    var repeatCandidate_ = getActiveRepeatBonusConfig_(items, subtotal, nowForPromoCheck_);
+    var repeatCandidate_ = bulkPlan_ ? null : getActiveRepeatBonusConfig_(items, subtotal, nowForPromoCheck_);
     var priorOrdersThisMonth_ = repeatCandidate_ ? countPriorOrdersThisMonth_(phone, existingOrderId) : 0;
     var repeatConfig_ = priorOrdersThisMonth_ > 0 ? repeatCandidate_ : null;
     var repeatBonusDiscount_ = 0;
@@ -2515,7 +2657,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
         ? subtotal * repeatConfig_.discountValue / 100
         : Math.min(subtotal, repeatConfig_.discountValue);
     }
-    var pointsMultiplierInfo_ = getActivePointsMultiplier_(items, subtotal, nowForPromoCheck_);
+    var pointsMultiplierInfo_ = bulkPlan_ ? { multiplier: 1, productPromos: [] } : getActivePointsMultiplier_(items, subtotal, nowForPromoCheck_);
 
     var totalDiscount = Math.min(subtotal, privilegeProductDiscount + couponProductDiscount + repeatBonusDiscount_);
     var totalShippingDiscount = Math.min(shippingCost, privilegeShippingDiscount + couponShippingDiscount);
@@ -2545,7 +2687,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     // ⚡ เพิ่ม (19/9/69) — เก็บเงินปลายทาง: เช็คสิทธิ์ซ้ำฝั่ง backend เสมอ ไม่เชื่อค่าที่ส่งมาจากหน้าเว็บ
     // (กันคนแก้หน้าเว็บเองแล้วสั่งซื้อทั้งที่ร้านปิดรับ/ถูกบล็อก/ยอดไม่เข้าเงื่อนไข) แล้วค่อยบวกค่าธรรมเนียม
     // ⚡ (5/11/69) Pre-order: สินค้า Pre-order จ่ายมัดจำตอนสั่ง ส่วนที่เหลือ (ค้างชำระ) จ่ายเมื่อพร้อมส่ง — ยอดทั้งบิลไม่เปลี่ยน
-    var preorderInfo_ = preorderCalc_(items, getPreorderConfig_(), adminExtra_ && Array.isArray(adminExtra_.preorder) ? adminExtra_.preorder : null, finalAmount,
+    var preorderInfo_ = preorderCalc_(items, bulkPlan_ ? null : getPreorderConfig_(), adminExtra_ && Array.isArray(adminExtra_.preorder) ? adminExtra_.preorder : null, finalAmount,
       { entries: appliedPrivileges.concat(couponResults), whole: repeatBonusDiscount_ + adminExtraDiscount_, points: pointsRedeemResult_.discount, ship: finalShippingCost });
     if (preorderInfo_.balance > 0 && String(paymentMethod || '') === 'cod') return { success: false, error: 'ออเดอร์ที่มีสินค้า Pre-order ชำระแบบเก็บเงินปลายทางไม่ได้ กรุณาเลือกโอน/พร้อมเพย์ หรือบัตร' };
     var isCodOrder = String(paymentMethod || '') === 'cod';
@@ -2638,7 +2780,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     appliedPrivileges.forEach(function (p) {
       if (p.pointsCost && p.productDiscount > 0) discountNoteParts.push('ใช้คะแนนแลกสิทธิ์: ' + cleanPriceGiftText_(p.name) + ' ' + p.pointsCost + ' คะแนน');
     });
-    var shippingLine = (adminExtra_ && adminExtra_.shipCod) ? ('ค่าจัดส่ง: ' + SHIP_COD_NOTE_)
+    var shippingLine = ((adminExtra_ && adminExtra_.shipCod) || bulkPlan_) ? ('ค่าจัดส่ง: ' + SHIP_COD_NOTE_)
       : totalShippingDiscount > 0
       ? ('ค่าจัดส่ง: ' + Math.round(shippingCost) + ' บาท ลด ' + Math.round(totalShippingDiscount) + ' บาท เหลือ ' + Math.round(finalShippingCost) + ' บาท')
       : ('ค่าจัดส่ง: ' + Math.round(finalShippingCost) + ' บาท');
@@ -2652,6 +2794,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       + (discountNoteParts.length ? ' | ' + discountNoteParts.join(', ') : '')
       + (pointsToReserve_ > 0 ? ' | 🎯 คะแนนรอหัก: ' + pointsToReserve_ + ' คะแนน (-฿' + Math.round(pointsRedeemResult_.discount) + ')' : '')
       + (preorderInfo_.balance > 0 ? ' | ' + preorderRemarkToken_(preorderInfo_) : '')
+      + (bulkPlan_ ? ' | ' + bulkPlan_.token : '')
       + (freebieNoteParts.length ? ' | 🎁 แถม (ลดราคาแล้ว): ' + freebieNoteParts.join(', ') : '')
       + (physicalFreebieNoteParts.length ? ' | 📦 ต้องหยิบของแถมเพิ่ม: ' + physicalFreebieNoteParts.join(', ') : '')
       + (purchaseReferrerCodeClean_ ? ' | 🤝 รหัสแนะนำซื้อ: ' + purchaseReferrerCodeClean_ : '');
@@ -2677,7 +2820,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
         rows.push([
           revenueId, timestamp, item.name, item.qty, item.price, itemDiscount, amt - itemDiscount,
           deliveryColValue_, finalAmount, paymentLabel, codSlipValue_, '', '',
-          customerName, phone, 'LINE Shop (อัตโนมัติ)', shopAdForOrder_(adminExtra_, stockCheck_), campaignValue,
+          customerName, phone, 'LINE Shop (อัตโนมัติ)', bulkPlan_ ? BULK_AD_ : shopAdForOrder_(adminExtra_, stockCheck_), campaignValue,
           'สมาชิก LINE', remark, '', '', timestamp, provinceValue,
           address, '', '', '', '', '', codPaymentDateValue_, profile.sub, // ⚡ แก้ (1/9/69) — ย้าย LINE UID จากคอลัมน์ Z (ชนกับ "วันที่พิมพ์ใบจัดส่ง" ของ Revenue Spunky Online) มาไว้คอลัมน์ AF แทน (ถัดจากวันที่ชำระเงินที่ว่างอยู่)
           codStatusValue_, '' // ⚡ เพิ่ม (19/9/69) — AG สถานะเก็บเงินปลายทาง / AH วันที่ได้รับเงินปลายทาง (ว่างทั้งคู่ถ้าไม่ใช่ออเดอร์ COD)
@@ -2709,7 +2852,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     sheet.getRange(startRow, 1, rows.length, REVENUE_TOTAL_COLS_).setValues(rows);
     if (purchasePurpose !== undefined && purchasePurpose !== null && (purposeRes_.value || isEditingExistingOrder)) writePurchasePurpose_(sheet, startRow, purposeRes_.value);
     // ⚡ (16/10/69) ตัดสต๊อกอัตโนมัติ · ⚡ (31/10/69) ยังไม่จ่าย (ไม่ใช่ปลายทาง / ยอด 0) = จดไว้ ตัดตอนแนบสลิป/จ่ายบัตร (ShopStock.gs)
-    var stockItems_ = adminExtra_ && adminExtra_.stockItemsJson ? adminExtra_.stockItemsJson : itemsJson;
+    var stockItems_ = bulkPlan_ ? bulkPlan_.stockJson : (adminExtra_ && adminExtra_.stockItemsJson ? adminExtra_.stockItemsJson : itemsJson);
     var payNow_ = isCodOrder || finalAmount <= 0;
     if (!payNow_ && (!isEditingExistingOrder || shopStockIsDeferred_(revenueId)) && shopStockDefer_(revenueId, stockItems_)) { /* รอชำระ */ }
     else shopStockApply_(revenueId, stockCheck_.plan, isEditingExistingOrder);
@@ -2772,7 +2915,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     }
 
     var tierBeforeOrder = resolveTierByStoredValue_(memberTierName, memberLifetimeSpend, profile.sub);
-    var pointsEarned = calcShopOrderPoints_(pointsBaseAmount_(finalAmount, deliveryColValue_), pointsMultiplierInfo_, tierBeforeOrder.pointMultiplier, repeatConfig_);
+    var pointsEarned = bulkPlan_ ? bulkPlan_.points : calcShopOrderPoints_(pointsBaseAmount_(finalAmount, deliveryColValue_), pointsMultiplierInfo_, tierBeforeOrder.pointMultiplier, repeatConfig_);
 
     var promoNoteParts_ = pointsMultiplierNoteParts_(pointsMultiplierInfo_);
     if (repeatConfig_ && repeatConfig_.multiplier > 1) promoNoteParts_.push('ซื้อซ้ำคูณแต้ม x' + repeatConfig_.multiplier + ' (' + repeatConfig_.name + ')');
