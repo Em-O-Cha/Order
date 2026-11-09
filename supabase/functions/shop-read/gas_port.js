@@ -3105,7 +3105,7 @@ function recalcOrderDiscounts_(lineUid, billInfo, remark, excludeOrderId) {
   if (pendingPoints_.points > 0) finalAmount = Math.max(0, finalAmount - pendingPoints_.discount);
   finalAmount = Math.floor(finalAmount);
   // ⚡ เพิ่ม (8/10/69) — ออเดอร์ชำระด้วยบัตรรอจ่าย: ค่าธรรมเนียมบัตรคิดใหม่จากยอดใหม่ (สูตรเดียวกับตอนสั่งซื้อ)
-  var cardFee_ = isCardPaymentLabel_(billInfo.paymentLabel) && finalAmount > 0 ? calcCardFee_(finalAmount) : 0;
+  var cardFee_ = isCardPaymentLabel_(billInfo.paymentLabel) && finalAmount > 0 ? calcCardFee_(preorderPayNow_(finalAmount, remark)) : 0;
   finalAmount += cardFee_;
 
   return {
