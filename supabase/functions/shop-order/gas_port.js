@@ -603,6 +603,10 @@ function bulkProductsFor_(retailCats) {
     var weight = parseFloat(String(r[8]).replace(/,/g, '')) || 0;
     // ขนาด (เช่น พริกผัด 120 / 230 กรัม): จากช่องบรรจุ หรือคำนวณจากน้ำหนักต่อลัง ÷ จำนวน เมื่อชื่อ+บรรจุซ้ำกัน
     var gm = pack.match(/(\d+)\s*กรัม/), size = gm ? gm[1] + ' กรัม' : '';
+    // ⚡ (9/11/69) ขนาดเขียนท้ายชื่อสินค้า เช่น "พริกผัดน้ำมันรำข้าว 120 กรัม" → ชื่อ "พริกผัดน้ำมันรำข้าว" + ขนาด 120 กรัม
+    //   (ใช้หาราคาปลีกของขนาดนั้นมาเทียบ · คีย์รายการยังเหมือนเดิม: ชื่อ + ขนาด + บรรจุ)
+    var nm_ = !size && name.match(/^(.*\S)\s+(\d+)\s*กรัม$/);
+    if (nm_) { name = nm_[1]; size = nm_[2] + ' กรัม'; }
     if (!size && seen[name + '|' + pack] > 1 && weight > 0) size = Math.round(weight / units) + ' กรัม';
     var packClean = pack.replace(/\s*\(ยกลัง\)\s*/g, ' ').replace(/\s*\d+\s*กรัม/, '').replace(/\s+/g, ' ').trim();
     var key = name + (size ? ' ' + size : '') + ' ' + packClean + ' ' + BULK_NAME_TAG_;
@@ -633,6 +637,14 @@ function bulkProductsFor_(retailCats) {
     var minQ_ = Math.floor(Number(cfg.min[key]) || 0);
     if (minQ_ > 1) item.minQty = minQ_;
     items.push(item);
+  });
+  // ⚡ (9/11/69) ไม่มีราคาปลีกเลย (เช่น รสที่ขายเฉพาะขายส่ง): ใช้ราคาปลีกต่อซองของสินค้าที่ราคาส่ง/บรรจุเหมือนกันทุกขั้น
+  items.forEach(function (it) {
+    if (it.retail || it.size) return;
+    var twin = items.filter(function (o) {
+      return o !== it && o.retail > 0 && !o.size && o.unitWord === it.unitWord && o.units > 0 && o.tiers.join() === it.tiers.join();
+    })[0];
+    if (twin) it.retail = Math.round(twin.retail / twin.units * it.units);
   });
   return { items: items, tiers: BULK_TIERS_, min: BULK_TIERS_[0], pointsPerCase: cfg.pointsPerCase };
 }
