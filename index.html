@@ -52,7 +52,7 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .bulk-qty::-webkit-outer-spin-button,.bulk-qty::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .bulk-card{flex-wrap:wrap}
 .bulk-card .btier{flex:0 0 100%;display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:2px}
-.bulk-card .btier div{background:#f4f4f4;border-radius:8px;text-align:center;padding:4px 0;overflow:hidden;font-size:11px;color:#888;line-height:1.35}
+.bulk-card .btier div{cursor:pointer;-webkit-tap-highlight-color:transparent;background:#f4f4f4;border-radius:8px;text-align:center;padding:4px 0;overflow:hidden;font-size:11px;color:#888;line-height:1.35}
 .bulk-card .btier div b{display:block;font-size:14px;color:#333;font-weight:700}
 .bulk-card .btier .cur{background:var(--gm);color:#e8f5e9}
 .bulk-card .btier .cur b{color:#fff}
@@ -2232,8 +2232,8 @@ function renderBulk_(){
       + '<div class="qty-ctl" style="justify-content:flex-end;margin-top:6px"><button class="qty-btn" onclick="bulkChange_(' + i + ',-1)">−</button>'
       + '<input class="bulk-qty" type="number" inputmode="numeric" pattern="[0-9]*" min="0" max="9999" value="' + q + '" onfocus="this.select()" onkeydown="if(event.key===\'Enter\')this.blur()" onchange="bulkSetQty_(' + i + ',this.value)">'
       + '<button class="qty-btn" onclick="bulkChange_(' + i + ',1)">+</button></div></div>'
-      + (bulkPerUnit_(price, it) ? '<div class="bcap">ราคาต่อลัง · ตัวสีส้ม = ราคาต่อ' + escHtml(it.unitWord || 'ชิ้น') + '</div>' : '')
-      + '<div class="btier">' + t.map(function(n, k){ return '<div class="' + (k === idx ? 'cur' : '') + '">' + bulkTierText_(k) + ' ลัง<b>' + it.tiers[k].toLocaleString('th-TH') + '</b>' + (bulkPerUnit_(it.tiers[k], it) ? '<i>฿' + bulkPerUnit_(it.tiers[k], it) + '</i>' : '') + '</div>'; }).join('') + '</div></div>';
+      + (bulkPerUnit_(price, it) ? '<div class="bcap">ราคาต่อลัง · ตัวสีส้ม = ราคาต่อ' + escHtml(it.unitWord || 'ชิ้น') + ' · แตะช่องเพื่อเลือกจำนวน</div>' : '')
+      + '<div class="btier">' + t.map(function(n, k){ return '<div class="' + (k === idx ? 'cur' : '') + '" onclick="bulkPickTier_(' + i + ',' + k + ')">' + bulkTierText_(k) + ' ลัง<b>' + it.tiers[k].toLocaleString('th-TH') + '</b>' + (bulkPerUnit_(it.tiers[k], it) ? '<i>฿' + bulkPerUnit_(it.tiers[k], it) + '</i>' : '') + '</div>'; }).join('') + '</div></div>';
   });
   box.innerHTML = h;
 }
@@ -2243,6 +2243,13 @@ function bulkPerUnit_(price, it){
   if (u <= 1) return '';
   var v = Math.round(price / u * 100) / 100;
   return v.toLocaleString('th-TH', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 });
+}
+// ⚡ (9/11/69) แตะช่องขั้นราคา = ใส่จำนวนรายการนี้ให้บิลถึงขั้นต่ำของช่องนั้นทันที (นับรวมสินค้าอื่นในบิลแล้ว)
+function bulkPickTier_(i, k){
+  var key = bulkKeys_[i];
+  if (!key || !bulkInfo_) return;
+  var others = bulkCases_() - (cart[key] || 0), it = bulkByKey_[key];
+  bulkSetQty_(i, Math.max(bulkInfo_.tiers[k] - others, (it && it.minQty) || 0, 1), 1);
 }
 function bulkChange_(i, delta){
   bulkSetQty_(i, (cart[bulkKeys_[i]] || 0) + delta, delta);
