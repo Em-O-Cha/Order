@@ -2289,6 +2289,7 @@ function goToBulkCheckout_(){
   if (selectedPayment === 'cod') selectPayment('promptpay');
   bulkCheckoutUi_(true);
   renderDiscountSummary();
+  renderPaymentDetail(); // ⚡ (9/11/69) กล่องชำระเงิน (QR/บัตร) ต้องใช้ยอดขายส่ง ไม่ใช่ยอดค้างจากตะกร้าปลีก
   showState('checkoutState');
   getFreshIdToken().then(function(idToken){
     var calls = [loadSavedAddress(idToken)];
