@@ -649,7 +649,8 @@ function bulkProductsFor_(retailCats) {
   return { items: items, tiers: BULK_TIERS_, min: BULK_TIERS_[0], pointsPerCase: cfg.pointsPerCase };
 }
 
-function bulkOrderPlan_(itemsJson, bulk) {
+function bulkOrderPlan_(itemsJson, bulk, opts) {
+  opts = opts || {};
   var input = [];
   try { input = JSON.parse(itemsJson || '[]') || []; } catch (e) { return { error: 'ข้อมูลตะกร้าไม่ถูกต้อง' }; }
   if (!bulk || !bulk.items) return { error: 'ยังไม่เปิดขายส่ง' };
@@ -661,21 +662,24 @@ function bulkOrderPlan_(itemsJson, bulk) {
     var b = byKey[String(input[i].name)], qty = Math.floor(parseFloat(input[i].qty) || 0);
     if (!b || b.hidden) return { error: 'ไม่พบสินค้าขายส่ง: ' + input[i].name + ' (กรุณาโหลดหน้าใหม่)' };
     if (qty <= 0) continue;
-    if (b.minQty && qty < b.minQty) return { error: b.name + (b.size ? ' ' + b.size : '') + ' สั่งขั้นต่ำ ' + b.minQty + ' ลัง (ตอนนี้ ' + qty + ' ลัง)' };
+    if (b.minQty && qty < b.minQty && !opts.admin) return { error: b.name + (b.size ? ' ' + b.size : '') + ' สั่งขั้นต่ำ ' + b.minQty + ' ลัง (ตอนนี้ ' + qty + ' ลัง)' };
     lines.push({ b: b, qty: qty });
     cases += qty;
   }
-  if (cases < bulk.min) return { error: 'ขายส่งสั่งขั้นต่ำ ' + bulk.min + ' ลัง (ตอนนี้ ' + cases + ' ลัง)' };
+  if (cases < bulk.min && !opts.admin) return { error: 'ขายส่งสั่งขั้นต่ำ ' + bulk.min + ' ลัง (ตอนนี้ ' + cases + ' ลัง)' };
+  if (!cases) return { error: 'กรุณาเพิ่มสินค้าขายส่ง' };
   var idx = bulkTierIndex_(cases), subtotal = 0, weight = 0, stockItems = [];
   var items = lines.map(function (l) {
-    var price = l.b.tiers[idx];
+    var price = l.b.tiers[Math.max(0, idx)];
+    var op_ = opts.prices && opts.prices.hasOwnProperty(l.b.key) ? parseFloat(opts.prices[l.b.key]) : NaN;
+    if (isFinite(op_) && op_ >= 0) price = op_;   // ⚡ (9/11/69) แอดมินแก้ราคาต่อลังเอง
     subtotal += price * l.qty; weight += l.b.weightG * l.qty;
     if (l.b.stock) stockItems.push({ name: l.b.name + (l.b.size ? ' ' + l.b.size : '') + ' (' + l.b.units + ' ' + l.b.unitWord + ')', qty: l.qty });
     return { name: l.b.key, qty: l.qty, price: price };
   });
   var points = Math.round(cases * bulk.pointsPerCase);
   return { items: items, cases: cases, tierIdx: idx, subtotal: subtotal, weight: weight, points: points, stockJson: JSON.stringify(stockItems),
-    token: '📦 ขายส่งยกลัง: ' + cases + ' ลัง ราคาขั้น ' + bulkTierLabel_(idx) + ' (+' + points + ' คะแนน)' };
+    token: '📦 ขายส่งยกลัง: ' + cases + ' ลัง ราคาขั้น ' + (bulkTierLabel_(idx) || 'ต่ำกว่า ' + BULK_TIERS_[0] + ' ลัง') + (opts.admin && opts.prices && Object.keys(opts.prices).length ? ' (แอดมินกำหนดราคา)' : '') + ' (+' + points + ' คะแนน)' };
 }
 
 var SHOP_MAX_QTY_HEADER_ = 'จำกัดต่อออเดอร์';
@@ -2537,9 +2541,10 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     var adminExtra_ = (typeof ADMIN_SHOP_EXTRA_ !== 'undefined' && ADMIN_SHOP_EXTRA_) || null;
     // ⚡ (9/11/69) ขายส่งยกลัง: ตะกร้าที่ติด bulk:true ทุกชิ้น — ราคาตามขั้น ไม่ใช้โปร/คูปอง/แลกคะแนน ค่าส่งชำระปลายทาง
     var bulkPlan_ = null;
-    try { if (!adminExtra_ && JSON.parse(itemsJson || '[]').some(function (it) { return it && it.bulk; })) bulkPlan_ = {}; } catch (bkE) {}
+    // ⚡ (9/11/69) แอดมินคีย์ออเดอร์แบบขายส่ง (adminExtra_.bulkMode): ราคาตามขั้น แก้ราคาได้ ไม่บังคับขั้นต่ำ
+    try { if ((!adminExtra_ || adminExtra_.bulkMode) && JSON.parse(itemsJson || '[]').some(function (it) { return it && it.bulk; })) bulkPlan_ = {}; } catch (bkE) {}
     if (bulkPlan_) {
-      bulkPlan_ = bulkOrderPlan_(itemsJson, (getShopProducts() || {}).bulk);
+      bulkPlan_ = bulkOrderPlan_(itemsJson, (getShopProducts() || {}).bulk, adminExtra_ ? { admin: true, prices: adminExtra_.prices } : null);
       if (bulkPlan_.error) return { success: false, error: bulkPlan_.error };
       if (String(paymentMethod || '') === 'cod') return { success: false, error: 'ขายส่งชำระค่าสินค้าด้วยโอน/พร้อมเพย์ หรือบัตร (ค่าส่งชำระปลายทาง)' };
       couponCode = ''; pointsToRedeem = 0; excludePrivilegeName = '';
@@ -2628,7 +2633,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
       items.forEach(function (it) { priceMap[it.name] = it.price; });
     }
     var shippingCost = bulkPlan_ ? 0 : calcShippingCost_(totalWeightG);
-    if (adminExtra_ && adminExtra_.shipping !== null) shippingCost = adminExtra_.shipping;
+    if (adminExtra_ && adminExtra_.shipping !== null && !bulkPlan_) shippingCost = adminExtra_.shipping;
 
     var appliedPrivileges = bulkPlan_ ? [] : getAppliedPrivileges_(profile.sub, subtotal, excludeRowIndexes, items, priceMap, shippingCost, reservedByEdit_ ? reservedByEdit_.privilegeRows : null);
     // ⚡ (4/11/69) สิทธิ์ที่ต้องใช้คะแนน (แลกด้วยคะแนน + ชำระเงิน): คะแนนไม่พอ = ไม่ใช้สิทธิ์นั้น (ห้ามใช้แคช — จุดตัดสินใจจริง)
