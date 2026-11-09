@@ -2309,7 +2309,7 @@ function renderBulkSummary_(wrap){
   if (save > 0) h += '<div class="row" style="color:#c62828;font-size:13px"><span>ประหยัดกว่าราคาปลีก</span><span>฿' + Math.round(save).toLocaleString('th-TH') + '</span></div>';
   if (bulkInfo_.pointsPerCase > 0) h += '<div class="row" style="color:#e65100;font-size:13px"><span>⭐ คะแนนที่จะได้</span><span>+' + (cases * bulkInfo_.pointsPerCase).toLocaleString('th-TH') + ' คะแนน</span></div>';
   var cardFee_ = cardFeeAmount_();
-  if (cardFee_ > 0) h += '<div class="row"><span>💳 ค่าธรรมเนียมชำระด้วยบัตร</span><span>฿' + cardFee_.toLocaleString('th-TH') + '</span></div>';
+  if (cardFee_ > 0) h += '<div class="row"><span>💳 ค่าธรรมเนียมชำระด้วยบัตร' + cardFeePctText_() + '</span><span>฿' + cardFee_.toLocaleString('th-TH') + '</span></div>';
   h += '<div class="row" style="align-items:center"><span>🚚 ค่าจัดส่ง</span><span style="color:#1565c0;font-weight:600">ชำระปลายทาง</span></div>';
   h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px;align-items:center"><span><b>ชำระค่าสินค้าตอนนี้</b></span><span style="font-size:22px;font-weight:700;color:#e65100">฿' + getFinalTotal().toLocaleString('th-TH') + '</span></div></div>';
   h += '<div style="background:#e3f2fd;border-radius:12px;padding:10px 12px;font-size:13px;color:#0d47a1;margin-top:10px">🚚 <b>ค่าจัดส่ง: ชำระปลายทาง</b><br>จ่ายค่าส่งกับพนักงานขนส่งตอนรับสินค้า</div>';
@@ -2398,7 +2398,7 @@ function preorderNoticeHtml_(payNow, balance){
     + (preDisc > 0 ? '<br>' + fmt(preSub) + ' − ส่วนลด ' + fmt(preDisc) + ' = ' + fmt(preNet) : ' (เต็ม ' + fmt(preSub) + ')'));
   if (normalSub > 0) rows += row('🛒 สินค้าปกติ (จ่ายเต็ม)', fmt(normalSub), escHtml(normLines.join(', ')));
   if (ship > 0) rows += row('🚚 ค่าจัดส่ง', fmt(ship));
-  if (fee > 0) rows += row('💳 ค่าธรรมเนียม', fmt(fee));
+  if (fee > 0) rows += row(cardFeeAmount_() > 0 ? '💳 ค่าธรรมเนียมบัตร' + cardFeePctText_() : '💳 ค่าธรรมเนียม', fmt(fee));
   if (disc > 0) rows += row('🏷️ ส่วนลด' + (normalSub > 0 ? 'สินค้าปกติ' : '') + '/คะแนน', '<span style="color:#c62828">-' + fmt(disc) + '</span>');
   return '<div style="border:2px dashed #ef6c00;background:#fff8e1;border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:13px;color:#5a3200;line-height:1.6">'
     + '📦 <b style="color:#e65100">ออเดอร์นี้มีสินค้า Pre-order</b><br>ชำระมัดจำ ' + preorderCfg_.depositPct + '% ของสินค้า Pre-order (สินค้าปกติชำระเต็ม) รวมจ่ายครั้งเดียวตอนนี้ ส่วนที่เหลือชำระเมื่อสินค้าพร้อมส่ง'
@@ -2467,7 +2467,7 @@ function pbSetMethod_(m){
     var fee = r.cardFee || 0;
     box.innerHTML = '<div class="bank-box" style="text-align:center"><p style="font-weight:600;color:#5b2c9c">💳 ชำระด้วยบัตรเครดิต/เดบิต</p>'
       + '<p style="font-size:24px;font-weight:700;color:#5b2c9c;margin-top:6px">฿' + (r.balance + fee).toLocaleString('th-TH') + '</p>'
-      + (fee ? '<p style="font-size:12px;color:var(--g6)">(รวมค่าธรรมเนียมบัตร ฿' + fee.toLocaleString('th-TH') + ')</p>' : '') + '</div>'
+      + (fee ? '<p style="font-size:12px;color:var(--g6)">(รวมค่าธรรมเนียมบัตร' + (cardFeePctText_() || r.cardFeePct || '') + ' ฿' + fee.toLocaleString('th-TH') + ')</p>' : '') + '</div>'
       + '<button type="button" class="btn btn-block" id="pbCardBtn" style="margin-top:12px" onclick="pbStartCard_()">💳 ไปหน้าชำระเงิน</button>';
     return;
   }
@@ -3452,7 +3452,7 @@ function renderDiscountSummary(){
   }
   var cardFeeRow_ = cardFeeAmount_();
   if (cardFeeRow_ > 0) {
-    h += '<div class="row"><span>💳 ค่าธรรมเนียมชำระด้วยบัตร</span><span>฿' + cardFeeRow_.toLocaleString('th-TH') + '</span></div>';
+    h += '<div class="row"><span>💳 ค่าธรรมเนียมชำระด้วยบัตร' + cardFeePctText_() + '</span><span>฿' + cardFeeRow_.toLocaleString('th-TH') + '</span></div>';
   }
   h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px;align-items:center"><span><b>ยอดสุทธิ</b></span><span style="font-size:22px;font-weight:700;color:#e65100">฿' + getFinalTotal().toLocaleString('th-TH') + '</span></div>';
   h += '</div>';
@@ -3574,7 +3574,16 @@ function codUnavailableReason_(){
 
 // เรียกทุกครั้งที่ยอดเปลี่ยน (renderDiscountSummary) — ถ้ายอดหลุดเงื่อนไขไปแล้วและลูกค้าเลือกเก็บเงินปลายทางค้างไว้
 // จะสลับกลับไปพร้อมเพย์ให้อัตโนมัติ กันกดสั่งซื้อแล้วเซิร์ฟเวอร์ปฏิเสธ
+// ⚡ (9/11/69) " 3%" ต่อท้ายคำว่าค่าธรรมเนียมบัตร (ตั้งแบบ % เท่านั้น · แบบบาทคงที่ = '')
+function cardFeePctText_(){
+  if (!cardInfo_ || !(cardInfo_.fee > 0) || cardInfo_.feeType === 'fixed') return '';
+  return ' ' + (Math.round(cardInfo_.fee * 100) / 100) + '%';
+}
 function updatePaymentMethodsUi_(){
+  try {
+    var subCard_ = document.querySelector('#optCard .payment-method-sub');
+    if (subCard_) subCard_.textContent = cardFeePctText_() ? 'ค่าธรรมเนียม' + cardFeePctText_() : 'Visa / Mastercard';
+  } catch (e) {}
   var codBtn = document.getElementById('optCod');
   if (!codBtn) return;
   var available = !codUnavailableReason_();
@@ -3641,7 +3650,7 @@ function renderPaymentDetail(targetElId, fixedTotal, showBoth){
     wrap.innerHTML = '<div class="bank-box" style="text-align:center">'
       + '<p style="font-weight:600;color:#5b2c9c;font-size:15px">💳 ชำระด้วยบัตรเครดิต/เดบิต</p>'
       + '<p style="font-size:24px;font-weight:700;color:#5b2c9c;margin-top:8px">฿' + total.toLocaleString('th-TH') + '</p>'
-      + (cardFeeNow_ > 0 ? '<p style="font-size:12px;color:var(--g6);margin-top:4px">(รวมค่าธรรมเนียมชำระด้วยบัตร ฿' + cardFeeNow_.toLocaleString('th-TH') + ' แล้ว)</p>' : '')
+      + (cardFeeNow_ > 0 ? '<p style="font-size:12px;color:var(--g6);margin-top:4px">(รวมค่าธรรมเนียมชำระด้วยบัตร' + cardFeePctText_() + ' ฿' + cardFeeNow_.toLocaleString('th-TH') + ' แล้ว)</p>' : '')
       + (cardInfo_ && cardInfo_.fee > 0 && cardInfo_.feeFreeFrom > 0
           ? '<p style="font-size:12px;color:' + (cardFeeNow_ > 0 ? '#e65100' : '#2e7d32') + ';margin-top:4px">' + (cardFeeNow_ > 0
               ? '💡 สั่งครบ ฿' + Math.round(cardInfo_.feeFreeFrom).toLocaleString('th-TH') + ' ฟรีค่าธรรมเนียมบัตร'
