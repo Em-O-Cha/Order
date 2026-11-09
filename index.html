@@ -52,10 +52,15 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .bulk-qty::-webkit-outer-spin-button,.bulk-qty::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .bulk-card{flex-wrap:wrap}
 .bulk-card .btier{flex:0 0 100%;display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:2px}
-.bulk-card .btier div{background:#f4f4f4;border-radius:8px;text-align:center;padding:4px 1px;font-size:11px;color:#888;line-height:1.35}
+.bulk-card .btier div{background:#f4f4f4;border-radius:8px;text-align:center;padding:4px 0;overflow:hidden;font-size:11px;color:#888;line-height:1.35}
 .bulk-card .btier div b{display:block;font-size:14px;color:#333;font-weight:700}
 .bulk-card .btier .cur{background:var(--gm);color:#e8f5e9}
 .bulk-card .btier .cur b{color:#fff}
+.bulk-card .btier div i{display:block;font-style:normal;font-size:11px;color:#e65100;white-space:nowrap}
+.bulk-card .btier .cur i{color:#ffe0b2}
+.bulk-card .bcap{flex:0 0 100%;font-size:11px;color:#999;margin:2px 0 -4px 2px}
+.bulk-card .pu{font-size:12.5px;color:#555;margin-top:1px}
+.bulk-card .pu b{color:#e65100}
 .limit-modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
 .limit-modal div{background:#fff;border-radius:16px;padding:20px 18px;max-width:340px;text-align:center;font-size:15.5px;line-height:1.6;box-shadow:0 8px 30px rgba(0,0,0,.3)}
 .limit-modal button{margin-top:14px;background:var(--gm);color:#fff;border:0;border-radius:10px;padding:9px 30px;font-family:'Kanit',sans-serif;font-size:15px;cursor:pointer}
@@ -2221,12 +2226,21 @@ function renderBulk_(){
     h += '<div class="bulk-card">' + (it.image ? '<img src="' + escHtml(it.image) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '<div class="ph"></div>')
       + '<div style="flex:1;min-width:0"><div class="nm">' + escHtml(it.name) + '</div><div class="pk">' + escHtml(it.pack) + '</div>'
       + '<div class="pr">฿' + price.toLocaleString('th-TH') + (off > 0 ? '<s>฿' + Math.round(it.retail).toLocaleString('th-TH') + '</s><b>-' + off + '%</b>' : '') + '</div>'
+      + (bulkPerUnit_(price, it) ? '<div class="pu">ตก' + escHtml(it.unitWord || 'ชิ้น') + 'ละ <b>฿' + bulkPerUnit_(price, it) + '</b></div>' : '')
       + '<div class="qty-ctl" style="justify-content:flex-end;margin-top:6px"><button class="qty-btn" onclick="bulkChange_(' + i + ',-1)">−</button>'
       + '<input class="bulk-qty" type="number" inputmode="numeric" pattern="[0-9]*" min="0" max="9999" value="' + q + '" onfocus="this.select()" onkeydown="if(event.key===\'Enter\')this.blur()" onchange="bulkSetQty_(' + i + ',this.value)">'
       + '<button class="qty-btn" onclick="bulkChange_(' + i + ',1)">+</button></div></div>'
-      + '<div class="btier">' + t.map(function(n, k){ return '<div class="' + (k === idx ? 'cur' : '') + '">' + bulkTierText_(k) + ' ลัง<b>' + it.tiers[k].toLocaleString('th-TH') + '</b></div>'; }).join('') + '</div></div>';
+      + (bulkPerUnit_(price, it) ? '<div class="bcap">ราคาต่อลัง · ตัวสีส้ม = ราคาต่อ' + escHtml(it.unitWord || 'ชิ้น') + '</div>' : '')
+      + '<div class="btier">' + t.map(function(n, k){ return '<div class="' + (k === idx ? 'cur' : '') + '">' + bulkTierText_(k) + ' ลัง<b>' + it.tiers[k].toLocaleString('th-TH') + '</b>' + (bulkPerUnit_(it.tiers[k], it) ? '<i>฿' + bulkPerUnit_(it.tiers[k], it) + '</i>' : '') + '</div>'; }).join('') + '</div></div>';
   });
   box.innerHTML = h;
+}
+// ราคาต่อกระปุก/ซอง = ราคาต่อลัง ÷ จำนวนในลัง (ทศนิยม 2 ตำแหน่ง ตัด .00)
+function bulkPerUnit_(price, it){
+  var u = Number(it && it.units) || 0;
+  if (u <= 1) return '';
+  var v = Math.round(price / u * 100) / 100;
+  return v.toLocaleString('th-TH', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 });
 }
 function bulkChange_(i, delta){
   bulkSetQty_(i, (cart[bulkKeys_[i]] || 0) + delta);
@@ -2272,7 +2286,7 @@ function renderBulkSummary_(wrap){
     var it = bulkByKey_[k]; if (!it) return;
     var price = it.tiers[Math.max(0, idx)], q = cart[k];
     if (it.retail > price) save += (it.retail - price) * q;
-    h += '<div class="row"><span>' + escHtml(it.name) + (it.size ? ' ' + escHtml(it.size) : '') + ' <b style="color:#e65100">x' + q + ' ลัง</b></span><span>฿' + (price * q).toLocaleString('th-TH') + '</span></div>';
+    h += '<div class="row"><span>' + escHtml(it.name) + (it.size ? ' ' + escHtml(it.size) : '') + ' <b style="color:#e65100">x' + q + ' ลัง</b>' + (bulkPerUnit_(price, it) ? '<br><span style="font-size:12px;color:#777">' + escHtml(it.unitWord || 'ชิ้น') + 'ละ ฿' + bulkPerUnit_(price, it) + '</span>' : '') + '</span><span>฿' + (price * q).toLocaleString('th-TH') + '</span></div>';
   });
   h += '<div class="row" style="border-top:1px dashed var(--gb);margin-top:6px;padding-top:8px"><b>ยอดสินค้า (' + cases + ' ลัง)</b><b>฿' + getCartTotal().toLocaleString('th-TH') + '</b></div>';
   if (save > 0) h += '<div class="row" style="color:#c62828;font-size:13px"><span>ประหยัดกว่าราคาปลีก</span><span>฿' + Math.round(save).toLocaleString('th-TH') + '</span></div>';
