@@ -616,6 +616,16 @@ function bulkProductsFor_(retailCats) {
         else if (size && v.label.indexOf(size) !== -1) retail = v.price * units;
       });
     });
+    // ⚡ (9/11/69) ขายปลีกไม่มีขนาดยกลัง (เช่น เจบางรสมีแค่ 6 ซอง): เทียบจากแพ็คใหญ่สุดของขายปลีก ราคาต่อซอง × จำนวนในลัง
+    if (!retail && !size) (retailCats || []).forEach(function (cat) {
+      if (String(cat.name).trim() !== name) return;
+      var best = null;
+      cat.variants.forEach(function (v) {
+        var vu_ = String(v.label).match(/(\d+)\s*(ซอง|ถ้วย|กระปุก|ใบ|แพ็ค|แพค|ชิ้น)/);
+        if (vu_ && Number(vu_[1]) > 0 && Number(v.price) > 0 && (!best || Number(vu_[1]) > best.u)) best = { u: Number(vu_[1]), p: Number(v.price) };
+      });
+      if (best) retail = Math.round(best.p / best.u * units);
+    });
     var item = { key: key, name: name, size: size, pack: units + ' ' + unitWord + (size ? ' · ' + size : ''), units: units, unitWord: unitWord,
       tiers: tiers, image: toDirectImageUrl_(String(r[7] || '').trim()), weightG: weight, retail: retail };
     if (hidden[key]) item.hidden = true;
