@@ -50,7 +50,12 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .bulk-card .pr b{font-size:11.5px;background:#fdecea;color:#c62828;border-radius:6px;padding:1px 6px;margin-left:4px}
 .bulk-qty{width:56px;height:32px;border:1.5px solid var(--gb);border-radius:8px;text-align:center;font-size:16px;font-weight:600;padding:0 4px;background:#fff;color:#222;-moz-appearance:textfield}
 .bulk-qty::-webkit-outer-spin-button,.bulk-qty::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.bulk-card .mini{font-size:11.5px;color:#777;margin-top:2px;line-height:1.5}
+.bulk-card{flex-wrap:wrap}
+.bulk-card .btier{flex:0 0 100%;display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:2px}
+.bulk-card .btier div{background:#f4f4f4;border-radius:8px;text-align:center;padding:4px 1px;font-size:11px;color:#888;line-height:1.35}
+.bulk-card .btier div b{display:block;font-size:14px;color:#333;font-weight:700}
+.bulk-card .btier .cur{background:var(--gm);color:#e8f5e9}
+.bulk-card .btier .cur b{color:#fff}
 .limit-modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
 .limit-modal div{background:#fff;border-radius:16px;padding:20px 18px;max-width:340px;text-align:center;font-size:15.5px;line-height:1.6;box-shadow:0 8px 30px rgba(0,0,0,.3)}
 .limit-modal button{margin-top:14px;background:var(--gm);color:#fff;border:0;border-radius:10px;padding:9px 30px;font-family:'Kanit',sans-serif;font-size:15px;cursor:pointer}
@@ -2216,10 +2221,10 @@ function renderBulk_(){
     h += '<div class="bulk-card">' + (it.image ? '<img src="' + escHtml(it.image) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '<div class="ph"></div>')
       + '<div style="flex:1;min-width:0"><div class="nm">' + escHtml(it.name) + '</div><div class="pk">' + escHtml(it.pack) + '</div>'
       + '<div class="pr">฿' + price.toLocaleString('th-TH') + (off > 0 ? '<s>฿' + Math.round(it.retail).toLocaleString('th-TH') + '</s><b>-' + off + '%</b>' : '') + '</div>'
-      + '<div class="mini">' + t.map(function(n, k){ return bulkTierText_(k) + ': ' + it.tiers[k].toLocaleString('th-TH'); }).join(' · ') + '</div>'
       + '<div class="qty-ctl" style="justify-content:flex-end;margin-top:6px"><button class="qty-btn" onclick="bulkChange_(' + i + ',-1)">−</button>'
       + '<input class="bulk-qty" type="number" inputmode="numeric" pattern="[0-9]*" min="0" max="9999" value="' + q + '" onfocus="this.select()" onkeydown="if(event.key===\'Enter\')this.blur()" onchange="bulkSetQty_(' + i + ',this.value)">'
-      + '<button class="qty-btn" onclick="bulkChange_(' + i + ',1)">+</button></div></div></div>';
+      + '<button class="qty-btn" onclick="bulkChange_(' + i + ',1)">+</button></div></div>'
+      + '<div class="btier">' + t.map(function(n, k){ return '<div class="' + (k === idx ? 'cur' : '') + '">' + bulkTierText_(k) + ' ลัง<b>' + it.tiers[k].toLocaleString('th-TH') + '</b></div>'; }).join('') + '</div></div>';
   });
   box.innerHTML = h;
 }
