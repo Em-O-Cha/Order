@@ -604,7 +604,9 @@ function bulkConfig_() {
   return {
     pointsPerCase: isFinite(pts) && pts >= 0 ? Math.min(1000, Math.round(pts)) : 5,
     hidden: Array.isArray(c.hidden) ? c.hidden.map(String) : [],
-    stock: Array.isArray(c.stock) ? c.stock.map(String) : []
+    stock: Array.isArray(c.stock) ? c.stock.map(String) : [],
+    // ⚡ (9/11/69) ขั้นต่ำต่อรายการ (ลัง) เช่น น้ำพริกเจ แต่ละรสต้อง 20 ลังขึ้นไป · ไม่มี = ใช้ขั้นต่ำทั้งบิลอย่างเดียว
+    min: (c.min && typeof c.min === 'object' && !Array.isArray(c.min)) ? c.min : {}
   };
 }
 
@@ -646,6 +648,8 @@ function bulkProductsFor_(retailCats) {
       tiers: tiers, image: toDirectImageUrl_(String(r[7] || '').trim()), weightG: weight, retail: retail };
     if (hidden[key]) item.hidden = true;
     if (stockSet[key]) item.stock = true;
+    var minQ_ = Math.floor(Number(cfg.min[key]) || 0);
+    if (minQ_ > 1) item.minQty = minQ_;
     items.push(item);
   });
   return { items: items, tiers: BULK_TIERS_, min: BULK_TIERS_[0], pointsPerCase: cfg.pointsPerCase };
