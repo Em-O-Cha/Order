@@ -2225,7 +2225,7 @@ function renderBulk_(){
     var price = it.tiers[showIdx], q = cart[it.key] || 0;
     var off = it.retail > price ? Math.round((1 - price / it.retail) * 100) : 0;
     h += '<div class="bulk-card">' + (it.image ? '<img src="' + escHtml(it.image) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '<div class="ph"></div>')
-      + '<div style="flex:1;min-width:0"><div class="nm">' + escHtml(it.name) + '</div><div class="pk">' + escHtml(it.pack) + '</div>'
+      + '<div style="flex:1;min-width:0"><div class="nm">' + escHtml(it.name) + (it.size ? ' <span style="color:#e65100">' + escHtml(it.size) + '</span>' : '') + '</div><div class="pk">' + escHtml(it.units ? it.units + ' ' + it.unitWord : it.pack) + '</div>'
       + '<div class="pr">฿' + price.toLocaleString('th-TH') + (off > 0 ? '<s>฿' + Math.round(it.retail).toLocaleString('th-TH') + '</s><b>-' + off + '%</b>' : '') + '</div>'
       + (it.minQty ? '<div class="bmin">สั่งขั้นต่ำ ' + it.minQty + ' ลัง</div>' : '')
       + (bulkPerUnit_(price, it) ? '<div class="pu">ตก' + escHtml(it.unitWord || 'ชิ้น') + 'ละ <b>฿' + bulkPerUnit_(price, it) + '</b></div>' : '')
