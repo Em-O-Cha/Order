@@ -63,6 +63,8 @@ body{font-family:'Kanit',sans-serif;background:#f5f5f5;color:var(--td);min-heigh
 .bulk-card .btier .cur i{color:#ffe0b2}
 .bulk-card .bcap{flex:0 0 100%;font-size:11px;color:#999;margin:2px 0 -4px 2px}
 .bulk-card .bmin{display:inline-block;font-size:11.5px;font-weight:600;color:#e65100;background:#fff3e0;border-radius:6px;padding:1px 7px;margin-top:2px}
+.pre-pay-opt{flex:1;padding:8px 4px !important;border-radius:9px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer;background:#fff !important;color:#e65100 !important;border:1.5px solid #f0c27a !important;box-shadow:none !important;min-height:0 !important;width:auto !important}
+.pre-pay-opt.on{background:#ef6c00 !important;color:#fff !important;border-color:#ef6c00 !important}
 .bulk-card .pu{font-size:12.5px;color:#555;margin-top:1px}
 .bulk-card .pu b{color:#e65100}
 .limit-modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
@@ -2327,8 +2329,33 @@ function renderBulkSummary_(wrap){
 // สินค้าที่ v.preorder = จ่ายมัดจำ depositPct% ตอนสั่ง (สินค้าปกติจ่ายเต็ม รวมเป็นยอดเดียว) ส่วนที่เหลือจ่ายเมื่อพร้อมส่ง
 // สูตรเดียวกับ preorderCalc_ ฝั่งเซิร์ฟเวอร์: ค้างชำระ = ปัด((ราคาปกติ x จำนวน ของสินค้า Pre-order) x (100 - มัดจำ%) / 100)
 var preorderCfg_ = null;
+// ⚡ (9/11/69) ลูกค้าเลือก "จ่ายเต็มจำนวน" แทนมัดจำ (ส่ง preFull ไปกับสินค้า — เซิร์ฟเวอร์ไม่ตั้งยอดค้าง)
+var preorderFullPay_ = false;
+function cartHasPreorder_(){
+  if (shopMode_ === 'bulk' || !preorderCfg_) return false;
+  return Object.keys(cart).some(function(n){ var v = findVariant(n); return !!(v && v.preorder && cart[n] > 0); });
+}
+function setPreorderFullPay_(on){
+  preorderFullPay_ = !!on;
+  renderDiscountSummary();
+  renderPaymentDetail();
+}
+function preorderPayChoiceHtml_(){
+  var b = function(on, label){
+    return '<button type="button" class="pre-pay-opt' + (preorderFullPay_ === on ? ' on' : '') + '" onclick="setPreorderFullPay_(' + on + ')">' + (preorderFullPay_ === on ? '✓ ' : '') + label + '</button>';
+  };
+  return '<div style="display:flex;gap:6px;margin:6px 0 2px">' + b(false, 'มัดจำ ' + preorderCfg_.depositPct + '%') + b(true, 'จ่ายเต็มจำนวนเลย') + '</div>';
+}
+function preorderFullNoticeHtml_(total){
+  return '<div style="border:2px dashed #ef6c00;background:#fff8e1;border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:13px;color:#5a3200;line-height:1.6">'
+    + '📦 <b style="color:#e65100">ออเดอร์นี้มีสินค้า Pre-order</b>' + preorderPayChoiceHtml_()
+    + '<div style="background:#fff;border-radius:8px;padding:6px 9px;margin-top:6px"><div style="display:flex;justify-content:space-between"><b>💰 จ่ายเต็มจำนวนครั้งเดียว</b><b style="font-size:19px;color:#e65100">฿' + Math.round(total).toLocaleString('th-TH') + '</b></div>'
+    + '<div style="font-size:12px;color:#2e7d32">✅ ไม่ต้องจ่ายเพิ่มตอนสินค้าพร้อมส่ง</div></div>'
+    + (preorderCfg_.leadDays > 0 ? '<div style="font-size:12px;color:#8d4a00">⏱️ Pre-order ' + preorderCfg_.leadDays + ' วัน</div>' : '')
+    + '</div>';
+}
 function preorderBalance_(){
-  if (!preorderCfg_) return 0;
+  if (!preorderCfg_ || preorderFullPay_) return 0;
   var sub = 0;
   Object.keys(cart).forEach(function(name){ var v = findVariant(name); if (v && v.preorder) sub += cart[name] * v.price; });
   if (!sub) return 0;
@@ -2405,7 +2432,7 @@ function preorderNoticeHtml_(payNow, balance){
   if (fee > 0) rows += row(cardFeeAmount_() > 0 ? '💳 ค่าธรรมเนียมบัตร' + cardFeePctText_() : '💳 ค่าธรรมเนียม', fmt(fee));
   if (disc > 0) rows += row('🏷️ ส่วนลด' + (normalSub > 0 ? 'สินค้าปกติ' : '') + '/คะแนน', '<span style="color:#c62828">-' + fmt(disc) + '</span>');
   return '<div style="border:2px dashed #ef6c00;background:#fff8e1;border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:13px;color:#5a3200;line-height:1.6">'
-    + '📦 <b style="color:#e65100">ออเดอร์นี้มีสินค้า Pre-order</b><br>ชำระมัดจำ ' + preorderCfg_.depositPct + '% ของสินค้า Pre-order (สินค้าปกติชำระเต็ม) รวมจ่ายครั้งเดียวตอนนี้ ส่วนที่เหลือชำระเมื่อสินค้าพร้อมส่ง'
+    + '📦 <b style="color:#e65100">ออเดอร์นี้มีสินค้า Pre-order</b>' + preorderPayChoiceHtml_() + 'ชำระมัดจำ ' + preorderCfg_.depositPct + '% ของสินค้า Pre-order (สินค้าปกติชำระเต็ม) รวมจ่ายครั้งเดียวตอนนี้ ส่วนที่เหลือชำระเมื่อสินค้าพร้อมส่ง'
     + '<div style="background:#fff;border-radius:8px;padding:6px 9px;margin-top:6px">' + rows
     + '<div style="display:flex;justify-content:space-between;border-top:1px dashed #f0c27a;margin-top:4px;padding-top:4px"><b>💰 ชำระตอนนี้</b><b style="font-size:19px;color:#e65100">฿' + payNow.toLocaleString('th-TH') + '</b></div></div>'
     + '<div style="display:flex;justify-content:space-between;margin-top:6px"><span>⏳ ชำระเมื่อพร้อมส่ง <span style="font-size:11px">(Pre-order ส่วนที่เหลือ ' + (100 - preorderCfg_.depositPct) + '%)</span>'
@@ -3573,7 +3600,7 @@ function cardUnavailableReason_(){
 function codUnavailableReason_(){
   if (shopMode_ === 'bulk') return 'ขายส่งชำระค่าสินค้าด้วยโอน/พร้อมเพย์ หรือบัตร';
   if (!codInfo_ || !codInfo_.enabled) return 'ขณะนี้ร้านปิดรับชำระแบบเก็บเงินปลายทาง';
-  if (preorderBalance_() > 0) return 'ออเดอร์ที่มีสินค้า Pre-order ชำระแบบเก็บเงินปลายทางไม่ได้';
+  if (preorderBalance_() > 0 || (preorderFullPay_ && cartHasPreorder_())) return 'ออเดอร์ที่มีสินค้า Pre-order ชำระแบบเก็บเงินปลายทางไม่ได้';
   if (codInfo_.blocked) return 'บัญชีของคุณถูกระงับการชำระแบบเก็บเงินปลายทาง กรุณาติดต่อทีมงาน';
   if (codInfo_.tierAllowed === false) return 'ระดับสมาชิกของคุณยังใช้ชำระแบบเก็บเงินปลายทางไม่ได้';
   var base = getFinalTotalBeforeCod_();
@@ -3643,7 +3670,8 @@ function renderPaymentDetail(targetElId, fixedTotal, showBoth){
   var total = (typeof fixedTotal === 'number') ? fixedTotal : getFinalTotal();
   // ⚡ (5/11/69) Pre-order: จ่ายตอนนี้ = ยอดรวม - ส่วนที่ค้างชำระ (จ่ายเมื่อพร้อมส่ง)
   var preBal_ = (typeof fixedTotal === 'number') ? 0 : preorderBalance_();
-  var preNotice_ = preBal_ > 0 ? preorderNoticeHtml_(total - preBal_, preBal_) : '';
+  var preNotice_ = preBal_ > 0 ? preorderNoticeHtml_(total - preBal_, preBal_)
+    : (typeof fixedTotal !== 'number' && preorderFullPay_ && cartHasPreorder_() ? preorderFullNoticeHtml_(total) : '');
   total -= preBal_;
   // ⚡ เพิ่ม (19/9/69) — เลือกเก็บเงินปลายทาง: ไม่ต้องโชว์ QR/เลขบัญชีเลย (showBoth = ป็อปอัปดูเลขบัญชีซ้ำ
   // ที่หน้าสั่งซื้อสำเร็จ ซึ่งไม่ได้เปิดให้ออเดอร์เก็บเงินปลายทางอยู่แล้ว)
@@ -3874,7 +3902,8 @@ function confirmSubmitOrder(){
   errBox.classList.add('sh');
 
   var items = Object.keys(cart).map(function(name){
-    return shopMode_ === 'bulk' ? { name: name, qty: cart[name], bulk: true } : { name: name, qty: cart[name] };
+    return shopMode_ === 'bulk' ? { name: name, qty: cart[name], bulk: true }
+      : (preorderFullPay_ && cartHasPreorder_() ? { name: name, qty: cart[name], preFull: true } : { name: name, qty: cart[name] });
   });
   if (!items.length) { closeAddressConfirmModal(); showInlineCheckoutError_('ไม่มีสินค้าในตะกร้า'); return; }
 

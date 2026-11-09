@@ -1905,6 +1905,7 @@ function preorderAllocNet_(items, isPre, d) {
 
 function preorderRemarkToken_(info) {
   var names = info.lines.map(function (l) { return cleanPriceGiftText_(l.name).replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim() + ' x' + l.qty; }).join(', ');
+  if (info.fullPay) return '🧾 Pre-order: ชำระครบแล้ว ฿0 (มัดจำ 100% จ่ายเต็มตอนสั่ง ของ ฿' + Math.round(info.subtotal) + ' · ' + names + ')';
   return '🧾 Pre-order: ค้างชำระ ฿' + Math.round(info.balance) + ' (มัดจำ ' + info.pct + '% ของ ฿' + Math.round(info.subtotal) + ' · ' + names + ')';
 }
 
@@ -2733,7 +2734,11 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     // ⚡ (5/11/69) Pre-order: สินค้า Pre-order จ่ายมัดจำตอนสั่ง ส่วนที่เหลือ (ค้างชำระ) จ่ายเมื่อพร้อมส่ง — ยอดทั้งบิลไม่เปลี่ยน
     var preorderInfo_ = preorderCalc_(items, bulkPlan_ ? null : getPreorderConfig_(), adminExtra_ && Array.isArray(adminExtra_.preorder) ? adminExtra_.preorder : null, finalAmount,
       { entries: appliedPrivileges.concat(couponResults), whole: repeatBonusDiscount_ + adminExtraDiscount_, points: pointsRedeemResult_.discount, ship: finalShippingCost });
-    if (preorderInfo_.balance > 0 && String(paymentMethod || '') === 'cod') return { success: false, error: 'ออเดอร์ที่มีสินค้า Pre-order ชำระแบบเก็บเงินปลายทางไม่ได้ กรุณาเลือกโอน/พร้อมเพย์ หรือบัตร' };
+    // ⚡ (9/11/69) Pre-order แต่ลูกค้าเลือก "จ่ายเต็มจำนวน" (สินค้าในตะกร้าติด preFull / แอดมินติ๊ก) = ไม่มียอดค้าง ยังนับเป็น Pre-order
+    var preFull_ = false;
+    try { preFull_ = !!(adminExtra_ && adminExtra_.preFull) || JSON.parse(itemsJson || '[]').some(function (it) { return it && it.preFull; }); } catch (pfE) {}
+    if (preFull_ && preorderInfo_.lines.length) { preorderInfo_.fullPay = true; preorderInfo_.balance = 0; }
+    if ((preorderInfo_.balance > 0 || preorderInfo_.fullPay) && String(paymentMethod || '') === 'cod') return { success: false, error: 'ออเดอร์ที่มีสินค้า Pre-order ชำระแบบเก็บเงินปลายทางไม่ได้ กรุณาเลือกโอน/พร้อมเพย์ หรือบัตร' };
     var isCodOrder = String(paymentMethod || '') === 'cod';
     var codFee = 0;
     if (isCodOrder) {
@@ -2838,7 +2843,7 @@ function createShopOrder(idToken, itemsJson, paymentMethod, couponCode, shipping
     var remark = shippingLine + ' (น้ำหนักรวม ' + totalWeightG + ' กรัม) | ' + (isCodOrder ? COD_REMARK_PENDING_ : 'รอแนบสลิป - LINE Shop')
       + (discountNoteParts.length ? ' | ' + discountNoteParts.join(', ') : '')
       + (pointsToReserve_ > 0 ? ' | 🎯 คะแนนรอหัก: ' + pointsToReserve_ + ' คะแนน (-฿' + Math.round(pointsRedeemResult_.discount) + ')' : '')
-      + (preorderInfo_.balance > 0 ? ' | ' + preorderRemarkToken_(preorderInfo_) : '')
+      + (preorderInfo_.balance > 0 || preorderInfo_.fullPay ? ' | ' + preorderRemarkToken_(preorderInfo_) : '')
       + (bulkPlan_ ? ' | ' + bulkPlan_.token : '')
       + (freebieNoteParts.length ? ' | 🎁 แถม (ลดราคาแล้ว): ' + freebieNoteParts.join(', ') : '')
       + (physicalFreebieNoteParts.length ? ' | 📦 ต้องหยิบของแถมเพิ่ม: ' + physicalFreebieNoteParts.join(', ') : '')
