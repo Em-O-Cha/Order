@@ -2243,6 +2243,9 @@ function calcPromoDiscount_(promo, items, priceMap, shippingCost) {
     result.shippingDiscount = Math.max(0, (shippingCost || 0) - shipPrice_);
     return result;
   }
+  // ⚡ (9/11/69) แอดมินคีย์ออเดอร์แก้ราคาสินค้าเอง = ราคาสุดท้ายของชิ้นนั้น ไม่คิดโปร/สิทธิ์ลดราคาซ้ำ
+  var adminFixed_ = (typeof ADMIN_SHOP_EXTRA_ !== 'undefined' && ADMIN_SHOP_EXTRA_ && ADMIN_SHOP_EXTRA_.prices) || null;
+  if (adminFixed_ && Object.keys(adminFixed_).length) items = (items || []).filter(function (it) { return !adminFixed_.hasOwnProperty(it.name); });
   if (type === 'bogo' && promo.giftOnly) {
     var eligibleGift = computeEligibleInfo_(items, restriction);
     var giftQty = parseFloat(promo.freeQty) || 0;
