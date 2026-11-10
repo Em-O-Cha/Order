@@ -14,7 +14,9 @@ var NEW_PASSWORDS = {
   PUR:  '',
   QA:   '',
   RD:   '',
-  PROD: ''
+  PROD: '',
+  SHE:  '',
+  LOG:  ''
 };
 
 function setupPasswords() {
