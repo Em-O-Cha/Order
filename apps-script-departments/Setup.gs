@@ -28,7 +28,7 @@ function setupPasswords() {
   var seen = {};
   keys.forEach(function (k) {
     var pw = String(NEW_PASSWORDS[k]);
-    if (!findDept_(k)) throw new Error('ไม่รู้จักแผนก ' + k);
+    if (!findDept_(k)) throw new Error('แผนก ' + k + ' ไม่ได้ใช้ระบบนี้ (ชื่อผิด หรือย้ายไปใช้ระบบของแผนกเองแล้ว)');
     if (pw.length < 6) throw new Error(k + ': รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
     if (seen[pw]) throw new Error(k + ': รหัสซ้ำกับแผนก ' + seen[pw]);
     seen[pw] = k;
@@ -57,7 +57,9 @@ function setupPasswords() {
 // ดูว่าแผนกไหนตั้งรหัสแล้ว / ชีตเปิดได้หรือยัง
 function checkSetup() {
   var props = PropertiesService.getScriptProperties();
-  DEPARTMENTS.forEach(function (d) {
+  Logger.log(ONLY_DEPT ? 'โหมด: ระบบของแผนก ' + ONLY_DEPT + ' (แบบ 2)' : 'โหมด: ระบบกลาง (แบบ 1)');
+  activeDepartments_().forEach(function (d) {
+    if (!findDept_(d.key)) { Logger.log(d.key + ' (' + d.name + ')  ย้ายไปใช้ระบบของแผนกเองแล้ว: ' + d.appUrl); return; }
     var s = sheetStatus_(d);
     Logger.log(d.key + ' (' + d.name + ')  รหัสผ่าน: ' + (props.getProperty(pwPropKey_(d.key)) ? 'ตั้งแล้ว' : 'ยังไม่ตั้ง') +
       '  |  ชีต: ' + (s.connected ? 'เปิดได้ — ' + s.title : s.message) +

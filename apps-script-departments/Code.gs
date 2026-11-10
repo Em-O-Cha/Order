@@ -12,33 +12,41 @@
 // ==================== CONFIG ====================
 var APP_NAME = 'ระบบงานองค์กร';
 
+// โหมดการติดตั้ง
+//   ''      = ระบบกลาง (แบบ 1) — ติดตั้งในบัญชีกลาง ทุกแผนกเข้าผ่านลิงก์เดียว
+//   'HR' ฯลฯ = ระบบของแผนกเดียว (แบบ 2) — ติดตั้งสำเนาในบัญชีอีเมลของแผนกนั้น ข้อมูลไม่ผ่านบัญชีกลางเลย
+// การย้ายแผนกจากแบบ 1 ไปแบบ 2 ดูขั้นตอนใน README.md
+var ONLY_DEPT = '';
+
 // sheetId    = ID ของ Google Sheet ของแผนก (ส่วนยาวๆ ใน URL ระหว่าง /d/ กับ /edit) — ใส่ภายหลัง
 // ownerEmail = อีเมลเจ้าของข้อมูลของแผนก (ต้องแชร์ชีตให้บัญชีเจ้าของสคริปต์เป็น "ผู้แก้ไข")
 // menus      = เมนูในหน้าแผนก (ตอนนี้เป็นตัวอย่าง รอกำหนดฟอร์มจริง)
+// appUrl     = (เฉพาะระบบกลาง) ลิงก์ /exec ของระบบที่แผนกย้ายไปติดตั้งเองแล้ว (แบบ 2) — ใส่แล้วการ์ดในหน้าแรก
+//              จะพาไปลิงก์นั้นแทน และระบบกลางจะไม่ให้เข้าแผนกนี้/ไม่แตะชีตของแผนกนี้อีก เว้นว่าง = ใช้ระบบกลาง
 var DEPARTMENTS = [
   { key: 'HR',   name: 'ฝ่ายบุคคล',          en: 'Human Resources',     color: '#2563eb',
-    sheetId: '', ownerEmail: '',
+    sheetId: '', ownerEmail: '', appUrl: '',
     menus: ['ข้อมูลพนักงาน', 'ลงเวลา / การลา', 'สวัสดิการ', 'ประเมินผลงาน'] },
   { key: 'ACC',  name: 'ฝ่ายบัญชี',          en: 'Accounting',          color: '#059669',
-    sheetId: '', ownerEmail: '',
+    sheetId: '', ownerEmail: '', appUrl: '',
     menus: ['รายรับ - รายจ่าย', 'ใบแจ้งหนี้ / ใบเสร็จ', 'เจ้าหนี้ / ลูกหนี้', 'รายงานภาษี'] },
   { key: 'PUR',  name: 'จัดซื้อ & สต๊อกสินค้า', en: 'Purchasing & Stock',  color: '#d97706',
-    sheetId: '', ownerEmail: '',
+    sheetId: '', ownerEmail: '', appUrl: '',
     menus: ['ใบขอซื้อ (PR)', 'ใบสั่งซื้อ (PO)', 'รับสินค้าเข้าสต๊อก', 'เบิก-จ่าย / คงเหลือ'] },
   { key: 'QA',   name: 'ฝ่ายประกันคุณภาพ',   en: 'Quality Assurance',   color: '#7c3aed',
-    sheetId: '', ownerEmail: '',
+    sheetId: '', ownerEmail: '', appUrl: '',
     menus: ['ตรวจรับวัตถุดิบ', 'ตรวจสินค้าสำเร็จรูป', 'ข้อร้องเรียน / NC', 'เอกสารมาตรฐาน'] },
   { key: 'RD',   name: 'วิจัยและพัฒนา',       en: 'Research & Development', color: '#db2777',
-    sheetId: '', ownerEmail: '',
+    sheetId: '', ownerEmail: '', appUrl: '',
     menus: ['โครงการพัฒนา', 'สูตร / ส่วนผสม', 'ผลการทดสอบ', 'ตัวอย่างสินค้า'] },
   { key: 'PROD', name: 'ฝ่ายผลิต',           en: 'Production',          color: '#0891b2',
-    sheetId: '', ownerEmail: '',
+    sheetId: '', ownerEmail: '', appUrl: '',
     menus: ['แผนการผลิต', 'บันทึกการผลิต', 'เครื่องจักร / ซ่อมบำรุง', 'ของเสีย / สูญเสีย'] },
   { key: 'SHE',  name: 'ความปลอดภัยและสิ่งแวดล้อม', en: 'Safety & Environment', color: '#65a30d',
-    sheetId: '', ownerEmail: '',
+    sheetId: '', ownerEmail: '', appUrl: '',
     menus: ['อุบัติเหตุ / เหตุการณ์เกือบเกิด', 'ตรวจความปลอดภัย', 'อบรมความปลอดภัย', 'ของเสีย / สิ่งแวดล้อม'] },
   { key: 'LOG',  name: 'ขนส่งและคลัง',       en: 'Logistics & Warehouse', color: '#475569',
-    sheetId: '', ownerEmail: '',
+    sheetId: '', ownerEmail: '', appUrl: '',
     menus: ['รับสินค้าเข้าคลัง', 'จ่ายสินค้า / ส่งของ', 'ตารางรถขนส่ง', 'สินค้าคงคลัง'] }
 ];
 
@@ -57,8 +65,8 @@ function doGet() {
 
 // รายชื่อแผนกสำหรับหน้าแรก (ไม่มี sheetId / อีเมล)
 function getDepartments() {
-  return DEPARTMENTS.map(function (d) {
-    return { key: d.key, name: d.name, en: d.en, color: d.color };
+  return activeDepartments_().map(function (d) {
+    return { key: d.key, name: d.name, en: d.en, color: d.color, appUrl: ONLY_DEPT ? '' : (d.appUrl || '') };
   });
 }
 
@@ -107,8 +115,19 @@ function getDepartmentHome(token) {
 }
 
 // ==================== ใช้ภายใน ====================
+// แผนกที่การติดตั้งนี้แสดง (ระบบกลาง = ทุกแผนก, ระบบแผนกเดียว = แผนกนั้น)
+function activeDepartments_() {
+  if (!ONLY_DEPT) return DEPARTMENTS;
+  return DEPARTMENTS.filter(function (d) { return d.key === ONLY_DEPT; });
+}
+
+// แผนกที่การติดตั้งนี้ "ดูแลข้อมูล" — แผนกที่ย้ายไปใช้ระบบของตัวเองแล้ว (มี appUrl) ระบบกลางจะหาไม่เจอ
+// จึงเข้าระบบ/เปิดชีตของแผนกนั้นผ่านระบบกลางไม่ได้
 function findDept_(key) {
-  for (var i = 0; i < DEPARTMENTS.length; i++) if (DEPARTMENTS[i].key === key) return DEPARTMENTS[i];
+  var list = activeDepartments_();
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].key === key && (ONLY_DEPT || !list[i].appUrl)) return list[i];
+  }
   return null;
 }
 

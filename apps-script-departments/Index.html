@@ -41,7 +41,7 @@
     position: relative; text-align: left; border: 1px solid var(--line); background: var(--surface);
     border-radius: var(--radius); padding: 22px 22px 18px; box-shadow: var(--shadow);
     display: flex; flex-direction: column; gap: 14px; transition: transform .15s, box-shadow .15s, border-color .15s;
-    color: inherit;
+    color: inherit; text-decoration: none;
   }
   .card:hover, .card:focus-visible { transform: translateY(-2px); border-color: var(--c); box-shadow: 0 8px 28px rgba(15, 23, 42, .10); outline: none; }
   .card .icon { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 12%, white); }
@@ -234,7 +234,7 @@
   function $(id) { return document.getElementById(id); }
 
   // ตั๋วเก็บในหน่วยความจำเท่านั้น (ไม่ใช้ localStorage/cookie) — ปิด/รีเฟรชหน้า = ต้องกรอกรหัสใหม่
-  var state = { depts: [], picked: null, token: null, dept: null, page: 'home' };
+  var state = { depts: [], picked: null, token: null, dept: null, page: 'home', single: false };
 
   function call(fn) {
     var args = Array.prototype.slice.call(arguments, 1);
@@ -251,13 +251,17 @@
   // ---------- หน้าแรก ----------
   function renderHome() {
     $('grid').innerHTML = state.depts.map(function (d) {
-      return '<button class="card" style="--c:' + d.color + '" data-key="' + d.key + '">' +
+      // แผนกที่ย้ายไปใช้ระบบของตัวเองแล้ว (แบบ 2) — การ์ดเป็นลิงก์ไประบบของแผนกนั้น
+      var open = d.appUrl
+        ? '<a class="card" style="--c:' + d.color + '" href="' + esc(d.appUrl) + '" target="_top">'
+        : '<button class="card" style="--c:' + d.color + '" data-key="' + d.key + '">';
+      return open +
         '<div class="icon">' + icon(d.key) + '</div>' +
         '<div class="meta"><p class="name">' + esc(d.name) + '</p><div class="en">' + esc(d.en) + '</div></div>' +
         '<div class="foot"><span style="display:flex;gap:6px;align-items:center">' + icon('lock', 15) + 'ใช้รหัสผ่านแผนก</span>' +
-        '<span class="go">เข้าสู่ระบบ ' + icon('arrow') + '</span></div></button>';
+        '<span class="go">เข้าสู่ระบบ ' + icon('arrow') + '</span></div>' + (d.appUrl ? '</a>' : '</button>');
     }).join('');
-    Array.prototype.forEach.call(document.querySelectorAll('.card'), function (el) {
+    Array.prototype.forEach.call(document.querySelectorAll('button.card'), function (el) {
       el.addEventListener('click', function () { openLogin(el.getAttribute('data-key')); });
     });
   }
@@ -275,7 +279,7 @@
     $('loginOverlay').classList.remove('hidden');
     setTimeout(function () { $('pwInput').focus(); }, 30);
   }
-  function closeLogin() { $('loginOverlay').classList.add('hidden'); $('pwInput').value = ''; }
+  function closeLogin() { if (state.single && !state.token) return; $('loginOverlay').classList.add('hidden'); $('pwInput').value = ''; }
 
   $('cancelBtn').addEventListener('click', closeLogin);
   $('loginOverlay').addEventListener('click', function (e) { if (e.target === this) closeLogin(); });
@@ -356,6 +360,7 @@
     state.token = null; state.dept = null;
     $('app').classList.add('hidden'); $('home').classList.remove('hidden');
     if (msg) toast(msg);
+    if (state.single) openLogin(state.depts[0].key);
   }
   function onServerError(err) {
     if (String(err && err.message || err).indexOf('SESSION_EXPIRED') >= 0) backToHome('หมดเวลาการใช้งาน กรุณาเข้าสู่ระบบใหม่');
@@ -366,7 +371,13 @@
     call('logout', t).catch(function () {});
   });
 
-  call('getDepartments').then(function (list) { state.depts = list; renderHome(); }).catch(function () { toast('โหลดรายชื่อแผนกไม่ได้'); });
+  call('getDepartments').then(function (list) {
+    state.depts = list; renderHome();
+    // ระบบของแผนกเดียว (แบบ 2): เปิดหน้ากรอกรหัสทันที
+    if (list.length === 1 && !list[0].appUrl) {
+      state.single = true; $('cancelBtn').classList.add('hidden'); openLogin(list[0].key);
+    }
+  }).catch(function () { toast('โหลดรายชื่อแผนกไม่ได้'); });
 </script>
 </body>
 </html>
