@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ระบบงานองค์กร</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f6fa;
+    --surface: #ffffff;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --accent: #2563eb;
+    --danger: #dc2626;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 4px 16px rgba(15, 23, 42, .06);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: 'IBM Plex Sans Thai', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.55;
+    min-height: 100vh;
+  }
+  button { font: inherit; cursor: pointer; }
+  svg.ic { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .hidden { display: none !important; }
+
+  /* ---------- หน้าแรก: เลือกแผนก ---------- */
+  .home { max-width: 1040px; margin: 0 auto; padding: 48px 20px 40px; }
+  .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+  .brand-mark { width: 44px; height: 44px; border-radius: 12px; background: var(--ink); color: #fff; display: grid; place-items: center; }
+  .brand h1 { font-size: 26px; margin: 0; font-weight: 700; letter-spacing: -.01em; }
+  .home .lead { color: var(--muted); margin: 0 0 32px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card {
+    position: relative; text-align: left; border: 1px solid var(--line); background: var(--surface);
+    border-radius: var(--radius); padding: 22px 22px 18px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; gap: 14px; transition: transform .15s, box-shadow .15s, border-color .15s;
+    color: inherit;
+  }
+  .card:hover, .card:focus-visible { transform: translateY(-2px); border-color: var(--c); box-shadow: 0 8px 28px rgba(15, 23, 42, .10); outline: none; }
+  .card .icon { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 12%, white); }
+  .card .icon svg.ic { width: 28px; height: 28px; }
+  .card .name { font-size: 18px; font-weight: 600; margin: 0; }
+  .card .en { color: var(--muted); font-size: 13px; margin-top: -6px; }
+  .card .foot { display: flex; align-items: center; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 12px; color: var(--muted); font-size: 13px; }
+  .card .foot .go { color: var(--c); font-weight: 600; display: flex; align-items: center; gap: 4px; }
+  .card .foot svg.ic { width: 16px; height: 16px; }
+  .home-note { margin-top: 28px; color: var(--muted); font-size: 13px; display: flex; gap: 8px; align-items: center; }
+  .home-note svg.ic { width: 18px; height: 18px; }
+
+  /* ---------- กล่องกรอกรหัสผ่าน ---------- */
+  .overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: grid; place-items: center; padding: 16px; z-index: 10; backdrop-filter: blur(3px); }
+  .dialog { width: 100%; max-width: 400px; background: var(--surface); border-radius: 18px; overflow: hidden; box-shadow: 0 24px 64px rgba(15, 23, 42, .25); }
+  .dialog-head { padding: 24px 24px 18px; background: color-mix(in srgb, var(--c) 10%, white); display: flex; gap: 14px; align-items: center; }
+  .dialog-head .icon { width: 48px; height: 48px; border-radius: 12px; background: var(--c); color: #fff; display: grid; place-items: center; }
+  .dialog-head h2 { margin: 0; font-size: 18px; }
+  .dialog-head p { margin: 0; color: var(--muted); font-size: 13px; }
+  .dialog-body { padding: 22px 24px 24px; }
+  label { display: block; font-weight: 500; margin-bottom: 6px; font-size: 14px; }
+  .pw { position: relative; }
+  .pw input {
+    width: 100%; padding: 12px 46px 12px 14px; border: 1.5px solid var(--line); border-radius: 10px; font: inherit; font-size: 16px; background: #fff; color: var(--ink);
+  }
+  .pw input:focus { outline: none; border-color: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 18%, transparent); }
+  .pw .eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--muted); padding: 8px; display: grid; }
+  .pw .eye svg.ic { width: 20px; height: 20px; }
+  .err { color: var(--danger); font-size: 13px; min-height: 20px; margin: 8px 0 4px; }
+  .actions { display: flex; gap: 10px; margin-top: 8px; }
+  .btn { border: 0; border-radius: 10px; padding: 11px 16px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn-primary { background: var(--c, var(--accent)); color: #fff; flex: 1; }
+  .btn-primary:disabled { opacity: .6; cursor: progress; }
+  .btn-ghost { background: #f1f5f9; color: var(--ink); }
+  .hint { margin-top: 14px; color: var(--muted); font-size: 12px; display: flex; gap: 6px; }
+  .hint svg.ic { width: 16px; height: 16px; margin-top: 1px; }
+
+  /* ---------- หน้าแผนก ---------- */
+  .app { min-height: 100vh; display: grid; grid-template-columns: 248px 1fr; grid-template-rows: auto 1fr; }
+  .topbar { grid-column: 1 / -1; background: var(--c); color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 14px; }
+  .topbar .icon { width: 40px; height: 40px; border-radius: 10px; background: rgba(255, 255, 255, .18); display: grid; place-items: center; }
+  .topbar .title { font-weight: 600; font-size: 17px; line-height: 1.3; }
+  .topbar .sub { opacity: .85; font-size: 12px; }
+  .topbar .spacer { flex: 1; }
+  .topbar .lock { font-size: 12px; opacity: .9; display: flex; align-items: center; gap: 6px; }
+  .topbar .lock svg.ic { width: 16px; height: 16px; }
+  .btn-out { background: rgba(255, 255, 255, .16); color: #fff; border: 1px solid rgba(255, 255, 255, .35); }
+  .btn-out:hover { background: rgba(255, 255, 255, .26); }
+  .side { background: var(--surface); border-right: 1px solid var(--line); padding: 18px 12px; }
+  .side .cap { font-size: 12px; color: var(--muted); padding: 0 12px 8px; text-transform: uppercase; letter-spacing: .04em; }
+  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav button { text-align: left; border: 0; background: none; padding: 10px 12px; border-radius: 9px; color: var(--ink); display: flex; gap: 10px; align-items: center; }
+  .nav button svg.ic { width: 18px; height: 18px; color: var(--muted); }
+  .nav button:hover { background: #f1f5f9; }
+  .nav button.active { background: color-mix(in srgb, var(--c) 12%, white); color: var(--c); font-weight: 600; }
+  .nav button.active svg.ic { color: var(--c); }
+  .main { padding: 28px; max-width: 1000px; width: 100%; }
+  .main h3 { margin: 0 0 4px; font-size: 22px; }
+  .main .lead { color: var(--muted); margin: 0 0 22px; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+  .status { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 20px; }
+  .status .dot { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; flex: none; }
+  .status.off .dot { background: #fef3c7; color: #b45309; }
+  .status.on .dot { background: #dcfce7; color: #15803d; }
+  .status b { display: block; }
+  .status span { color: var(--muted); font-size: 13px; }
+  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .tile { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; display: flex; gap: 14px; align-items: center; color: inherit; transition: border-color .15s; }
+  .tile:hover { border-color: var(--c); }
+  .tile .icon { width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 10%, white); }
+  .tile .t { font-weight: 600; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: #f1f5f9; color: var(--muted); margin-top: 4px; }
+  .empty { text-align: center; padding: 56px 20px; border: 2px dashed var(--line); border-radius: var(--radius); background: var(--surface); color: var(--muted); }
+  .empty .icon { width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 14px; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 10%, white); }
+  .empty h4 { color: var(--ink); margin: 0 0 6px; font-size: 17px; }
+
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 14px; z-index: 20; box-shadow: var(--shadow); }
+  .spinner { width: 18px; height: 18px; border: 2.5px solid rgba(255, 255, 255, .4); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
+    .side { border-right: 0; border-bottom: 1px solid var(--line); padding: 10px 16px; overflow-x: auto; }
+    .side .cap { display: none; }
+    .nav { flex-direction: row; gap: 6px; }
+    .nav button { white-space: nowrap; background: #f1f5f9; }
+    .main { padding: 20px 16px; }
+  }
+  @media (max-width: 560px) {
+    .home { padding: 28px 16px; }
+    .grid, .tiles { grid-template-columns: 1fr; }
+    .card { flex-direction: row; align-items: center; padding: 16px; gap: 14px; }
+    .card .meta { flex: 1; }
+    .card .en { margin-top: 0; }
+    .card .foot { display: none; }
+    .topbar { padding: 12px 16px; gap: 10px; }
+    .topbar .title { font-size: 15px; }
+    .btn-out .lbl { display: none; }
+    .btn-out { padding: 10px; }
+    .topbar .lock { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- หน้าแรก -->
+<section id="home" class="home">
+  <div class="brand">
+    <div class="brand-mark"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+    <h1>ระบบงานองค์กร</h1>
+  </div>
+  <p class="lead">เลือกแผนกของคุณเพื่อเข้าสู่ระบบ — แต่ละแผนกใช้รหัสผ่านของตัวเอง และเห็นเฉพาะข้อมูลของแผนกตนเท่านั้น</p>
+  <div id="grid" class="grid"></div>
+  <div class="home-note"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>ต้องกรอกรหัสผ่านทุกครั้งที่เข้าใช้งาน ระบบไม่จำรหัสผ่านไว้ในเครื่อง</div>
+</section>
+
+<!-- กรอกรหัสผ่าน -->
+<div id="loginOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+  <form id="loginForm" class="dialog" autocomplete="off">
+    <div class="dialog-head">
+      <div class="icon" id="loginIcon"></div>
+      <div>
+        <h2 id="loginTitle"></h2>
+        <p id="loginEn"></p>
+      </div>
+    </div>
+    <div class="dialog-body">
+      <label for="pwInput">รหัสผ่านของแผนก</label>
+      <div class="pw">
+        <input id="pwInput" type="password" autocomplete="new-password" placeholder="กรอกรหัสผ่าน" required>
+        <button type="button" class="eye" id="eyeBtn" aria-label="แสดงรหัสผ่าน"><svg class="ic" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
+      <div class="err" id="loginErr"></div>
+      <div class="actions">
+        <button type="button" class="btn btn-ghost" id="cancelBtn">ยกเลิก</button>
+        <button type="submit" class="btn btn-primary" id="loginBtn">เข้าสู่ระบบ</button>
+      </div>
+      <div class="hint"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>ใส่รหัสผิด 5 ครั้ง ระบบจะล็อกแผนกนี้ 10 นาที</div>
+    </div>
+  </form>
+</div>
+
+<!-- หน้าแผนก -->
+<section id="app" class="app hidden">
+  <header class="topbar">
+    <div class="icon" id="topIcon"></div>
+    <div>
+      <div class="title" id="topTitle"></div>
+      <div class="sub" id="topSub"></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="lock"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>ไม่ใช้งาน 30 นาที ออกจากระบบอัตโนมัติ</div>
+    <button class="btn btn-out" id="logoutBtn" aria-label="ออกจากระบบ" title="ออกจากระบบ"><svg class="ic" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span class="lbl">ออกจากระบบ</span></button>
+  </header>
+  <aside class="side">
+    <div class="cap">เมนู</div>
+    <nav class="nav" id="nav"></nav>
+  </aside>
+  <main class="main" id="main"></main>
+</section>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+  var ICONS = {
+    HR: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    ACC: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h.01M12 19h4"/>',
+    PUR: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/><path d="M7.5 5.5l9 5"/>',
+    QA: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
+    RD: '<path d="M9 3h6"/><path d="M10 3v6L4.5 19a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L14 9V3"/><path d="M7 15h10"/>',
+    PROD: '<path d="M2 21h20"/><path d="M3 21V11l6 4v-4l6 4V9"/><path d="M15 21V5h4l1 16"/><path d="M7 18h2M12 18h2"/>',
+    home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>',
+    form: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+    sheet: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>',
+    arrow: '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
+    lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    check: '<path d="M20 6L9 17l-5-5"/>',
+    warn: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'
+  };
+  function icon(name, size) {
+    var s = size ? ' style="width:' + size + 'px;height:' + size + 'px"' : '';
+    return '<svg class="ic" viewBox="0 0 24 24"' + s + '>' + (ICONS[name] || '') + '</svg>';
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function $(id) { return document.getElementById(id); }
+
+  // ตั๋วเก็บในหน่วยความจำเท่านั้น (ไม่ใช้ localStorage/cookie) — ปิด/รีเฟรชหน้า = ต้องกรอกรหัสใหม่
+  var state = { depts: [], picked: null, token: null, dept: null, page: 'home' };
+
+  function call(fn) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve, reject) {
+      var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+      r[fn].apply(r, args);
+    });
+  }
+  function toast(msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
+    clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.add('hidden'); }, 3200);
+  }
+
+  // ---------- หน้าแรก ----------
+  function renderHome() {
+    $('grid').innerHTML = state.depts.map(function (d) {
+      return '<button class="card" style="--c:' + d.color + '" data-key="' + d.key + '">' +
+        '<div class="icon">' + icon(d.key) + '</div>' +
+        '<div class="meta"><p class="name">' + esc(d.name) + '</p><div class="en">' + esc(d.en) + '</div></div>' +
+        '<div class="foot"><span style="display:flex;gap:6px;align-items:center">' + icon('lock', 15) + 'ใช้รหัสผ่านแผนก</span>' +
+        '<span class="go">เข้าสู่ระบบ ' + icon('arrow') + '</span></div></button>';
+    }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('.card'), function (el) {
+      el.addEventListener('click', function () { openLogin(el.getAttribute('data-key')); });
+    });
+  }
+
+  function openLogin(key) {
+    var d = state.depts.filter(function (x) { return x.key === key; })[0];
+    state.picked = d;
+    var dlg = $('loginForm');
+    dlg.style.setProperty('--c', d.color);
+    $('loginIcon').innerHTML = icon(d.key, 26);
+    $('loginTitle').textContent = d.name;
+    $('loginEn').textContent = d.en;
+    $('pwInput').value = ''; $('pwInput').type = 'password';
+    $('loginErr').textContent = '';
+    $('loginOverlay').classList.remove('hidden');
+    setTimeout(function () { $('pwInput').focus(); }, 30);
+  }
+  function closeLogin() { $('loginOverlay').classList.add('hidden'); $('pwInput').value = ''; }
+
+  $('cancelBtn').addEventListener('click', closeLogin);
+  $('loginOverlay').addEventListener('click', function (e) { if (e.target === this) closeLogin(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeLogin(); });
+  $('eyeBtn').addEventListener('click', function () { var i = $('pwInput'); i.type = i.type === 'password' ? 'text' : 'password'; i.focus(); });
+
+  $('loginForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var btn = $('loginBtn'), pw = $('pwInput').value;
+    if (!pw) { $('loginErr').textContent = 'กรุณากรอกรหัสผ่าน'; return; }
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>กำลังตรวจสอบ';
+    $('loginErr').textContent = '';
+    call('login', state.picked.key, pw).then(function (res) {
+      if (!res.ok) { $('loginErr').textContent = res.error; $('pwInput').select(); return; }
+      state.token = res.token; state.dept = res.dept;
+      closeLogin();
+      openApp();
+    }).catch(function () {
+      $('loginErr').textContent = 'เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง';
+    }).then(function () { btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'; });
+  });
+
+  // ---------- หน้าแผนก ----------
+  function openApp() {
+    var d = state.dept;
+    $('app').style.setProperty('--c', d.color);
+    $('topIcon').innerHTML = icon(d.key, 22);
+    $('topTitle').textContent = d.name;
+    $('topSub').textContent = d.en;
+    $('home').classList.add('hidden');
+    $('app').classList.remove('hidden');
+    state.page = 'home';
+    renderNav(); renderPage();
+    call('getDepartmentHome', state.token).then(function (res) {
+      state.dept = res.dept; if (state.page === 'home') renderPage();
+    }).catch(onServerError);
+  }
+
+  function renderNav() {
+    var items = [{ id: 'home', label: 'หน้าหลัก', ic: 'home' }].concat(state.dept.menus.map(function (m, i) {
+      return { id: 'm' + i, label: m, ic: 'form' };
+    }));
+    $('nav').innerHTML = items.map(function (it) {
+      return '<button data-page="' + it.id + '" class="' + (state.page === it.id ? 'active' : '') + '">' + icon(it.ic) + esc(it.label) + '</button>';
+    }).join('');
+    Array.prototype.forEach.call($('nav').querySelectorAll('button'), function (b) {
+      b.addEventListener('click', function () { go(b.getAttribute('data-page')); });
+    });
+  }
+  function go(page) { state.page = page; renderNav(); renderPage(); window.scrollTo(0, 0); }
+
+  function renderPage() {
+    var d = state.dept, html;
+    if (state.page === 'home') {
+      var s = d.sheet;
+      var status = !s
+        ? '<div class="panel status off"><div class="dot">' + icon('sheet', 20) + '</div><div><b>กำลังตรวจสอบ Google Sheet…</b></div></div>'
+        : s.connected
+          ? '<div class="panel status on"><div class="dot">' + icon('check', 20) + '</div><div><b>เชื่อม Google Sheet แล้ว: ' + esc(s.title) + '</b><span>แท็บ: ' + esc(s.tabs.join(', ')) + '</span></div></div>'
+          : '<div class="panel status off"><div class="dot">' + icon('warn', 20) + '</div><div><b>' + esc(s.message) + '</b><span>ผู้ดูแลระบบจะใส่ Sheet ID ของแผนกนี้ภายหลัง' + (d.ownerEmail ? ' · เจ้าของข้อมูล: ' + esc(d.ownerEmail) : '') + '</span></div></div>';
+      html = '<h3>ยินดีต้อนรับ ' + esc(d.name) + '</h3><p class="lead">เลือกเมนูที่ต้องการทำงาน</p>' + status +
+        '<div class="tiles">' + d.menus.map(function (m, i) {
+          return '<button class="tile" data-page="m' + i + '"><div class="icon">' + icon('form') + '</div><div><div class="t">' + esc(m) + '</div><span class="badge">รอกำหนดฟอร์ม</span></div></button>';
+        }).join('') + '</div>';
+    } else {
+      var label = d.menus[Number(state.page.slice(1))];
+      html = '<h3>' + esc(label) + '</h3><p class="lead">' + esc(d.name) + '</p>' +
+        '<div class="empty"><div class="icon">' + icon('form', 28) + '</div><h4>หน้านี้จะเป็นฟอร์มกรอกข้อมูล</h4>' +
+        '<div>รอกำหนดหัวข้อข้อมูลและเชื่อม Google Sheet ของแผนก</div></div>';
+    }
+    $('main').innerHTML = html;
+    Array.prototype.forEach.call($('main').querySelectorAll('.tile'), function (b) {
+      b.addEventListener('click', function () { go(b.getAttribute('data-page')); });
+    });
+  }
+
+  function backToHome(msg) {
+    state.token = null; state.dept = null;
+    $('app').classList.add('hidden'); $('home').classList.remove('hidden');
+    if (msg) toast(msg);
+  }
+  function onServerError(err) {
+    if (String(err && err.message || err).indexOf('SESSION_EXPIRED') >= 0) backToHome('หมดเวลาการใช้งาน กรุณาเข้าสู่ระบบใหม่');
+    else toast('เกิดข้อผิดพลาด: ' + (err && err.message || err));
+  }
+  $('logoutBtn').addEventListener('click', function () {
+    var t = state.token; backToHome('ออกจากระบบแล้ว');
+    call('logout', t).catch(function () {});
+  });
+
+  call('getDepartments').then(function (list) { state.depts = list; renderHome(); }).catch(function () { toast('โหลดรายชื่อแผนกไม่ได้'); });
+</script>
+</body>
+</html>
