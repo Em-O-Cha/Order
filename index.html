@@ -2491,7 +2491,8 @@ function pbRender_(r){
 function pbSetMethod_(m){
   pbMethod_ = m;
   var a = document.getElementById('pbTabQr'), b = document.getElementById('pbTabCard');
-  var tabStyle_ = function(el, on){ if (!el) return; el.className = 'btn'; el.style.cssText = 'flex:1;' + (on ? '' : 'background:#fff;color:#a50d0c;border:1.5px solid #e4504d;box-shadow:none'); };
+  // ⚡ (13/11/69) ปุ่มที่ไม่ได้เลือก = ขาวขอบแดง (btn-sub) — เดิมใส่สีขาวผ่าน style แต่กฎปุ่มรวม (!important) ทับเป็นแดงทั้งคู่
+  var tabStyle_ = function(el, on){ if (!el) return; el.className = on ? 'btn' : 'btn btn-sub'; el.style.cssText = 'flex:1'; };
   tabStyle_(a, m === 'promptpay'); tabStyle_(b, m === 'card');
   var box = document.getElementById('pbPay'), r = pbData_;
   if (m === 'card') {
