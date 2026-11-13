@@ -1601,6 +1601,15 @@ var WANT_CARDPAY_ORDER_ = (function(){
   } catch (e) { return ''; }
 })();
 var WANT_CART_ON_OPEN_ = /(^|[?&])view=cart(&|$)/.test(location.search) || !!WANT_SLIP_ORDER_;
+// ⚡ (13/11/69) ?view=bulk — ลิงก์เปิดหน้าร้านแล้วเข้าแท็บ "ขายส่งยกลัง" ทันที (อ่านจาก liff.state ด้วย เผื่อเปิดครั้งแรกผ่าน liff.line.me)
+var WANT_BULK_ON_OPEN_ = (function(){
+  try {
+    var params = new URLSearchParams(location.search), v = params.get('view');
+    if (!v && params.get('liff.state')) v = new URLSearchParams(String(params.get('liff.state')).split('?')[1] || '').get('view');
+    return v === 'bulk';
+  } catch (e) { return false; }
+})();
+var wantBulkHandled_ = false;
 var cartViewOpened_ = false;
 var wantSlipHandled_ = false;
 function openWantedSlipOrder_(results){
@@ -2167,6 +2176,7 @@ function applyBulkInfo_(b){
   if (bulkInfo_) bulkInfo_.items.forEach(function(it){ if (!it.hidden) bulkByKey_[it.key] = it; });
   if (!bulkInfo_ && shopMode_ === 'bulk') setShopMode_('retail');
   renderShopModeSwitch_();
+  if (WANT_BULK_ON_OPEN_ && !wantBulkHandled_ && bulkInfo_ && !(typeof editingOrderId_ !== 'undefined' && editingOrderId_)) { wantBulkHandled_ = true; setShopMode_('bulk'); return; }
   if (shopMode_ === 'bulk') renderBulk_();
 }
 function bulkCases_(){
